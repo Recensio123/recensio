@@ -5,7 +5,7 @@ import { createSupabaseServerClient, createSupabaseAdminClient } from '@/lib/sup
 const UpdateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   template: z.string().min(1).optional(),
-  timing_hours: z.number().int().min(0).max(720).optional(),
+  timing_hours: z.number().min(0).max(720).optional(),
   timing_after: z.enum(['job', 'review']).optional(),
   neg_filter: z.boolean().optional(),
   active: z.boolean().optional(),

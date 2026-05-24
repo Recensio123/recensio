@@ -69,10 +69,30 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await admin
     .from('customers')
-    .select('*, campaigns(name)')
+    .select('*')
     .eq('company_id', userData.company_id)
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  // Hämta kampanj-SMS per kund (type = campaign)
+  const { data: campLogs } = await admin
+    .from('sms_log')
+    .select('customer_id, campaigns(name)')
+    .eq('company_id', userData.company_id)
+    .eq('type', 'campaign')
+
+  // Bygg en map: customer_id → kampanjnamn
+  const campMap: Record<string, string> = {}
+  for (const log of campLogs ?? []) {
+    const name = (log.campaigns as { name: string } | null)?.name ?? 'Kampanj'
+    campMap[log.customer_id] = name
+  }
+
+  const enriched = (data ?? []).map(c => ({
+    ...c,
+    campaign_sent_name: campMap[c.id] ?? null,
+  }))
+
+  return NextResponse.json(enriched)
 }

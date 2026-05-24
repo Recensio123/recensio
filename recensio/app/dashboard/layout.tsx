@@ -11,7 +11,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div style={{ display: 'flex', minHeight: '100vh', background: '#edf2ee', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <Sidebar />
       <main style={{ flex: 1, padding: '1.75rem', overflowY: 'auto' }}>
-        {children}
+        <div style={{ maxWidth: 960, margin: '0 auto' }}>
+          {children}
+        </div>
       </main>
     </div>
   )

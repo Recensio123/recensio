@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import PricingSection from './PricingSection'
 
 export default function LandingPage() {
   return (
@@ -37,7 +38,7 @@ export default function LandingPage() {
       {/* STATS */}
       <div style={{ background: '#1a3d2b', padding: '1.5rem 0' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', maxWidth: 700, margin: '0 auto', padding: '0 2rem' }}>
-          {([['4.2×', 'Fler recensioner på 30 dagar'], ['87%', 'Öppningsfrekvens på SMS'], ['1 av 3', 'Nya kunder via referral']] as const).map(([n, l]) => (
+          {([['Automatiskt', 'Inget manuellt arbete krävs'], ['SMS + e-post', 'Når kunden på rätt kanal'], ['Google & Reco.se', 'De plattformar som räknas']] as const).map(([n, l]) => (
             <div key={l} style={{ textAlign: 'center', padding: '0 1.5rem', borderLeft: '1px solid rgba(255,255,255,.15)' }}>
               <span style={{ fontFamily: 'Fraunces, serif', fontSize: '2.1rem', color: '#fff', display: 'block', lineHeight: 1 }}>{n}</span>
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,.45)', display: 'block', marginTop: 4 }}>{l}</span>
@@ -71,38 +72,7 @@ export default function LandingPage() {
       </section>
 
       {/* PRICING */}
-      <section id="pricing" style={{ padding: '5rem 0', background: '#fdfcf9' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 2rem' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#2e6649', marginBottom: '.75rem' }}>Priser</div>
-          <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 'clamp(1.9rem,4vw,2.9rem)', marginBottom: '.75rem' }}>Enkla priser.<br />Inga överraskningar.</h2>
-          <p style={{ fontSize: '1rem', color: '#5c5445', marginBottom: '2rem' }}>Alla priser exklusive moms.</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1.25rem' }}>
-            {([
-              { tier: 'Starter', price: 349, desc: 'För dig som precis börjat.', features: ['Upp till 50 kunder/mån', 'Automatiska SMS + e-post', 'Google-recensioner', 'Manuell kundläggning'], featured: false },
-              { tier: 'Pro', price: 599, desc: 'För etablerade serviceföretag.', features: ['Upp till 500 kunder/mån', 'Google + Reco.se + Hittaproffs', 'Koppla affärssystem/kalender', 'Kampanjhantering', 'Referral-program', 'Hemsidewidget'], featured: true },
-              { tier: 'Growth', price: 999, desc: 'För hög volym och flera team.', features: ['Obegränsat antal kunder', 'Allt i Pro', 'Flera teammedlemmar', 'Prioriterad support'], featured: false },
-            ]).map(p => (
-              <div key={p.tier} style={{ background: p.featured ? '#1a3d2b' : '#fdfcf9', border: `1px solid ${p.featured ? '#1a3d2b' : '#e5dfd4'}`, borderRadius: 20, padding: '2rem', position: 'relative' }}>
-                {p.featured && <div style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)', background: '#c47f2a', color: '#fff', fontSize: 11, fontWeight: 600, padding: '3px 16px', borderRadius: 999, whiteSpace: 'nowrap' }}>Mest populär</div>}
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.1em', color: p.featured ? 'rgba(255,255,255,.45)' : '#9c9285', marginBottom: '.9rem' }}>{p.tier}</div>
-                <div style={{ fontFamily: 'Fraunces, serif', fontSize: '3rem', color: p.featured ? '#fff' : '#0e1410', lineHeight: 1 }}>{p.price}</div>
-                <div style={{ fontSize: 13, color: p.featured ? 'rgba(255,255,255,.4)' : '#9c9285', marginBottom: '.25rem' }}>kr / månad</div>
-                <div style={{ fontSize: 13, color: p.featured ? 'rgba(255,255,255,.55)' : '#5c5445', margin: '.9rem 0 1.25rem' }}>{p.desc}</div>
-                <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: '1.75rem', padding: 0 }}>
-                  {p.features.map(f => (
-                    <li key={f} style={{ fontSize: 13, color: p.featured ? 'rgba(255,255,255,.7)' : '#5c5445', display: 'flex', gap: 8 }}>
-                      <span style={{ color: p.featured ? '#4d8c68' : '#2e6649', fontWeight: 700 }}>✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/login" style={{ display: 'block', padding: 12, borderRadius: 10, fontSize: 14, fontWeight: 600, textAlign: 'center', textDecoration: 'none', background: p.featured ? '#fff' : 'transparent', color: p.featured ? '#1a3d2b' : '#0e1410', border: p.featured ? 'none' : '1.5px solid #e5dfd4' }}>
-                  Boka demo
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <PricingSection />
 
       {/* CTA */}
       <div style={{ background: '#1a3d2b', padding: '7rem 0', textAlign: 'center' }}>

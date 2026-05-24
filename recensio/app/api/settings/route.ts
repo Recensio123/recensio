@@ -12,6 +12,25 @@ const SettingsSchema = z.object({
   sms_timing_hours: z.number().int().min(0).max(720).optional(),
 })
 
+export async function GET() {
+  const supabase = await createSupabaseServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const admin = createSupabaseAdminClient()
+  const { data: userData } = await admin.from('users').select('company_id').eq('id', user.id).single()
+  if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+
+  const { data, error } = await admin
+    .from('companies')
+    .select('*')
+    .eq('id', userData.company_id)
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
 export async function PATCH(request: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
