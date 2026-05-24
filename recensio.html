@@ -793,7 +793,7 @@ function addCustomer(){
 function sendNow(id){
   const c=C.find(x=>x.id===id);if(!c)return;
   c.status='sent';c.sentAt=new Date();c.scheduledAt=null;
-  c.sms='Hej '+c.name.split(' ')[0]+'! Tack för att du anlitade ditt företag. Nöjd med jobbet? 30 sek 🙏\n\n→ recensio.se/r/'+Math.random().toString(36).substr(2,5);
+  c.sms='Hej '+c.name.split(' ')[0]+'! Tack för att du anlitade ditt företag. Nöjd med jobbet? 30 sek 🙏\n\n→ recensio.se/r/'+Math.random().toString(36).slice(2,7);
   toast(`SMS skickat direkt till ${c.name}`);
   setTimeout(()=>{if(Math.random()>.2){const s=Math.random()>.15?5:4;c.stars=s;c.rv=CMTS[Math.floor(Math.random()*CMTS.length)];c.status='reviewed';}renderAll();},2000);
   renderAll();
