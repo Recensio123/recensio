@@ -24,9 +24,15 @@ export default function RadiusMap({ lat, lng, radiusKm }: { lat: number; lng: nu
       doubleClickZoom: false,
       boxZoom: false,
       keyboard: false,
+      // Leaflet needs a view before anything can be drawn on the map
+      center: [lat, lng],
+      zoom: 11,
     })
-    // CARTO's light tiles keep the dashboard aesthetic; attribution per their terms
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // The wizard lays out after mount — remeasure once the size is real
+    setTimeout(() => map.invalidateSize(), 0)
+    // Voyager: an ordinary-looking map — streets, water and parks in the
+    // colors people know from every map app. Attribution per CARTO's terms.
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd',
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style="color:#666">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer" style="color:#666">CARTO</a>',
