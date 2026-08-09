@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" width="200" height="40" role="img" aria-label="KiteRank">
+  <title>KiteRank</title>
+  <defs>
+    <!-- Clips the mustard layer to the lower-diagonal trapezoid
+         Left edge starts at 76% down (≈ baseline of capital K)
+         Right edge starts at 24% down (≈ ascender of lowercase k) -->
+    <clipPath id="lower-diagonal" clipPathUnits="userSpaceOnUse">
+      <polygon points="0,30.4 200,9.6 200,40 0,40"/>
+    </clipPath>
+  </defs>
+
+  <!-- No background — transparent -->
+
+  <!-- Layer 1: white base text (always fully visible) -->
+  <text
+    x="0" y="28"
+    font-family="'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-weight="700"
+    font-size="26"
+    letter-spacing="-0.6"
+    fill="white"
+  >KiteRank</text>
+
+  <!-- Layer 2: mustard text clipped to lower-diagonal region -->
+  <text
+    x="0" y="28"
+    font-family="'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-weight="700"
+    font-size="26"
+    letter-spacing="-0.6"
+    fill="#f0b429"
+    clip-path="url(#lower-diagonal)"
+  >KiteRank</text>
+</svg>

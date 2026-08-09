@@ -1,0 +1,72 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Arial;}}
+{\colortbl;\red0\green0\blue0;}
+\f0\fs24
+
+\b\fs32 Kiterank – Google Ads API Design Documentation\b0\fs24
+\par\par
+
+\b Overview\b0
+\par
+Kiterank is a SaaS dashboard platform built for small and medium-sized businesses. It aggregates data from Google Business Profile, Google Search Console, and Google Ads into a single interface, helping business owners monitor performance, identify wasted spend, and make data-driven decisions without needing marketing expertise.
+\par\par
+
+\b How Kiterank Uses the Google Ads API\b0
+\par
+Kiterank uses the Google Ads API to retrieve campaign and keyword performance data on behalf of connected client accounts. Specifically, the application:
+\par\par
+1. Lists accessible customer accounts linked to the authenticated user via \i CustomerService.ListAccessibleCustomers\i0
+\par
+2. Retrieves campaign-level metrics (spend, clicks, impressions, conversions) via GAQL queries on the \i campaign\i0  resource
+\par
+3. Retrieves keyword-level metrics (spend, clicks, conversions, match type) via GAQL queries on the \i keyword_view\i0  resource
+\par
+4. Identifies "wasted" keywords — those with spend but zero conversions — and surfaces them to the user with a recommendation to pause
+\par\par
+
+\b Data Flow\b0
+\par
+- The business owner connects their Google account via OAuth 2.0 (scope: \i https://www.googleapis.com/auth/adwords\i0 )
+\par
+- Kiterank stores the refresh token securely in a PostgreSQL database (Supabase)
+\par
+- A daily automated sync fetches the latest 30-day campaign and keyword data
+\par
+- The user can also trigger a manual sync from the dashboard
+\par
+- All data is scoped to the connected company and is not shared across accounts
+\par\par
+
+\b Access Pattern\b0
+\par
+- One Google Ads account per connected business client
+\par
+- Read-only access to campaign and keyword metrics
+\par
+- No write operations (no creating, modifying, or deleting campaigns or keywords)
+\par
+- Data is fetched and cached in our database; API calls are made once per day per account
+\par\par
+
+\b Technical Stack\b0
+\par
+- Frontend/Backend: Next.js (TypeScript)
+\par
+- Database: PostgreSQL via Supabase
+\par
+- Hosting: Vercel
+\par
+- Google Ads API version: v19+
+\par
+- Authentication: OAuth 2.0 with offline access (refresh tokens)
+\par\par
+
+\b Company Information\b0
+\par
+Product: Kiterank
+\par
+Website: https://www.leadlr.se
+\par
+Manager Account ID: 864-634-1605
+\par
+}

@@ -1,0 +1,172 @@
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import Anthropic from '@anthropic-ai/sdk'
+
+const MOCK_SUGGESTIONS = [
+  { keyword: 'frisör nära mig',              rationale: 'High intent — the most common way people find a new salon', volume: 'High',   difficulty: 'Medium' },
+  { keyword: 'balayage södermalm',           rationale: 'High-value colour treatment with strong booking intent', volume: 'Medium', difficulty: 'Low' },
+  { keyword: 'drop in frisör stockholm',     rationale: 'Same-day availability searches convert exceptionally well', volume: 'Medium', difficulty: 'Low' },
+  { keyword: 'keratinbehandling stockholm',  rationale: 'Premium treatment keyword — high price point per booking', volume: 'Medium', difficulty: 'Medium' },
+  { keyword: 'barnklippning södermalm',      rationale: 'Family bookings bring repeat visits across the whole household', volume: 'Medium', difficulty: 'Low' },
+]
+
+const MOCK_SEASONAL = {
+  Jan: { focus: 'Emergency heating',  intensity: 3, keywords: ['emergency boiler', 'heating repair'] },
+  Feb: { focus: 'Winter maintenance', intensity: 2, keywords: ['boiler service', 'pipe insulation'] },
+  Mar: { focus: 'Spring check',       intensity: 2, keywords: ['spring plumbing', 'annual service'] },
+  Apr: { focus: 'Renovation season',  intensity: 3, keywords: ['bathroom renovation', 'new installation'] },
+  May: { focus: 'Outdoor plumbing',   intensity: 3, keywords: ['outdoor taps', 'garden plumbing'] },
+  Jun: { focus: 'Summer projects',    intensity: 2, keywords: ['kitchen renovation', 'new bathroom'] },
+  Jul: { focus: 'Holiday coverage',   intensity: 1, keywords: ['emergency plumber', '24h service'] },
+  Aug: { focus: 'Autumn prep',        intensity: 2, keywords: ['heating check', 'boiler ready'] },
+  Sep: { focus: 'Heating season',     intensity: 3, keywords: ['boiler service', 'heating install'] },
+  Oct: { focus: 'Pre-winter',         intensity: 3, keywords: ['boiler installation', 'pipe freeze'] },
+  Nov: { focus: 'Winter emergency',   intensity: 3, keywords: ['emergency heating', 'pipe burst'] },
+  Dec: { focus: 'Holiday emergency',  intensity: 2, keywords: ['emergency plumber', 'holiday service'] },
+}
+
+export async function POST() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const admin = createAdminClient()
+  const { data: company } = await admin
+    .from('companies')
+    .select('id, name, country, city, postal_code')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!company) return NextResponse.json({ error: 'No company found' }, { status: 404 })
+
+  const { data: queries } = await admin
+    .from('search_console_queries')
+    .select('query, clicks, impressions, position')
+    .eq('company_id', company.id)
+    .order('impressions', { ascending: false })
+    .limit(30)
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey || apiKey === 'your_anthropic_api_key') {
+    return NextResponse.json({ suggestions: MOCK_SUGGESTIONS, seasonal: MOCK_SEASONAL })
+  }
+
+  const topKeywords = (queries ?? [])
+    .map(q => `${q.query} (pos #${Math.round(q.position)}, ${q.impressions} impr/mo)`)
+    .join('\n') || 'No Search Console data yet'
+
+  // Detect market from stored country first, then SC site URL + keywords as fallback
+  const { data: conn } = await admin
+    .from('google_connections')
+    .select('sc_site_url')
+    .eq('company_id', company.id)
+    .single()
+
+  const siteUrl = conn?.sc_site_url ?? ''
+  const kws     = (queries ?? []).map(q => q.query).join(' ').toLowerCase()
+  const url     = siteUrl.toLowerCase()
+  const stored  = (company.country ?? '').toLowerCase()
+
+  type MarketDesc = { marketDesc: string; persona: string }
+
+  const KEYWORD_MARKETS: Record<string, MarketDesc> = {
+    sweden:      { marketDesc: 'Swedish local service market',     persona: 'You are a senior Swedish local SEO specialist with 12 years of experience helping Swedish service businesses rank on Google. You have deep knowledge of how Swedish consumers search, what keywords convert in Sweden, and seasonal search patterns in the Swedish market.' },
+    norway:      { marketDesc: 'Norwegian local service market',   persona: 'You are a senior Norwegian local SEO specialist with 12 years of experience helping Norwegian service businesses. Expert in Norwegian search behaviour and seasonal patterns.' },
+    denmark:     { marketDesc: 'Danish local service market',      persona: 'You are a senior Danish local SEO specialist with 12 years of experience helping Danish service businesses. Expert in Danish consumer behaviour and local search patterns.' },
+    finland:     { marketDesc: 'Finnish local service market',     persona: 'You are a senior Finnish local SEO specialist with 12 years of experience helping Finnish service businesses. Expert in Finnish consumer behaviour and local search patterns.' },
+    germany:     { marketDesc: 'German local service market',      persona: 'You are a senior German local SEO specialist with 12 years of experience helping German service businesses. Expert in German search behaviour and the trust-driven German consumer market.' },
+    switzerland: { marketDesc: 'Swiss local service market',       persona: 'You are a senior Swiss local SEO specialist with 12 years of experience in the multilingual Swiss market. Expert in Swiss search patterns across German, French, and Italian-speaking regions.' },
+    austria:     { marketDesc: 'Austrian local service market',    persona: 'You are a senior Austrian local SEO specialist with 12 years of experience helping Austrian service businesses. Expert in Austrian consumer behaviour and local search patterns.' },
+    netherlands: { marketDesc: 'Dutch local service market',       persona: 'You are a senior Dutch local SEO specialist with 12 years of experience helping Dutch service businesses. Expert in Dutch consumer behaviour and local search patterns.' },
+    uk:          { marketDesc: 'UK local service market',          persona: 'You are a senior UK local SEO specialist with 12 years of experience helping British service businesses. Expert in UK search behaviour and local ranking factors.' },
+    australia:   { marketDesc: 'Australian local service market',  persona: 'You are a senior Australian local SEO specialist with 12 years of experience helping Australian service businesses. Expert in Australian consumer behaviour and local search patterns.' },
+    us:          { marketDesc: 'US local service market',          persona: 'You are a senior US local SEO specialist with 12 years of experience helping American service businesses. Expert in US consumer behaviour and local search patterns.' },
+    canada:      { marketDesc: 'Canadian local service market',    persona: 'You are a senior Canadian local SEO specialist with 12 years of experience helping Canadian service businesses. Expert in Canadian consumer behaviour and local search patterns.' },
+  }
+
+  function detectKeywordMarket(): MarketDesc {
+    // Primary: stored country
+    if (stored && KEYWORD_MARKETS[stored]) return KEYWORD_MARKETS[stored]
+    // Fallback: URL extension + keyword patterns
+    if (url.includes('.se') || kws.match(/stockholm|göteborg|malmö|sverige/))       return KEYWORD_MARKETS.sweden
+    if (url.includes('.no') || kws.match(/oslo|bergen|trondheim|norge/))             return KEYWORD_MARKETS.norway
+    if (url.includes('.dk') || kws.match(/københavn|aarhus|odense|danmark/))         return KEYWORD_MARKETS.denmark
+    if (url.includes('.fi') || kws.match(/helsinki|tampere|turku|suomi/))            return KEYWORD_MARKETS.finland
+    if (url.includes('.ch') || kws.match(/zürich|bern|basel|genf|schweiz/))          return KEYWORD_MARKETS.switzerland
+    if (url.includes('.at') || kws.match(/wien|graz|linz|österreich/))               return KEYWORD_MARKETS.austria
+    if (url.includes('.de') || kws.match(/berlin|münchen|hamburg|deutschland/))      return KEYWORD_MARKETS.germany
+    if (url.includes('.nl') || kws.match(/amsterdam|rotterdam|den haag|nederland/))  return KEYWORD_MARKETS.netherlands
+    if (url.match(/\.co\.uk|\.uk/) || kws.match(/london|manchester|birmingham/))     return KEYWORD_MARKETS.uk
+    if (url.match(/\.com\.au|\.au/) || kws.match(/sydney|melbourne|brisbane/))       return KEYWORD_MARKETS.australia
+    if (url.includes('.ca') || kws.match(/toronto|vancouver|montreal/))              return KEYWORD_MARKETS.canada
+    if (url.includes('.us') || kws.match(/new york|los angeles|chicago/))            return KEYWORD_MARKETS.us
+    return { marketDesc: 'local service business market', persona: 'You are a senior local SEO keyword specialist with 12 years of experience helping local service businesses.' }
+  }
+
+  const { marketDesc, persona } = detectKeywordMarket()
+
+  try {
+    const client = new Anthropic({ apiKey })
+    const now    = new Date()
+    const month  = now.toLocaleString('en-GB', { month: 'long' })
+
+    // Build precise location string for keyword targeting
+    const locationParts: string[] = []
+    if (company.city)        locationParts.push(company.city)
+    if (company.postal_code) locationParts.push(company.postal_code)
+    const locationStr = locationParts.length > 0 ? locationParts.join(', ') : null
+
+    const message = await client.messages.create({
+      model:      'claude-opus-4-5',
+      max_tokens: 1500,
+      system:     persona,
+      messages: [{
+        role: 'user',
+        content: `The business is "${company.name}" operating in the ${marketDesc}.${locationStr ? ` Their exact location is: ${locationStr}.` : ''} Current month: ${month}.
+
+Their current Search Console keywords:
+${topKeywords}
+
+Based on this data and your expertise in the ${marketDesc}:
+1. Suggest 5 new keywords they are NOT currently targeting but should be. Each must be a realistic opportunity based on their existing keyword profile.${locationStr ? ` Where relevant, use the precise location (${locationStr}) in keyword suggestions — for example, a hairdresser in Hägersten should target "klippning hägersten" not just "klippning stockholm", since district-level keywords have less competition and higher conversion.` : ''}
+2. Generate a 12-month seasonal calendar showing when to focus on which keyword themes, tailored to the ${marketDesc} and this specific business type.
+
+Respond ONLY with valid JSON in this exact format, no markdown, no explanation:
+{
+  "suggestions": [
+    { "keyword": "string", "rationale": "string (1 sentence)", "volume": "Low|Medium|High", "difficulty": "Low|Medium|High" }
+  ],
+  "seasonal": {
+    "Jan": { "focus": "string (max 3 words)", "intensity": 1, "keywords": ["string", "string"] },
+    "Feb": { "focus": "string (max 3 words)", "intensity": 2, "keywords": ["string", "string"] },
+    "Mar": { "focus": "string (max 3 words)", "intensity": 1, "keywords": ["string", "string"] },
+    "Apr": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
+    "May": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
+    "Jun": { "focus": "string (max 3 words)", "intensity": 2, "keywords": ["string", "string"] },
+    "Jul": { "focus": "string (max 3 words)", "intensity": 1, "keywords": ["string", "string"] },
+    "Aug": { "focus": "string (max 3 words)", "intensity": 2, "keywords": ["string", "string"] },
+    "Sep": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
+    "Oct": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
+    "Nov": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
+    "Dec": { "focus": "string (max 3 words)", "intensity": 2, "keywords": ["string", "string"] }
+  }
+}
+
+Intensity: 1=quiet/low demand, 2=active/medium, 3=peak season (should prioritise this month).`,
+      }],
+    })
+
+    const content = message.content[0]
+    if (content.type !== 'text') throw new Error('Unexpected response type')
+
+    const jsonMatch = content.text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) throw new Error('No JSON in response')
+
+    const parsed = JSON.parse(jsonMatch[0])
+    return NextResponse.json(parsed)
+  } catch {
+    // Fall back to mock if AI fails
+    return NextResponse.json({ suggestions: MOCK_SUGGESTIONS, seasonal: MOCK_SEASONAL })
+  }
+}

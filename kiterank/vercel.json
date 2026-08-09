@@ -1,0 +1,24 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-reviews",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-performance",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/sync-search-console",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/sync-ads",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/sync-ga4",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="KiteRank">
+  <title>KiteRank icon</title>
+  <defs>
+    <!-- Clips mustard layer to the lower-diagonal trapezoid of the 64×64 box -->
+    <clipPath id="lower-diagonal" clipPathUnits="userSpaceOnUse">
+      <polygon points="0,48.6 64,15.4 64,64 0,64"/>
+    </clipPath>
+  </defs>
+
+  <!-- Dark navy background -->
+  <rect width="64" height="64" fill="#080f1e" rx="14"/>
+
+  <!-- Layer 1: white base "K" -->
+  <text
+    x="32" y="44"
+    text-anchor="middle"
+    font-family="'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-weight="700"
+    font-size="38"
+    fill="white"
+  >K</text>
+
+  <!-- Layer 2: mustard "K" clipped to lower-diagonal region -->
+  <text
+    x="32" y="44"
+    text-anchor="middle"
+    font-family="'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-weight="700"
+    font-size="38"
+    fill="#f0b429"
+    clip-path="url(#lower-diagonal)"
+  >K</text>
+</svg>

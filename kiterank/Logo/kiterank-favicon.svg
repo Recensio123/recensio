@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="KiteRank">
+  <title>KiteRank favicon</title>
+  <defs>
+    <clipPath id="lower-diagonal" clipPathUnits="userSpaceOnUse">
+      <polygon points="0,24.3 32,7.7 32,32 0,32"/>
+    </clipPath>
+  </defs>
+
+  <!-- Dark navy background -->
+  <rect width="32" height="32" fill="#080f1e" rx="6"/>
+
+  <!-- Layer 1: white base "K" -->
+  <text
+    x="16" y="22"
+    text-anchor="middle"
+    font-family="'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-weight="700"
+    font-size="19"
+    fill="white"
+  >K</text>
+
+  <!-- Layer 2: mustard "K" clipped to lower-diagonal region -->
+  <text
+    x="16" y="22"
+    text-anchor="middle"
+    font-family="'Geist', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-weight="700"
+    font-size="19"
+    fill="#f0b429"
+    clip-path="url(#lower-diagonal)"
+  >K</text>
+</svg>
