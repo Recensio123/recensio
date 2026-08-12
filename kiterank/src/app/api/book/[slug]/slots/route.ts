@@ -1,23 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { slotsForDay, defaultAvailability, type StaffRow, type BookingRow, type BlockedRow } from '@/lib/bookingSlots'
 
 type Params = { params: Promise<{ slug: string }> }
 
-function timeToMins(t: string): number {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + m
-}
-
-function minsToTime(mins: number): string {
-  return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
-}
-
-// GET /api/book/[slug]/slots?date=YYYY-MM-DD&duration=60
+// GET /api/book/[slug]/slots?date=YYYY-MM-DD&duration=60&staff=<uuid>
 export async function GET(req: NextRequest, { params }: Params) {
   const { slug } = await params
   const { searchParams } = new URL(req.url)
   const date     = searchParams.get('date')
   const duration = parseInt(searchParams.get('duration') ?? '60', 10)
+  const staffId  = searchParams.get('staff')
 
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: 'Invalid date' }, { status: 400 })
@@ -25,7 +18,6 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const admin = createAdminClient()
 
-  // Look up company by slug
   const { data: company } = await admin
     .from('companies')
     .select('id')
@@ -36,53 +28,62 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
 
-  // Get availability for this day of week
-  const dayOfWeek = new Date(date + 'T12:00:00').getDay()
+  const dow = new Date(date + 'T12:00:00').getDay()
 
   const { data: avail } = await admin
     .from('booking_availability')
     .select('open_time, close_time, slot_duration_minutes, is_active')
     .eq('company_id', company.id)
-    .eq('day_of_week', dayOfWeek)
+    .eq('day_of_week', dow)
     .single()
 
-  // Closed if no availability row or is_active = false
-  if (!avail || !avail.is_active) {
+  /* A salon created before the availability seeding has no rows at all —
+   * it gets the same default week the seeding writes. A salon that HAS rows
+   * and is closed this day stays closed. */
+  const hours = avail ?? defaultAvailability(dow)
+  if (!hours.is_active) {
     return NextResponse.json({ slots: [] })
   }
 
-  const openMins  = timeToMins(avail.open_time)
-  const closeMins = timeToMins(avail.close_time)
-  const interval  = avail.slot_duration_minutes
-
-  // Fetch already-booked slots for this date (exclude cancelled)
-  const { data: existingBookings } = await admin
+  const { data: existing } = await admin
     .from('bookings')
-    .select('start_time, end_time')
+    .select('staff_id, start_time, end_time')
     .eq('company_id', company.id)
     .eq('booking_date', date)
     .neq('status', 'cancelled')
 
-  const booked = existingBookings ?? []
+  /* Staff and blocked times arrived with a later migration — a database
+   * without them answers with an error, and the salon then simply behaves
+   * as the single chair it was before. */
+  let staff: StaffRow[] = []
+  let blocked: BlockedRow[] = []
+  try {
+    const { data } = await admin
+      .from('staff')
+      .select('id, name, schedule')
+      .eq('company_id', company.id)
+      .eq('is_active', true)
+      .order('sort_order')
+    staff = (data ?? []) as StaffRow[]
 
-  // Generate slot grid
-  const slots: { time: string; available: boolean }[] = []
-  let cur = openMins
+    const { data: bl } = await admin
+      .from('blocked_times')
+      .select('staff_id, start_time, end_time')
+      .eq('company_id', company.id)
+      .lte('date_from', date)
+      .gte('date_to', date)
+    blocked = (bl ?? []) as BlockedRow[]
+  } catch { /* pre-migration database */ }
 
-  while (cur + duration <= closeMins) {
-    const slotStart = cur
-    const slotEnd   = cur + duration
-
-    // A slot is unavailable if any existing booking overlaps [slotStart, slotEnd)
-    const blocked = booked.some(b => {
-      const bStart = timeToMins(b.start_time)
-      const bEnd   = timeToMins(b.end_time)
-      return bStart < slotEnd && bEnd > slotStart
-    })
-
-    slots.push({ time: minsToTime(slotStart), available: !blocked })
-    cur += interval
-  }
+  const slots = slotsForDay({
+    salon:    hours,
+    dow,
+    duration,
+    staff,
+    staffId:  staffId || null,
+    bookings: (existing ?? []) as BookingRow[],
+    blocked,
+  })
 
   return NextResponse.json({ slots })
 }

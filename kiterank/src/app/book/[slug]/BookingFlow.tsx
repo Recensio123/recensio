@@ -11,16 +11,16 @@ type Service = {
   price_sek:        number | null
 }
 
+type Staff = {
+  id:    string
+  name:  string
+  title: string | null
+  image: string | null
+}
+
 type SlotItem = { time: string; available: boolean }
 
-type Step = 'service' | 'datetime' | 'details' | 'confirm' | 'success'
-
-const STEP_LIST: { key: Step; label: string }[] = [
-  { key: 'service',  label: 'Behandling' },
-  { key: 'datetime', label: 'Datum & tid' },
-  { key: 'details',  label: 'Uppgifter'  },
-  { key: 'confirm',  label: 'Bekräfta'   },
-]
+type Step = 'service' | 'staff' | 'datetime' | 'details' | 'confirm' | 'success'
 
 // ─── Swedish locale helpers ────────────────────────────────────────────────────
 
@@ -36,6 +36,10 @@ function formatDateLong(dateStr: string): string {
 function formatPrice(sek: number | null): string {
   if (!sek) return ''
   return `${sek.toLocaleString('sv-SE')} kr`
+}
+
+function initials(name: string): string {
+  return name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
 }
 
 // ─── Calendar component ────────────────────────────────────────────────────────
@@ -95,10 +99,8 @@ function Calendar({ selected, onChange }: { selected: string | null; onChange: (
         {Array.from({ length: daysInMonth }, (_, i) => {
           const day      = i + 1
           const dateStr  = ds(day)
-          const dow      = new Date(yr, mo, day).getDay()
           const isPast   = dateStr < todayStr
-          const isSun    = dow === 0
-          const disabled = isPast || isSun
+          const disabled = isPast
           const isSel    = dateStr === selected
           const isToday  = dateStr === todayStr
 
@@ -125,11 +127,6 @@ function Calendar({ selected, onChange }: { selected: string | null; onChange: (
           )
         })}
       </div>
-
-      {/* Closed-Sundays note */}
-      <p style={{ fontSize: '12px', color: '#bbb', marginTop: '12px', textAlign: 'center' }}>
-        Stängt på söndagar
-      </p>
     </div>
   )
 }
@@ -139,60 +136,103 @@ function Calendar({ selected, onChange }: { selected: string | null; onChange: (
 export function BookingFlow({ slug, companyName }: { slug: string; companyName: string }) {
   const [step,         setStep]         = useState<Step>('service')
   const [services,     setServices]     = useState<Service[]>([])
+  const [staff,        setStaff]        = useState<Staff[]>([])
   const [slots,        setSlots]        = useState<SlotItem[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [submitting,   setSubmitting]   = useState(false)
+  const [submitError,  setSubmitError]  = useState('')
   const [bookingRef,   setBookingRef]   = useState('')
+  const [cancelUrl,    setCancelUrl]    = useState<string | null>(null)
+  const [assignedName, setAssignedName] = useState<string | null>(null)
 
-  // Booking values
-  const [selectedService, setSelectedService] = useState<Service | null>(null)
-  const [selectedDate,    setSelectedDate]    = useState<string | null>(null)
-  const [selectedTime,    setSelectedTime]    = useState<string | null>(null)
-  const [name,            setName]            = useState('')
-  const [phone,           setPhone]           = useState('+46 ')
-  const [email,           setEmail]           = useState('')
-  const [note,            setNote]            = useState('')
-  const [smsOptIn,        setSmsOptIn]        = useState(true)
+  // Booking values. Several services combine into one visit — the slot is
+  // their total length, so "klippning + skägg" books as one appointment.
+  const [selectedServices, setSelectedServices] = useState<Service[]>([])
+  const [selectedStaff,    setSelectedStaff]    = useState<Staff | 'any' | null>(null)
+  const [selectedDate,     setSelectedDate]     = useState<string | null>(null)
+  const [selectedTime,     setSelectedTime]     = useState<string | null>(null)
+  const [name,             setName]             = useState('')
+  const [phone,            setPhone]            = useState('+46 ')
+  const [email,            setEmail]            = useState('')
+  const [note,             setNote]             = useState('')
 
-  // Load services on mount
+  const totalDuration = selectedServices.reduce((s, x) => s + x.duration_minutes, 0)
+  const totalPrice    = selectedServices.reduce((s, x) => s + (x.price_sek ?? 0), 0)
+
+  /* The person step earns its place only when there is a choice to make: a
+   * solo salon books its one chair without ceremony. */
+  const hasStaffStep = staff.length > 1
+
+  const STEP_LIST: { key: Step; label: string }[] = [
+    { key: 'service',  label: 'Behandling' },
+    ...(hasStaffStep ? [{ key: 'staff' as Step, label: 'Vem' }] : []),
+    { key: 'datetime', label: 'Datum & tid' },
+    { key: 'details',  label: 'Uppgifter'  },
+    { key: 'confirm',  label: 'Bekräfta'   },
+  ]
+
+  // Load services + staff on mount
   useEffect(() => {
     fetch(`/api/book/${slug}`)
       .then(r => r.json())
-      .then(d => setServices(d.services ?? []))
+      .then(d => { setServices(d.services ?? []); setStaff(d.staff ?? []) })
   }, [slug])
 
-  // Load time slots whenever date or service changes
-  useEffect(() => {
-    if (!selectedDate || !selectedService) return
+  /* Slots load when something the grid depends on actually changes — picking
+   * a date, or arriving at the step after changing services or person. */
+  function loadSlots(date: string) {
     setSlotsLoading(true)
     setSelectedTime(null)
-    fetch(`/api/book/${slug}/slots?date=${selectedDate}&duration=${selectedService.duration_minutes}`)
+    const staffParam = selectedStaff && selectedStaff !== 'any' ? `&staff=${selectedStaff.id}` : ''
+    fetch(`/api/book/${slug}/slots?date=${date}&duration=${totalDuration}${staffParam}`)
       .then(r => r.json())
       .then(d => { setSlots(d.slots ?? []); setSlotsLoading(false) })
-  }, [selectedDate, selectedService, slug])
+  }
+
+  function toggleService(svc: Service) {
+    setSelectedServices(prev =>
+      prev.some(s => s.id === svc.id) ? prev.filter(s => s.id !== svc.id) : [...prev, svc])
+  }
 
   async function submit() {
-    if (!selectedService || !selectedDate || !selectedTime) return
+    if (selectedServices.length === 0 || !selectedDate || !selectedTime) return
     setSubmitting(true)
+    setSubmitError('')
+    // The marketing channel the visitor came from — this is what lets the
+    // dashboard put kronor on each channel later.
+    const utm = new URLSearchParams(window.location.search).get('utm_source')
     const res = await fetch(`/api/book/${slug}`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        service_id:               selectedService.id,
-        service_name:             selectedService.name,
-        service_duration_minutes: selectedService.duration_minutes,
-        service_price_sek:        selectedService.price_sek,
-        booking_date:             selectedDate,
-        start_time:               selectedTime,
-        customer_name:            name,
-        customer_phone:           phone,
-        customer_email:           email,
-        customer_note:            note,
-        sms_opt_in:               smsOptIn,
+        services:        selectedServices.map(s => ({ id: s.id, name: s.name, duration_minutes: s.duration_minutes, price_sek: s.price_sek })),
+        staff_id:        selectedStaff && selectedStaff !== 'any' ? selectedStaff.id : null,
+        booking_date:    selectedDate,
+        start_time:      selectedTime,
+        customer_name:   name,
+        customer_phone:  phone,
+        customer_email:  email,
+        customer_note:   note,
+        sms_opt_in:      true,
+        source_channel:  utm,
       }),
     })
     const data = await res.json()
+    if (!res.ok) {
+      setSubmitting(false)
+      if (res.status === 409) {
+        // The slot went to someone else while they typed — back to the times
+        setSubmitError('Tiden hann bli bokad av någon annan. Välj en ny tid.')
+        setStep('datetime')
+        if (selectedDate) loadSlots(selectedDate)
+      } else {
+        setSubmitError(data.error ?? 'Något gick fel. Försök igen.')
+      }
+      return
+    }
     setBookingRef(data.reference ?? '')
+    setCancelUrl(data.cancel_url ?? null)
+    setAssignedName(data.staff_name ?? null)
     setStep('success')
     setSubmitting(false)
   }
@@ -201,7 +241,8 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
   const stepIndex = STEP_LIST.findIndex(s => s.key === step)
 
   function canNext(): boolean {
-    if (step === 'service')  return !!selectedService
+    if (step === 'service')  return selectedServices.length > 0
+    if (step === 'staff')    return selectedStaff !== null
     if (step === 'datetime') return !!selectedDate && !!selectedTime
     if (step === 'details')  return name.trim().length > 0 && phone.trim().length > 4
     return true
@@ -209,7 +250,13 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
 
   function next() {
     const idx = STEP_LIST.findIndex(s => s.key === step)
-    if (idx < STEP_LIST.length - 1) setStep(STEP_LIST[idx + 1].key)
+    if (idx < STEP_LIST.length - 1) {
+      const target = STEP_LIST[idx + 1].key
+      setStep(target)
+      // Services or person may have changed since last time — the grid must
+      // answer for what is being booked now, not what was.
+      if (target === 'datetime' && selectedDate) loadSlots(selectedDate)
+    }
   }
 
   function back() {
@@ -231,6 +278,8 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
   function focusOut(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
     e.currentTarget.style.borderColor = '#e5e7eb'
   }
+
+  const staffName = selectedStaff && selectedStaff !== 'any' ? selectedStaff.name : null
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -257,7 +306,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
               const current = i === stepIndex
               return (
                 <div key={s.key} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', flex: '0 0 auto' }}>
                     <div style={{
                       width: '30px', height: '30px', borderRadius: '50%',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -290,12 +339,15 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
         {/* ── Content card ─────────────────────────────────────────────────── */}
         <div style={{ background: '#fff', borderRadius: '20px', padding: '28px 24px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '16px' }}>
 
-          {/* Step 1 — Service */}
+          {/* Step 1 — Services (one or more in the same visit) */}
           {step === 'service' && (
             <div>
-              <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#111', margin: '0 0 18px' }}>
+              <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#111', margin: '0 0 4px' }}>
                 Välj behandling
               </h2>
+              <p style={{ fontSize: '13px', color: '#888', margin: '0 0 18px' }}>
+                Du kan välja flera i samma besök
+              </p>
               {services.length === 0 ? (
                 <div style={{ color: '#bbb', textAlign: 'center', padding: '40px 0', fontSize: '14px' }}>
                   Laddar behandlingar…
@@ -303,11 +355,11 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {services.map(svc => {
-                    const sel = selectedService?.id === svc.id
+                    const sel = selectedServices.some(s => s.id === svc.id)
                     return (
                       <button
                         key={svc.id}
-                        onClick={() => setSelectedService(svc)}
+                        onClick={() => toggleService(svc)}
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           padding: '14px 16px', borderRadius: '12px',
@@ -333,35 +385,116 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                             </div>
                           )}
                         </div>
-                        {/* Radio indicator */}
+                        {/* Check indicator — square, because several can be picked */}
                         <div style={{
-                          width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0, marginLeft: '12px',
+                          width: '20px', height: '20px', borderRadius: '6px', flexShrink: 0, marginLeft: '12px',
                           border:     sel ? 'none' : '1.5px solid #ccc',
                           background: sel ? '#111' : 'transparent',
                           display:    'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all 0.12s',
                         }}>
-                          {sel && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#fff' }} />}
+                          {sel && (
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                              <path d="M2.5 6l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
                         </div>
                       </button>
                     )
                   })}
                 </div>
               )}
+              {selectedServices.length > 1 && (
+                <div style={{ marginTop: '14px', padding: '12px 16px', background: '#fafafa', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                  <span style={{ color: '#555' }}>{selectedServices.length} behandlingar · {totalDuration} min</span>
+                  {totalPrice > 0 && <span style={{ fontWeight: 700, color: '#111' }}>{formatPrice(totalPrice)}</span>}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Step 2 — Date & time (combined) */}
+          {/* Step 2 — Who. Regulars come back to a person, not a salon. */}
+          {step === 'staff' && (
+            <div>
+              <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#111', margin: '0 0 4px' }}>
+                Vem vill du gå till?
+              </h2>
+              <p style={{ fontSize: '13px', color: '#888', margin: '0 0 18px' }}>
+                {selectedServices.map(s => s.name).join(' + ')} · {totalDuration} min
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* No preference first — the fastest route to a time */}
+                <button
+                  onClick={() => setSelectedStaff('any')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '14px',
+                    padding: '14px 16px', borderRadius: '12px',
+                    border:     selectedStaff === 'any' ? '2px solid #111' : '1.5px solid #ebebeb',
+                    background: selectedStaff === 'any' ? '#fafafa' : '#fff',
+                    cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all 0.12s',
+                  }}
+                >
+                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#f0f0ee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
+                    ✳
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#111' }}>Ingen preferens</div>
+                    <div style={{ fontSize: '13px', color: '#888' }}>Flest lediga tider</div>
+                  </div>
+                </button>
+                {staff.map(m => {
+                  const sel = selectedStaff !== 'any' && selectedStaff?.id === m.id
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedStaff(m)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '14px',
+                        padding: '14px 16px', borderRadius: '12px',
+                        border:     sel ? '2px solid #111' : '1.5px solid #ebebeb',
+                        background: sel ? '#fafafa' : '#fff',
+                        cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all 0.12s',
+                      }}
+                      onMouseOver={e => { if (!sel) e.currentTarget.style.borderColor = '#ccc' }}
+                      onMouseOut={e =>  { if (!sel) e.currentTarget.style.borderColor = '#ebebeb' }}
+                    >
+                      {m.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.image} alt={m.name} style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700, flexShrink: 0 }}>
+                          {initials(m.name)}
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ fontSize: '15px', fontWeight: 600, color: '#111' }}>{m.name}</div>
+                        {m.title && <div style={{ fontSize: '13px', color: '#888' }}>{m.title}</div>}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Date & time */}
           {step === 'datetime' && (
             <div>
               <div style={{ marginBottom: '20px' }}>
                 <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#111', margin: '0 0 4px' }}>Välj datum & tid</h2>
                 <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>
-                  {selectedService?.name} · {selectedService?.duration_minutes} min
+                  {selectedServices.map(s => s.name).join(' + ')} · {totalDuration} min
+                  {staffName ? ` · hos ${staffName}` : ''}
                 </p>
               </div>
 
-              <Calendar selected={selectedDate} onChange={d => { setSelectedDate(d); setSelectedTime(null) }} />
+              {submitError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', marginBottom: '16px' }}>
+                  {submitError}
+                </div>
+              )}
+
+              <Calendar selected={selectedDate} onChange={d => { setSelectedDate(d); loadSlots(d) }} />
 
               {/* Slots appear inline as soon as a date is picked */}
               {selectedDate && (
@@ -380,7 +513,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                     </div>
                   ) : slots.filter(s => s.available).length === 0 ? (
                     <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center', padding: '16px 0' }}>
-                      Inga lediga tider — välj ett annat datum.
+                      Inga lediga tider{staffName ? ` hos ${staffName}` : ''} — välj ett annat datum.
                     </p>
                   ) : (
                     <>
@@ -453,7 +586,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                     onBlur={focusOut}
                   />
                   <p style={{ fontSize: '12px', color: '#bbb', marginTop: '5px' }}>
-                    För SMS-bekräftelse och påminnelse
+                    Så salongen kan nå dig om något ändras
                   </p>
                 </div>
                 <div>
@@ -485,42 +618,38 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                     onBlur={focusOut}
                   />
                 </div>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={smsOptIn}
-                    onChange={e => setSmsOptIn(e.target.checked)}
-                    style={{ marginTop: '2px', width: '16px', height: '16px', accentColor: '#111', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '13px', color: '#666', lineHeight: 1.55 }}>
-                    Jag godkänner att ta emot bokningsbekräftelse och påminnelse via SMS
-                  </span>
-                </label>
               </div>
             </div>
           )}
 
           {/* Step 5 — Confirm */}
-          {step === 'confirm' && selectedService && selectedDate && selectedTime && (
+          {step === 'confirm' && selectedServices.length > 0 && selectedDate && selectedTime && (
             <div>
               <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#111', margin: '0 0 20px' }}>
                 Bekräfta din bokning
               </h2>
+              {submitError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', marginBottom: '16px' }}>
+                  {submitError}
+                </div>
+              )}
               {/* Booking summary card */}
               <div style={{ border: '1.5px solid #ebebeb', borderRadius: '14px', overflow: 'hidden', marginBottom: '24px' }}>
-                {/* Service + price */}
+                {/* Services + price */}
                 <div style={{ padding: '18px 20px', borderBottom: '1px solid #f0f0f0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '5px' }}>
-                    <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>{selectedService.name}</span>
-                    {selectedService.price_sek && (
-                      <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>{formatPrice(selectedService.price_sek)}</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: '14px', color: '#666' }}>
+                  {selectedServices.map(svc => (
+                    <div key={svc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '5px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 600, color: '#111' }}>{svc.name}</span>
+                      {svc.price_sek ? (
+                        <span style={{ fontSize: '15px', fontWeight: 600, color: '#111' }}>{formatPrice(svc.price_sek)}</span>
+                      ) : null}
+                    </div>
+                  ))}
+                  <div style={{ fontSize: '14px', color: '#666', marginTop: '8px' }}>
                     {formatDateLong(selectedDate)} · kl. {selectedTime}
                   </div>
                   <div style={{ fontSize: '13px', color: '#aaa', marginTop: '2px' }}>
-                    {selectedService.duration_minutes} min
+                    {totalDuration} min{staffName ? ` · hos ${staffName}` : ''}
                   </div>
                 </div>
                 {/* Customer info */}
@@ -571,10 +700,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                 Bokad!
               </h2>
               <p style={{ color: '#777', fontSize: '15px', lineHeight: 1.6, marginBottom: '22px' }}>
-                Din bokning är bekräftad.
-                {smsOptIn && (
-                  <><br />Vi skickar en SMS-bekräftelse till {phone}.</>
-                )}
+                Din tid är reserverad — salongen bekräftar den.
               </p>
               {bookingRef && (
                 <div style={{ display: 'inline-block', background: '#f5f5f3', borderRadius: '8px', padding: '8px 18px', marginBottom: '24px' }}>
@@ -584,12 +710,28 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
               )}
               {/* Summary */}
               <div style={{ border: '1.5px solid #ebebeb', borderRadius: '14px', padding: '18px 20px', textAlign: 'left' }}>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: '#111', marginBottom: '5px' }}>{selectedService?.name}</div>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#111', marginBottom: '5px' }}>
+                  {selectedServices.map(s => s.name).join(' + ')}
+                </div>
                 <div style={{ fontSize: '14px', color: '#666' }}>
                   {selectedDate ? formatDateLong(selectedDate) : ''} · kl. {selectedTime}
                 </div>
-                <div style={{ fontSize: '14px', color: '#aaa', marginTop: '2px' }}>{companyName}</div>
+                <div style={{ fontSize: '14px', color: '#aaa', marginTop: '2px' }}>
+                  {companyName}{assignedName ? ` · ${assignedName}` : ''}
+                </div>
               </div>
+              {/* The cancellation link IS the confirmation for now — nothing
+                  is sent anywhere yet, so this page has to hand it over. */}
+              {cancelUrl && (
+                <div style={{ marginTop: '18px', background: '#fafaf8', border: '1px solid #eee', borderRadius: '12px', padding: '14px 16px', textAlign: 'left' }}>
+                  <p style={{ fontSize: '13px', color: '#888', margin: '0 0 6px' }}>
+                    Spara den här länken — med den kan du avboka din tid:
+                  </p>
+                  <a href={cancelUrl} style={{ fontSize: '13px', color: '#111', fontWeight: 600, wordBreak: 'break-all' }}>
+                    {typeof window !== 'undefined' ? window.location.origin : ''}{cancelUrl}
+                  </a>
+                </div>
+              )}
               <p style={{ marginTop: '22px', fontSize: '15px', color: '#666' }}>Vi ser fram emot ditt besök! 👋</p>
             </div>
           )}

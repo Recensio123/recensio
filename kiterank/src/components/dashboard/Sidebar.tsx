@@ -274,8 +274,8 @@ export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disc
   const visibleNav = nav.filter(item => {
     // Tools dissolved; Action Plan merged into Home in the simplified plans
     if ((item.id === 'tools' || item.id === 'actionplan')) return false
-    // SMS sendouts belong to the booking-system track only
-    if (item.id === 'sms' && plan !== 'testbok') return false
+    // The booking system and its SMS sendouts belong to the testbok track only
+    if ((item.id === 'sms' || item.id === 'bokningar') && plan !== 'testbok') return false
     return true
   })
 
