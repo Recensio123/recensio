@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   // Canonicals and Open Graph URLs resolve against this — without it they
   // stay relative, which search engines treat as missing
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiterank.se'),
-  title: 'Kiterank — Google marketing for local businesses',
-  description: 'Connect your Google account and get a weekly action plan that helps local service businesses rank higher, earn more reviews, and get found first.',
+  title: 'Hemsida & marknadsföring för salonger — fler kunder från Google | Kiterank',
+  description: 'Kiterank bygger din salongs hemsida färdig på fem minuter och sköter marknadsföringen som ger fler kunder — Google-profil, omdömen, synlighet och en att göra-lista varje vecka.',
 };
 
 export default function RootLayout({

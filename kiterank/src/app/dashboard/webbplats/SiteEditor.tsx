@@ -35,7 +35,7 @@ export type SiteContent = {
     text:     string
     title?:   string
     company?: string
-    source?:  'google' | 'manual'
+    source?:  'google' | 'manual' | 'example'
   }>
   siteFeatures?: {
     booking:   boolean
@@ -47,6 +47,10 @@ export type SiteContent = {
   }
   sectionOrder?: string[]
   team?: TeamMember[]
+  teamEnabled?: boolean
+  sectionPages?: Partial<Record<import('@/lib/sectionPages').SectionPageId, import('@/lib/sectionPages').SectionPage>>
+  mediaLibrary?: string[]
+  pricelistPreview?: 'promo' | 'full'
   blogCount?: 3 | 6
   galleryCount?: 3 | 6
   /** One description per gallery image — what Google and screen readers see. */
@@ -106,7 +110,7 @@ export type Testimonial = {
   text:     string
   title?:   string
   company?: string
-  source?:  'google' | 'manual'
+  source?:  'google' | 'manual' | 'example'
 }
 
 /* ── Defaults per industry ─────────────────────────────────────────── */
@@ -475,13 +479,27 @@ function GalleryEditor({
  * their own selling points — this is where they get to use them. Length
  * limits mirror what Google actually shows before truncating.
  */
+/* The words the example search phrase is built from — the hint should sound
+   like the customer's own trade, not like a hairdresser's for everyone. */
+const SERP_EXAMPLE: Record<string, string> = {
+  salon:      'Frisör Södermalm — balayage & klippning',
+  beauty:     'Hudvård Södermalm — ansiktsbehandling & fransar',
+  spa:        'Spa Södermalm — massage & behandlingar',
+  fitness:    'Gym Södermalm — PT & gruppträning',
+  restaurant: 'Restaurang Södermalm — lunch & middag',
+  craftsman:  'Snickare Södermalm — renovering & kök',
+  cleaning:   'Städfirma Södermalm — hemstäd & flyttstäd',
+}
+
 export function GoogleSerpEditor({
-  content, siteSlug, onChange,
+  content, siteSlug, industry, onChange,
 }: {
-  content:  SiteContent
-  siteSlug: string
+  content:   SiteContent
+  siteSlug:  string
+  industry?: string
   onChange: (seo: { title?: string; description?: string }) => void
 }) {
+  const example   = SERP_EXAMPLE[industry ?? ''] ?? 'Frisör Södermalm — balayage & klippning'
   const autoTitle = `${content.businessName} — ${content.tagline}${content.address ? ` | ${content.address}` : ''}`
   const autoDesc  = content.heroBody
   const title = content.seo?.title?.trim() || autoTitle
@@ -530,6 +548,11 @@ export function GoogleSerpEditor({
             placeholder={autoTitle}
             style={{ width: '100%', padding: '10px 12px', fontSize: 14, fontFamily: F, borderRadius: 8, border: '1px solid #334155', background: '#1e293b', color: '#f1f5f9' }}
           />
+          {/* The single highest-leverage field the customer edits — it deserves
+              one concrete sentence of guidance, not silence */}
+          <p style={{ fontSize: 12, color: '#94a3b8', fontFamily: F, lineHeight: 1.6, margin: '6px 0 0' }}>
+            Skriv vad du gör + var, t.ex. ”{example}”. Det är exakt så nya kunder söker.
+          </p>
         </div>
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>

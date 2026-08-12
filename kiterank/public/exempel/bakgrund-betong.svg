@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" width="900" height="600">
+  <!-- Poured concrete, tileable. Quiet enough to carry text anywhere on it. -->
+  <defs>
+    <filter id="mottle" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.014" numOctaves="5" seed="11" result="n"/>
+      <feColorMatrix in="n" type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.8"/></feComponentTransfer>
+    </filter>
+    <filter id="speck" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="1" seed="5" result="s"/>
+      <feColorMatrix in="s" type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.2"/></feComponentTransfer>
+    </filter>
+  </defs>
+
+  <rect width="900" height="600" fill="#93959a"/>
+  <rect width="900" height="600" filter="url(#mottle)" opacity="0.85"/>
+
+  <!-- The form-tie holes a poured wall actually has, on the shuttering grid -->
+  <g opacity="0.45">
+    <g fill="#5c5f64">
+      <circle cx="150" cy="150" r="8"/><circle cx="450" cy="150" r="8"/><circle cx="750" cy="150" r="8"/>
+      <circle cx="150" cy="450" r="8"/><circle cx="450" cy="450" r="8"/><circle cx="750" cy="450" r="8"/>
+    </g>
+    <g fill="#b6b8bc">
+      <circle cx="150" cy="147" r="8"/><circle cx="450" cy="147" r="8"/><circle cx="750" cy="147" r="8"/>
+      <circle cx="150" cy="447" r="8"/><circle cx="450" cy="447" r="8"/><circle cx="750" cy="447" r="8"/>
+    </g>
+  </g>
+  <!-- Shuttering seams -->
+  <g stroke="#7b7e83" stroke-width="2" stroke-opacity="0.5">
+    <line x1="0" y1="300" x2="900" y2="300"/>
+    <line x1="300" y1="0" x2="300" y2="600"/>
+    <line x1="600" y1="0" x2="600" y2="600"/>
+  </g>
+
+  <rect width="900" height="600" filter="url(#speck)" opacity="0.5"/>
+</svg>

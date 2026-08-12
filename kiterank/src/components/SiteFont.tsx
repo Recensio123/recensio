@@ -15,12 +15,17 @@ type FontContent = {
   fontPreset?: string
 }
 
-/** Style for the page root — spread it into the wrapper's style. */
-export function siteFontVars(content: FontContent): CSSProperties {
+/** Style for the page root — spread it into the wrapper's style.
+ *
+ *  `templateFont` is the typography a theme was designed around: a serif
+ *  theme has to arrive set in its serif, or it is just another sans-serif
+ *  page. It is only a fallback — the moment the customer picks a font of
+ *  their own, theirs wins. */
+export function siteFontVars(content: FontContent, templateFont?: string): CSSProperties {
   if (content.customFont?.url) {
     return { ['--font-geist-sans' as never]: `'KundFont', system-ui, sans-serif` }
   }
-  const preset = content.fontPreset ? SITE_FONTS[content.fontPreset] : undefined
+  const preset = SITE_FONTS[content.fontPreset ?? ''] ?? SITE_FONTS[templateFont ?? '']
   if (preset) {
     return { ['--font-geist-sans' as never]: preset.family }
   }

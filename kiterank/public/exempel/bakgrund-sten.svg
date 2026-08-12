@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" width="900" height="600">
+  <!-- Dark slate, tileable. The one surface white type sits on anywhere. -->
+  <defs>
+    <filter id="slate" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.006 0.045" numOctaves="5" seed="17" result="n"/>
+      <feColorMatrix in="n" type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.9"/></feComponentTransfer>
+    </filter>
+    <filter id="dust" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="1" seed="2" result="s"/>
+      <feColorMatrix in="s" type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.22"/></feComponentTransfer>
+    </filter>
+  </defs>
+
+  <rect width="900" height="600" fill="#2b2f34"/>
+  <rect width="900" height="600" filter="url(#slate)" opacity="0.85"/>
+
+  <!-- Cleavage lines with a lit edge, so the stone reads as split, not blurred -->
+  <g fill="none">
+    <g stroke="#12151a" stroke-width="2.5" stroke-opacity="0.8">
+      <path d="M0 148 C 230 132, 470 166, 900 142"/>
+      <path d="M0 330 C 260 352, 530 304, 900 338"/>
+      <path d="M0 496 C 210 480, 500 516, 900 490"/>
+    </g>
+    <g stroke="#5c646d" stroke-width="1" stroke-opacity="0.45">
+      <path d="M0 151 C 230 135, 470 169, 900 145"/>
+      <path d="M0 333 C 260 355, 530 307, 900 341"/>
+      <path d="M0 499 C 210 483, 500 519, 900 493"/>
+    </g>
+  </g>
+
+  <rect width="900" height="600" filter="url(#dust)" opacity="0.5"/>
+</svg>

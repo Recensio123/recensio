@@ -27,9 +27,11 @@ export const SITE_LABELS = {
   followTitle:       'Följ oss',
   directions:        'Hitta hit →',
   pricePage:         'Tjänster & priser',
+  aboutPageTitle:    'Om oss',
   priceLabel:        'Pris',
   durationLabel:     'Tid',
   noArticles:        'Inga artiklar publicerade ännu.',
+  readMore:          'Läs mer →',
 } as const
 
 export type LabelKey = keyof typeof SITE_LABELS

@@ -1,57 +1,36 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getTemplatesForIndustry, TEMPLATES_BY_INDUSTRY } from './templates'
+import { SALON_TEMPLATES, TEMPLATES_BY_INDUSTRY } from './templates'
+import { TRADES } from '@/lib/trades'
+import { AboutFields, type AboutBusiness } from './AboutFields'
 
 /* ─── Step definitions ──────────────────────────────────────────────── */
 
-type Step = 'industry' | 'template' | 'features' | 'settings' | 'done'
+type Step = 'industry' | 'template' | 'about' | 'settings' | 'done'
 
 const STEP_LIST: { key: Step; label: string }[] = [
-  { key: 'industry', label: 'Bransch'       },
-  { key: 'template', label: 'Mall'          },
-  { key: 'features', label: 'Funktioner'    },
-  { key: 'settings', label: 'Inställningar' },
+  { key: 'industry', label: 'Bransch'          },
+  { key: 'template', label: 'Design'           },
+  { key: 'about',    label: 'Om din verksamhet' },
+  { key: 'settings', label: 'Inställningar'    },
 ]
 
 /* ─── Data ──────────────────────────────────────────────────────────── */
 
-const INDUSTRIES = [
-  { id: 'salon',       label: 'Frisörsalonger',    icon: '✂'  },
-  { id: 'beauty',      label: 'Skönhetssalonger',  icon: '◈'  },
-  { id: 'restaurant',  label: 'Restaurang & Café', icon: '⊕'  },
-  { id: 'craftsman',   label: 'Bygg & Hantverk',  icon: '⊡'  },
-  { id: 'cleaning',    label: 'Städservice',       icon: '✦'  },
-  { id: 'other',       label: 'Annat',             icon: '⊞'  },
-]
+/* The trades we build sites for — the same six the content packs cover, so
+   whichever door a customer comes in through, the site they get is written
+   for their trade rather than approximated from a neighbouring one. */
+const INDUSTRIES = TRADES.map(t => ({ id: t.id, label: t.pick.label, desc: t.pick.desc, icon: t.pick.icon }))
 
-type FeatureId = 'booking' | 'blog' | 'gallery' | 'contact' | 'pricelist' | 'reviews'
+/* Everything ships switched on. A new customer cannot judge which parts of a
+   site they need before they have seen the site — the editor is where that
+   choice belongs, with the real thing in front of them. */
+const ALL_FEATURES = { booking: true, pricelist: true, gallery: true, contact: true, blog: true, reviews: true }
 
-const FEATURES: { id: FeatureId; label: string; desc: string; icon: string; defaultOn: boolean }[] = [
-  { id: 'booking',   label: 'Bokningssystem',  desc: 'Kunder bokar tider direkt på sidan',     icon: '◻', defaultOn: true  },
-  { id: 'pricelist', label: 'Prislista / Meny', desc: 'Visa tjänster och priser tydligt',      icon: '◈', defaultOn: true  },
-  { id: 'gallery',   label: 'Bildgalleri',      desc: 'Visa upp ditt arbete med foton',         icon: '⬡', defaultOn: true  },
-  { id: 'contact',   label: 'Kontaktformulär',  desc: 'Kunder kan skicka meddelanden',          icon: '✉', defaultOn: true  },
-  { id: 'blog',      label: 'Blogg & Artiklar', desc: 'Dela nyheter, tips och guider',          icon: '▤', defaultOn: false },
-  { id: 'reviews',   label: 'Kundrecensioner',  desc: 'Lyft fram dina bästa omdömen',           icon: '✦', defaultOn: false },
-]
-
-/* ─── Toggle switch ─────────────────────────────────────────────────── */
-
-function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={on}
-      onClick={e => { e.stopPropagation(); onChange(!on) }}
-      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${on ? 'bg-mustard' : 'bg-navy-700'}`}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-0'}`}
-      />
-    </button>
-  )
-}
+/* What the customer tells us about their business. Every answer becomes text
+   on the site — their words and their keywords, ready to edit instead of a
+   blank page or someone else's example copy. */
 
 /* ─── Progress bar ──────────────────────────────────────────────────── */
 
@@ -94,9 +73,7 @@ export function SetupWizard() {
   const [step,        setStep]        = useState<Step>('industry')
   const [industry,    setIndustry]    = useState<string | null>(null)
   const [template,    setTemplate]    = useState<string | null>(null)
-  const [features,    setFeatures]    = useState<Record<FeatureId, boolean>>(
-    () => Object.fromEntries(FEATURES.map(f => [f.id, f.defaultOn])) as Record<FeatureId, boolean>
-  )
+  const [about,       setAbout]       = useState<AboutBusiness>({ description: '', services: '', area: '', special: '', years: '', team: '' })
   const [lang,        setLang]        = useState<'sv' | 'en'>('sv')
   const [bizName,     setBizName]     = useState('')
   const [slug,        setSlug]        = useState('')
@@ -108,8 +85,8 @@ export function SetupWizard() {
 
   async function nextStep() {
     if (step === 'industry')  { setStep('template'); return }
-    if (step === 'template')  { setStep('features'); return }
-    if (step === 'features')  { setStep('settings'); return }
+    if (step === 'template')  { setStep('about'); return }
+    if (step === 'about')     { setStep('settings'); return }
     if (step === 'settings') {
       setSaving(true)
       setSaveError(null)
@@ -117,7 +94,7 @@ export function SetupWizard() {
         const res = await fetch('/api/setup', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ industry, template, features, language: lang, bizName, slug }),
+          body:    JSON.stringify({ industry, template, features: ALL_FEATURES, about, language: lang, bizName, slug }),
         })
         const json = await res.json()
         if (!res.ok) { setSaveError(json.error ?? 'Något gick fel.'); return }
@@ -130,14 +107,14 @@ export function SetupWizard() {
 
   function prevStep() {
     if (step === 'template') setStep('industry')
-    else if (step === 'features') setStep('template')
-    else if (step === 'settings') setStep('features')
+    else if (step === 'about') setStep('template')
+    else if (step === 'settings') setStep('about')
   }
 
   function canNext(): boolean {
     if (step === 'industry') return !!industry
     if (step === 'template') return !!template
-    if (step === 'features') return true
+    if (step === 'about')    return true
     if (step === 'settings') return bizName.trim().length > 0 && slug.trim().length > 0
     return false
   }
@@ -158,29 +135,29 @@ export function SetupWizard() {
   if (step === 'done') {
     const industryLabel = INDUSTRIES.find(i => i.id === industry)?.label ?? ''
     const templateLabel = Object.values(TEMPLATES_BY_INDUSTRY).flat().find(t => t.id === template)?.name ?? ''
-    const enabledFeatures = FEATURES.filter(f => features[f.id])
     return (
       <div className="min-h-screen bg-navy-950 flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-lg text-center">
           <div className="w-20 h-20 rounded-full bg-mustard/15 border-2 border-mustard/40 flex items-center justify-center mx-auto mb-6">
             <span className="text-mustard text-3xl">✓</span>
           </div>
-          <h2 className="text-3xl font-bold text-white mb-2">Allt klart!</h2>
-          <p className="text-slate-400 mb-8">Din webbplats sätts upp nu. Här är en sammanfattning:</p>
+          <h2 className="text-3xl font-bold text-white mb-2">Din hemsida är klar!</h2>
+          <p className="text-slate-400 mb-8">
+            Texterna är skrivna utifrån det du berättade — öppna redigeraren och gör dem till dina.
+          </p>
 
           <div className="bg-navy-900 border border-navy-700 rounded-2xl p-6 text-left space-y-4 mb-8">
-            <Row label="Bransch"   value={industryLabel} />
-            <Row label="Mall"      value={templateLabel} />
-            <Row label="Språk"     value={lang === 'sv' ? 'Svenska' : 'English'} />
-            <Row label="Funktioner" value={enabledFeatures.map(f => f.label).join(', ')} />
-            <Row label="Adress"    value={`${slug}.kiterank.se`} mono />
+            <Row label="Bransch"  value={industryLabel} />
+            <Row label="Design"   value={templateLabel} />
+            <Row label="Språk"    value={lang === 'sv' ? 'Svenska' : 'English'} />
+            <Row label="Adress"   value={`kiterank.se/s/${slug}`} mono />
           </div>
 
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/dashboard/webbplats')}
             className="w-full py-3.5 bg-mustard text-navy-950 font-bold rounded-xl text-base hover:bg-mustard/90 transition-colors"
           >
-            Öppna instrumentpanelen →
+            Öppna din hemsida →
           </button>
         </div>
       </div>
@@ -205,20 +182,26 @@ export function SetupWizard() {
         {/* ── Step: Bransch ─────────────────────────────────────── */}
         {step === 'industry' && (
           <div className="w-full max-w-2xl">
-            <h2 className="text-2xl font-bold text-white mb-1">Vad driver du för verksamhet?</h2>
-            <p className="text-slate-400 mb-8">Vi anpassar din webbplats och bokningssystem efter din bransch.</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <h2 className="text-2xl font-bold text-white mb-1">Vilken sorts salong driver du?</h2>
+            <p className="text-slate-400 mb-8">
+              Alla designer är öppna för alla — valet fyller hemsidan med prislista, artiklar och texter
+              skrivna för just din bransch.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-3">
               {INDUSTRIES.map(ind => (
                 <button
                   key={ind.id}
-                  onClick={() => setIndustry(ind.id)}
-                  className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 transition-all
+                  onClick={() => { setIndustry(ind.id); setTemplate(null) }}
+                  className={`text-left flex items-start gap-3 p-4 rounded-xl border-2 transition-all
                     ${industry === ind.id
-                      ? 'border-mustard bg-mustard/10 text-mustard'
-                      : 'border-navy-700 bg-navy-900 text-slate-400 hover:border-navy-500 hover:text-white'}`}
+                      ? 'border-mustard bg-mustard/10'
+                      : 'border-navy-700 bg-navy-900 hover:border-navy-500'}`}
                 >
-                  <span className="text-2xl">{ind.icon}</span>
-                  <span className="text-xs font-medium text-center leading-tight">{ind.label}</span>
+                  <span className={`text-xl shrink-0 ${industry === ind.id ? 'text-mustard' : 'text-slate-500'}`}>{ind.icon}</span>
+                  <span>
+                    <span className={`block text-sm font-semibold ${industry === ind.id ? 'text-mustard' : 'text-white'}`}>{ind.label}</span>
+                    <span className="block text-xs text-slate-400 mt-0.5">{ind.desc}</span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -231,7 +214,7 @@ export function SetupWizard() {
             <h2 className="text-2xl font-bold text-white mb-1">Välj en mall</h2>
             <p className="text-slate-400 mb-6">Du kan alltid byta mall och anpassa färger och text senare.</p>
             <div className="grid grid-cols-2 gap-4 max-h-[560px] overflow-y-auto pr-1">
-              {getTemplatesForIndustry(industry).map(t => {
+              {SALON_TEMPLATES.map(t => {
                 const active = template === t.id
                 return (
                   <div
@@ -286,28 +269,17 @@ export function SetupWizard() {
           </div>
         )}
 
-        {/* ── Step: Funktioner ──────────────────────────────────── */}
-        {step === 'features' && (
+        {/* ── Step: Om din verksamhet ───────────────────────────── */}
+        {step === 'about' && (
           <div className="w-full max-w-xl">
-            <h2 className="text-2xl font-bold text-white mb-1">Vilka funktioner vill du ha?</h2>
-            <p className="text-slate-400 mb-8">Aktivera eller inaktivera sidor och funktioner. Du kan ändra detta när som helst.</p>
-            <div className="space-y-3">
-              {FEATURES.map(f => (
-                <div
-                  key={f.id}
-                  className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer
-                    ${features[f.id] ? 'bg-navy-900 border-navy-600' : 'bg-navy-900/50 border-navy-800'}`}
-                  onClick={() => setFeatures(prev => ({ ...prev, [f.id]: !prev[f.id] }))}
-                >
-                  <span className={`text-xl w-7 text-center ${features[f.id] ? 'text-mustard' : 'text-slate-600'}`}>{f.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold ${features[f.id] ? 'text-white' : 'text-slate-500'}`}>{f.label}</p>
-                    <p className="text-slate-500 text-xs mt-0.5">{f.desc}</p>
-                  </div>
-                  <Toggle on={features[f.id]} onChange={v => setFeatures(prev => ({ ...prev, [f.id]: v }))} />
-                </div>
-              ))}
-            </div>
+            <h2 className="text-2xl font-bold text-white mb-1">Berätta om din verksamhet</h2>
+            <p className="text-slate-400 mb-2">
+              Vi sätter ihop hela hemsidan av det du skriver här — dina ord, dina tjänster, din ort.
+            </p>
+            <p className="text-mustard text-sm font-medium mb-8">
+              Av dina svar bygger vi startsida, om oss, prislista och sex artiklar. Ju mer du berättar, desto mer blir dina egna ord. Allt går att ändra sen.
+            </p>
+            <AboutFields about={about} onChange={setAbout} />
           </div>
         )}
 

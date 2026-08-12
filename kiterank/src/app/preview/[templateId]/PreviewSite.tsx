@@ -3,9 +3,15 @@
 import type { Template, TemplateColors } from '@/app/onboarding/templates'
 import { Fragment } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { ServiceCategory } from './tjanster/services-data'
+import { SERVICES, type ServiceCategory } from './tjanster/services-data'
 import { publishedArticles, articleSummary, formatArticleDate, type Article } from '@/lib/articles'
 import { siteLabel } from '@/lib/siteLabels'
+import { visibleReviews } from '@/lib/exampleContent'
+import { baseIndustry } from '@/lib/industries'
+import {
+  FEATURES_DEFAULT, sectionPageEnabled, sitePageLinks,
+  SECTION_PAGES, type SectionPageId, type SectionPage as SectionPageConfig,
+} from '@/lib/sectionPages'
 import { SiteStyles } from '@/components/SiteStyles'
 import { siteFontVars, SiteFontFace } from '@/components/SiteFont'
 
@@ -35,8 +41,13 @@ export type SiteContent = {
     text:     string
     title?:   string
     company?: string
-    source?:  'google' | 'manual'
+    source?:  'google' | 'manual' | 'example'
   }>
+  /** The surface a backdrop theme stands on. A picture of their own room
+   *  beats any texture we can draw, so an upload wins over the library. */
+  backdropImage?:    string
+  /** Which texture from BACKDROPS, when they have not uploaded one. */
+  backdrop?:         string
   gallery_images?:   string[]
   /** One description per gallery image — SEO and accessibility in one. */
   gallery_alts?:     string[]
@@ -51,6 +62,9 @@ export type SiteContent = {
   /** Where the price list lives: on the site (own pages, one per service) or
    *  on the customer's booking page — then every price-list link goes there. */
   pricelistMode?: 'site' | 'booking'
+  /** With the prices on the booking page: how much the start page still
+   *  shows. Four services as a taster, or the whole list in text. */
+  pricelistPreview?: 'promo' | 'full'
   /** Overrides for the site's own headings and link texts — see siteLabels.
    *  This is what lets a customer run their site in another language. */
   labels?: Record<string, string>
@@ -77,9 +91,16 @@ export type SiteContent = {
   /** The order the customer arranged the movable sections in. */
   sectionOrder?:     string[]
   team?:             Array<{ name: string; title: string; image: string }>
+  /** The team can be switched off without losing the members or Om oss. */
+  teamEnabled?:      boolean
   galleryCount?:     3 | 6
   blogCount?:        3 | 6
   articles?:         Article[]
+  /** Per section: only on the start page, or also an own page with a menu
+   *  button, its own name and extra content. See lib/sectionPages. */
+  sectionPages?:     Partial<Record<SectionPageId, SectionPageConfig>>
+  /** Every picture the customer has uploaded — the editor's "Dina bilder". */
+  mediaLibrary?:     string[]
 }
 
 export const CONTENT: Record<string, SiteContent> = {
@@ -266,6 +287,191 @@ function isDark(hex: string): boolean {
 
 const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
 
+/* ── Backdrops ────────────────────────────────────────────────────────────
+   Until now every template painted flat colour, which is the single reason
+   they all read as the same clean site in different palettes. A real salon
+   page is built on a surface — the wall, the floor, the room.
+
+   These are drawn textures, not photographs of somebody else's salon: they
+   set a mood without claiming anything about the business, and the customer
+   replaces them with a picture of their own room whenever they like. */
+
+export const BACKDROPS: Record<string, { label: string; src: string; dark: boolean }> = {
+  tra:    { label: 'Trä',    src: '/exempel/bakgrund-tra.svg',    dark: true  },
+  sten:   { label: 'Sten',   src: '/exempel/bakgrund-sten.svg',   dark: true  },
+  tegel:  { label: 'Tegel',  src: '/exempel/bakgrund-tegel.svg',  dark: true  },
+  betong: { label: 'Betong', src: '/exempel/bakgrund-betong.svg', dark: false },
+  linne:  { label: 'Linne',  src: '/exempel/bakgrund-linne.svg',  dark: false },
+}
+
+/** The surface a backdrop layout stands on.
+ *
+ *  A picture of their own room beats any texture we can draw, so anything the
+ *  customer has already uploaded is used before the drawn surface — the photo
+ *  chosen for the backdrop, then the theme's own picture slot, then the first
+ *  gallery shot. Only when they have given us nothing does the texture show. */
+function backdropSrc(content: SiteContent, fallback: string): string {
+  const own = [content.backdropImage, content.heroImage, content.gallery_images?.find(s => s?.trim() && !s.startsWith('/exempel/'))]
+    .find(s => s?.trim())
+  return own?.trim() || BACKDROPS[content.backdrop ?? '']?.src || fallback
+}
+
+/** True when the surface is a drawn texture rather than a real photograph.
+ *  A layout that hands the whole opening to a picture needs to know: an empty
+ *  band of texture reads as a page that failed to load. */
+const isTexture = (src: string) => src.startsWith('/exempel/bakgrund-')
+
+/** Background plus the scrim that keeps text readable over it. Photographs
+ *  vary far more than a palette does, so the scrim is not optional — it is
+ *  what stops a customer's bright window shot from eating their own headline.
+ *
+ *  `scrim` is the colour laid over the surface. Black darkens; passing an
+ *  accent instead washes the whole opening in one colour, which is a look in
+ *  its own right rather than a way of dimming a picture.
+ *
+ *  Our textures tile at their drawn size: stretched to cover down a long
+ *  page, plank seams and brick courses grow to the height of a phone and the
+ *  surface stops reading as a surface. An uploaded photograph is a picture of
+ *  one thing, so that one still fills the frame. */
+function backdropStyle(src: string, tint = 0.55, scrim = '8,8,10'): CSSProperties {
+  const ours = src.startsWith('/exempel/')
+  return {
+    backgroundImage: `linear-gradient(rgba(${scrim},${tint}), rgba(${scrim},${tint})), url('${src}')`,
+    backgroundSize:     ours ? 'auto, 900px 600px' : 'auto, cover',
+    backgroundPosition: 'center',
+    backgroundRepeat:   ours ? 'no-repeat, repeat' : 'no-repeat, no-repeat',
+  }
+}
+
+/** "#2f8f8a" → "47,143,138", so a template colour can be used as a scrim. */
+function rgbOf(hex: string): string {
+  const h = hex.replace('#', '')
+  if (h.length !== 6) return '8,8,10'
+  return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)).join(',')
+}
+
+/* ── Menus that are not a bar of links ────────────────────────────────────
+   A row of links across a photograph competes with the headline underneath
+   it. These two shapes get out of the way instead, and they are CSS-only on
+   purpose: inside the editor a click on the page belongs to the edit layer,
+   so a menu that needed an onClick would never open there. */
+
+const MENU_ID = 'kr-menu-toggle'
+
+/** The button, the panel and nothing else — used by both menus below. */
+function MenuOverlay({ c, content, th, base, fg }: {
+  c: TemplateColors; content: SiteContent; th: string; base: string; fg: string
+}) {
+  const panelBg = isDark(c.bg) ? 'rgba(10,10,12,0.97)' : 'rgba(252,252,250,0.97)'
+  const panelFg = isDark(c.bg) ? '#ffffff' : '#0a0a0a'
+  return (
+    <>
+      <label htmlFor={MENU_ID} className="kr-burger-btn" aria-label="Meny"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: fg, fontSize: 12, letterSpacing: 2.5, textTransform: 'uppercase' as const, fontFamily: F }}>
+        <span aria-hidden style={{ display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ width: 22, height: 2, background: fg, display: 'block' }} />
+          <span style={{ width: 22, height: 2, background: fg, display: 'block' }} />
+          <span style={{ width: 22, height: 2, background: fg, display: 'block' }} />
+        </span>
+        Meny
+      </label>
+      <div className="kr-menu-panel" style={{ background: panelBg }}>
+        <label htmlFor={MENU_ID} aria-label="Stäng" style={{ position: 'absolute', top: 26, right: '7%', cursor: 'pointer', color: panelFg, fontSize: 30, lineHeight: 1, fontFamily: F }}>×</label>
+        {menuLinks(content, th, base).map(l => (
+          <a key={l.label} href={l.href ?? '#kontakt'} style={{ color: panelFg, fontSize: 26, letterSpacing: 1, fontFamily: F, textDecoration: 'none' }}>{l.label}</a>
+        ))}
+        <a href={content.bookingUrl || '#kontakt'} style={{ marginTop: 12, background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '14px 36px', fontSize: 14, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>
+          {content.ctaText}
+        </a>
+      </div>
+    </>
+  )
+}
+
+/** Wordmark on one side, a menu button on the other, floating on the page
+ *  with no bar of its own. */
+function BurgerNav({ c, content, th, base, over }: {
+  c: TemplateColors; content: SiteContent; th: string; base: string
+  /** True when the nav sits on a photo — then everything is white. */
+  over?: boolean
+}) {
+  const fg = over ? '#ffffff' : isDark(c.nav) ? '#ffffff' : c.h
+  return (
+    <nav data-edit="menu" aria-label="Navigering" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 7%', background: over ? 'transparent' : c.nav, position: 'relative', zIndex: 3 }}>
+      <input type="checkbox" id={MENU_ID} className="kr-burger" aria-hidden />
+      <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' as const, color: fg, fontFamily: F }}>
+        {content.logo
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={content.logo} alt={content.businessName} style={{ height: 28, display: 'block' }} />
+          : content.businessName}
+      </span>
+      <MenuOverlay c={c} content={content} th={th} base={base} fg={fg} />
+    </nav>
+  )
+}
+
+/** Two decks: the wordmark centred on its own band, then a row of the three
+ *  things a local visitor reaches for — menu, phone, directions. */
+function StackedNav({ c, content, th, base }: {
+  c: TemplateColors; content: SiteContent; th: string; base: string
+}) {
+  const barBg = isDark(c.nav) ? c.nav : c.b
+  const fg    = isDark(barBg) ? '#ffffff' : c.h
+  const line  = isDark(c.bg) ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'
+  const maps  = content.address?.trim()
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${content.businessName} ${content.address}`)}`
+    : undefined
+  return (
+    <header style={{ position: 'relative', zIndex: 3 }}>
+      <div style={{ textAlign: 'center', padding: '22px 7% 16px', background: c.bg }}>
+        <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: 5, textTransform: 'uppercase' as const, color: c.h, fontFamily: F }}>
+          {content.logo
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={content.logo} alt={content.businessName} style={{ height: 40, display: 'inline-block' }} />
+            : content.businessName}
+        </span>
+        <p style={{ fontSize: 10, letterSpacing: 4, textTransform: 'uppercase' as const, color: c.a, marginTop: 6, fontFamily: F }}>{content.tagline}</p>
+      </div>
+      <nav data-edit="menu" aria-label="Navigering" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'center', background: barBg, borderTop: `1px solid ${line}`, borderBottom: `1px solid ${line}`, padding: '14px 7%' }}>
+        <input type="checkbox" id={MENU_ID} className="kr-burger" aria-hidden />
+        <span style={{ justifySelf: 'start' }}>
+          <MenuOverlay c={c} content={content} th={th} base={base} fg={fg} />
+        </span>
+        <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ justifySelf: 'center', color: fg, fontSize: 15, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>{content.phone}</a>
+        {maps ? (
+          <a href={maps} target="_blank" rel="noopener noreferrer" style={{ justifySelf: 'end', color: fg, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>
+            {siteLabel(content.labels, 'directions')}
+          </a>
+        ) : <span />}
+      </nav>
+    </header>
+  )
+}
+
+/** A contact strip that rides along the bottom of the screen. Sticky, not
+ *  fixed: it stays with the page inside the editor's panel instead of
+ *  breaking out over the controls. */
+function ContactBar({ c, content }: { c: TemplateColors; content: SiteContent }) {
+  const bg = c.a
+  const fg = isDark(bg) ? '#ffffff' : '#0a0a0a'
+  const maps = content.address?.trim()
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${content.businessName} ${content.address}`)}`
+    : undefined
+  return (
+    <div style={{ position: 'sticky', bottom: 0, zIndex: 5, background: bg, padding: '12px 7%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28, rowGap: 6, flexWrap: 'wrap' as const }}>
+      {maps && (
+        <a href={maps} target="_blank" rel="noopener noreferrer" style={{ color: fg, fontSize: 13, fontWeight: 600, fontFamily: F, textDecoration: 'none' }}>
+          {content.address}
+        </a>
+      )}
+      <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ color: fg, fontSize: 13, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>{content.phone}</a>
+      <a href={content.bookingUrl || '#kontakt'} data-cta style={{ color: fg, fontSize: 13, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'underline' }}>
+        {content.ctaText}
+      </a>
+    </div>
+  )
+}
+
 /* ── Per-industry config ─────────────────────────────────────────────────── */
 
 type IndConfig = {
@@ -286,7 +492,10 @@ type IndConfig = {
   menuLabel:         string
 }
 
-export function getIndConfig(industry?: string): IndConfig {
+export { baseIndustry }
+
+export function getIndConfig(rawIndustry?: string): IndConfig {
+  const industry = baseIndustry(rawIndustry)
   if (industry === 'spa') return {
     statsStrip:        ['Diplomerade terapeuter', 'Eco-certifierade produkter', 'Fri konsultation'],
     badges:            ['✓ Diplomerade terapeuter', '✓ Eco-certifierat', '✓ Fri konsultation'],
@@ -466,15 +675,26 @@ function NavLink({ label, href, fg, size = 14 }: { label: string; href?: string;
   return <span style={{ color: fg, fontSize: size, cursor: 'pointer', fontFamily: F }}>{label}</span>
 }
 
-function Nav({
-  c, content, centered, minimal, tjansterHref,
-}: { c: TemplateColors; content: SiteContent; centered?: boolean; minimal?: boolean; tjansterHref?: string }) {
-  const btnBg   = c.a
-  const btnFg   = isDark(btnBg) ? '#ffffff' : '#0a0a0a'
-  const navBg   = c.nav
-  const fg      = isDark(navBg) ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.55)'
+/** The whole top menu.
+ *
+ *  A published site builds its own: one button per page the customer has
+ *  switched on, named by that page, plus Kontakt. Nothing to type and nothing
+ *  that can point at the wrong place — the menu cannot fall out of step with
+ *  the site because it IS the site. Renaming a page renames its button.
+ *
+ *  Template demos have no pages to point at, so they keep the example words
+ *  from the industry content and the anchor matching below. */
+export function menuLinks(content: SiteContent, tjansterHref?: string, base?: string): { label: string; href?: string }[] {
+  const siteRoot = base && siteBaseFrom(base).startsWith('/s/') ? siteBaseFrom(base) : undefined
 
-  function linkHref(label: string, i: number): string | undefined {
+  if (siteRoot) {
+    return [
+      ...sitePageLinks(content, siteRoot).map(p => ({ label: p.label, href: p.href })),
+      { label: siteLabel(content.labels, 'contactTitle'), href: '#kontakt' },
+    ]
+  }
+
+  function anchorHref(label: string, i: number): string | undefined {
     const l = label.toLowerCase()
     if (i === 0) return tjansterHref
     // Contact & about
@@ -494,18 +714,35 @@ function Nav({
     return '#kontakt'
   }
 
+  /* Every layout renders its own booking button, and a published menu never
+     contains one — so the example words must not either, or the demo shows a
+     "Boka tid" link sitting next to the button that does the same thing. */
+  return content.navLinks
+    .filter(label => !label.toLowerCase().includes('boka'))
+    .map((label, i) => ({ label, href: anchorHref(label, i) }))
+}
+
+function Nav({
+  c, content, centered, minimal, tjansterHref, base,
+}: { c: TemplateColors; content: SiteContent; centered?: boolean; minimal?: boolean; tjansterHref?: string; base?: string }) {
+  const btnBg   = c.a
+  const btnFg   = isDark(btnBg) ? '#ffffff' : '#0a0a0a'
+  const navBg   = c.nav
+  const fg      = isDark(navBg) ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.55)'
+  const links   = menuLinks(content, tjansterHref, base)
+
   if (centered) {
     return (
-      <nav aria-label="Navigering" style={{ background: navBg, padding: '0 8%', borderBottom: `1px solid ${isDark(navBg) ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`, position: 'relative' }}>
+      <nav data-edit="menu" aria-label="Navigering" style={{ background: navBg, padding: '0 8%', borderBottom: `1px solid ${isDark(navBg) ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`, position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 72, gap: 40 }}>
-          {content.navLinks.slice(0, 2).map((l, i) => (
-            <NavLink key={l} label={l} href={linkHref(l, i)} fg={fg} />
+          {links.slice(0, 2).map(l => (
+            <NavLink key={l.label} label={l.label} href={l.href} fg={fg} />
           ))}
           <span style={{ fontSize: 20, fontWeight: 800, color: isDark(navBg) ? '#ffffff' : c.h, fontFamily: F, letterSpacing: -0.5 }}>
             {content.logo ? <img src={content.logo} alt={content.businessName} style={{ height: 30, display: 'inline-block', verticalAlign: 'middle' }} /> : content.businessName}
           </span>
-          {content.navLinks.slice(2).map((l, i) => (
-            <NavLink key={l} label={l} href={linkHref(l, i + 2)} fg={fg} />
+          {links.slice(2).map(l => (
+            <NavLink key={l.label} label={l.label} href={l.href} fg={fg} />
           ))}
         </div>
         <a href={content.bookingUrl || '#'} style={{ position: 'absolute', right: '8%', top: '50%', transform: 'translateY(-50%)', background: btnBg, color: btnFg, padding: '9px 22px', borderRadius: 6, fontSize: 13, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>
@@ -517,13 +754,13 @@ function Nav({
 
   if (minimal) {
     return (
-      <nav aria-label="Navigering" style={{ background: navBg, padding: '0 10%', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <nav data-edit="menu" aria-label="Navigering" style={{ background: navBg, padding: '0 10%', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 20, fontWeight: 800, color: isDark(navBg) ? '#ffffff' : c.h, fontFamily: F, letterSpacing: -0.5 }}>
           {content.logo ? <img src={content.logo} alt={content.businessName} style={{ height: 30, display: 'inline-block', verticalAlign: 'middle' }} /> : content.businessName}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
-          {content.navLinks.map((l, i) => (
-            <NavLink key={l} label={l} href={linkHref(l, i)} fg={fg} size={13} />
+          {links.map(l => (
+            <NavLink key={l.label} label={l.label} href={l.href} fg={fg} size={13} />
           ))}
           <a href={content.bookingUrl || '#'} style={{ background: btnBg, color: btnFg, padding: '8px 20px', borderRadius: 5, fontSize: 13, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>
             {content.ctaText}
@@ -534,13 +771,13 @@ function Nav({
   }
 
   return (
-    <nav aria-label="Navigering" style={{ background: navBg, padding: '0 8%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 72, borderBottom: `1px solid ${isDark(navBg) ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
+    <nav data-edit="menu" aria-label="Navigering" style={{ background: navBg, padding: '0 8%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 72, borderBottom: `1px solid ${isDark(navBg) ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
       <span style={{ fontSize: 20, fontWeight: 800, color: isDark(navBg) ? '#ffffff' : c.h, fontFamily: F, letterSpacing: -0.5 }}>
         {content.logo ? <img src={content.logo} alt={content.businessName} style={{ height: 30, display: 'inline-block', verticalAlign: 'middle' }} /> : content.businessName}
       </span>
       <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
-        {content.navLinks.map((l, i) => (
-          <NavLink key={l} label={l} href={linkHref(l, i)} fg={fg} />
+        {links.map(l => (
+          <NavLink key={l.label} label={l.label} href={l.href} fg={fg} />
         ))}
         <a href={content.bookingUrl || '#'} style={{ background: btnBg, color: btnFg, padding: '10px 24px', borderRadius: 6, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>
           {content.ctaText}
@@ -598,10 +835,8 @@ function ImagePlaceholder({ c, height = 380, radius = 16, src, alt = '' }: { c: 
 /* The whole page is movable except the footer. Every layout expresses its
    fixed compositions as three named blocks — hero, services, about — and the
    shared sections (reviews, gallery, blog) fill the remaining ids. */
-export const PAGE_SECTIONS = ['hero', 'services', 'about', 'reviews', 'gallery', 'blog']
-const FEATURES_DEFAULT: Record<string, boolean> = {
-  booking: true, pricelist: true, gallery: true, contact: true, blog: false, reviews: true,
-}
+export const PAGE_SECTIONS = ['hero', 'services', 'pricelist', 'about', 'reviews', 'gallery', 'blog']
+export { FEATURES_DEFAULT }
 
 /** Merge a saved order into the default: only the ids the customer has
  *  actually ordered swap places among the slots they occupy — older saves
@@ -615,35 +850,12 @@ export function orderedIds(defaults: string[], saved?: string[]): string[] {
   return result
 }
 
-/* The people behind the salon — added on the editor's Om oss tab, and until
-   now never shown anywhere public. Faces build more trust than any copy. */
-function TeamSection({ c, content }: { c: TemplateColors; content: SiteContent }) {
-  const team = content.team?.filter(m => m.name?.trim()) ?? []
-  if (!team.length) return null
-  return (
-    <section style={{ background: c.bg, padding: '72px 8%' }}>
-      <div style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center' as const }}>
-        <p style={{ fontSize: 12, color: c.a, letterSpacing: 3, textTransform: 'uppercase' as const, marginBottom: 32, fontFamily: F }}>{siteLabel(content.labels, 'teamTitle')}</p>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 40, flexWrap: 'wrap' as const }}>
-          {team.map((m, i) => (
-            <div key={i} style={{ width: 140 }}>
-              {m.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.image} alt={m.name} style={{ width: 110, height: 110, borderRadius: '50%', objectFit: 'cover' as const, margin: '0 auto 12px', display: 'block' }} />
-              ) : (
-                <div style={{ width: 110, height: 110, borderRadius: '50%', background: c.a + '22', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.a, fontSize: 32, fontWeight: 800, fontFamily: F }}>
-                  {m.name.charAt(0)}
-                </div>
-              )}
-              <p style={{ fontSize: 15, fontWeight: 700, color: c.h, fontFamily: F }}>{m.name}</p>
-              <p style={{ fontSize: 12, color: c.s, marginTop: 4, fontFamily: F }}>{m.title}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
+/* The team belongs on the about page, not the start page. The start page has
+   one job — get a visitor to book — and every section between the prices and
+   the booking button costs conversions. Someone who wants to know who works
+   here clicks through to Om oss, and there the faces get room to matter.
+   (The Team layout is the exception: its whole composition is built around
+   the people, which is the reason a customer would choose it.) */
 
 /** The site's own address, with the services path taken off. */
 function siteBaseFrom(th: string): string {
@@ -657,7 +869,10 @@ function siteBaseFrom(th: string): string {
 function statsFor(content: SiteContent, cfg: IndConfig, th: string): { num: string; label: string }[] {
   const own = (content.stats ?? []).filter(s => s.num?.trim() && s.label?.trim())
   if (own.length) return own
-  return th.startsWith('/s/') ? [] : cfg.statsBar
+  // Only the template demo shows example figures — a live site's price link
+  // may point at /s/, the booking page or the on-page list, so test for the
+  // demo instead of trying to enumerate every live shape.
+  return th.startsWith('/preview/') ? cfg.statsBar : []
 }
 
 /* The figures, in every template. Numbers a salon is proud of are one of the
@@ -686,7 +901,8 @@ function StatsBar({ c, content, cfg, th }: { c: TemplateColors; content: SiteCon
 function badgesFor(content: SiteContent, cfg: IndConfig, th: string): string[] {
   const own = (content.stats ?? []).filter(s => s.label?.trim()).map(s => `${s.num} ${s.label}`.trim())
   if (own.length) return own
-  return th.startsWith('/s/') ? [] : cfg.badges
+  // Demo-only, same reasoning as statsFor
+  return th.startsWith('/preview/') ? cfg.badges : []
 }
 
 /* The articles the customer has written. Nothing is rendered until a real
@@ -730,11 +946,14 @@ function ArticlesSection({ c, content, th }: { c: TemplateColors; content: SiteC
           </a>
         ))}
       </div>
-      <div style={{ textAlign: 'center', marginTop: 32 }}>
-        <a href={`${base}/artiklar`} style={{ fontSize: 14, color: c.a, textDecoration: 'underline', fontFamily: F }}>
-          {siteLabel(content.labels, 'articlesAll')}
-        </a>
-      </div>
+      {/* "All articles" only leads somewhere when the own page exists */}
+      {(!base.startsWith('/s/') || sectionPageEnabled(content, 'blog')) && (
+        <div style={{ textAlign: 'center', marginTop: 32 }}>
+          <a href={`${base}/artiklar`} style={{ fontSize: 14, color: c.a, textDecoration: 'underline', fontFamily: F }}>
+            {siteLabel(content.labels, 'articlesAll')}
+          </a>
+        </div>
+      )}
     </section>
   )
 }
@@ -743,8 +962,12 @@ function ArticlesSection({ c, content, th }: { c: TemplateColors; content: SiteC
    section shows what it is for. A published site with nothing chosen shows
    nothing — invented praise never goes live. */
 function ReviewsSection({ c, content, th, industry }: { c: TemplateColors; content: SiteContent; th: string; industry?: string }) {
-  if (content.featured_reviews?.length) return <ReviewGrid c={c} reviews={content.featured_reviews} labels={content.labels} />
-  if (th.startsWith('/s/')) return null
+  /* The six we ship fill the section while the customer edits; a published
+     page shows only the salon's own. See visibleReviews in lib/exampleContent. */
+  const live  = th.startsWith('/s/')
+  const shown = visibleReviews(content.featured_reviews, live)
+  if (shown.length) return <ReviewGrid c={c} reviews={shown} labels={content.labels} />
+  if (live) return null
   const cfg = getIndConfig(industry)
   return (
     <section style={{ background: c.b, padding: '72px 8%', textAlign: 'center' }}>
@@ -758,6 +981,152 @@ function ReviewsSection({ c, content, th, industry }: { c: TemplateColors; conte
 }
 
 
+/* The full price list on the start page — on by default for every site,
+   since prices on the page is the single biggest booking factor for a local
+   business, but the customer can switch it off like any other section.
+   It also steps aside on its own when the price list lives on the
+   customer's booking page — two copies would drift apart. */
+/* The four services a booking-page customer still shows off.
+ *
+ * Starred ones first, in the customer's order, then the top of the price list
+ * to fill up. Four, because one large card and three under it is the shape
+ * that reads as a taster rather than a truncated list. */
+function promoServices(content: SiteContent, industry?: string): ServiceItem[] {
+  const chosen = (content.services ?? []).filter(s => s.name?.trim())
+  if (chosen.length >= 4) return chosen.slice(0, 4)
+
+  /* Not filled in yet — top up from the price list so the window is never
+     half empty on a site that has just switched over. */
+  const cats = content.menuCategories?.length
+    ? content.menuCategories
+    : SERVICES[baseIndustry(industry)] ?? SERVICES.other ?? []
+  const fromMenu: ServiceItem[] = cats.flatMap(cat =>
+    cat.items.map(i => ({ name: i.name, desc: i.desc ?? '', price: i.hidePrice ? '' : i.price })))
+  const taken = new Set(chosen.map(s => s.name.trim().toLowerCase()))
+  return [...chosen, ...fromMenu.filter(s => !taken.has(s.name.trim().toLowerCase()))].slice(0, 4)
+}
+
+/* A customer whose prices live on their booking page still needs the start
+ * page to sell something. Instead of dropping the price list entirely, the
+ * section becomes a shop window: the service they most want booked, three
+ * more under it, and every one of them a link straight into the booking
+ * flow. The full list stays in one place — theirs — so nothing can drift. */
+function PricelistPromo({ c, content, industry }: { c: TemplateColors; content: SiteContent; industry?: string }) {
+  const cfg   = getIndConfig(industry)
+  const items = promoServices(content, industry)
+  if (!items.length) return null
+  const [lead, ...rest] = items
+  const href = content.bookingUrl!.trim()
+  const sep  = isDark(c.b) ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+  const sub  = isDark(c.b) ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)'
+
+  return (
+    <section id="prislista" style={{ background: c.b, padding: '72px 8%' }}>
+      <p data-kicker style={{ textAlign: 'center', fontSize: 12, color: c.a, letterSpacing: 3, textTransform: 'uppercase' as const, marginBottom: 40, fontFamily: F }}>
+        {content.labels?.menuLabel || cfg.menuLabel}
+      </p>
+
+      <div data-split style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 32, maxWidth: 980, margin: '0 auto', alignItems: 'start' }}>
+        {/* The one they most want booked */}
+        <a href={href} style={{ display: 'block', background: c.bg, border: `1px solid ${sep}`, borderRadius: 14, padding: '30px 32px', textDecoration: 'none' }}>
+          <h3 style={{ fontSize: 24, fontWeight: 800, color: c.h, letterSpacing: -0.4, marginBottom: 10, fontFamily: F }}>{lead.name}</h3>
+          {lead.desc && <p style={{ fontSize: 14, color: sub, lineHeight: 1.65, marginBottom: 18, fontFamily: F }}>{lead.desc}</p>}
+          {lead.price && <p style={{ fontSize: 20, fontWeight: 800, color: c.a, marginBottom: 22, fontFamily: F }}>{lead.price}</p>}
+          <span data-cta style={{ display: 'inline-block', background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '11px 26px', borderRadius: 8, fontSize: 14, fontWeight: 700, fontFamily: F }}>
+            {content.ctaText}
+          </span>
+        </a>
+
+        {/* Three more, priced and clickable */}
+        <div>
+          {rest.map(s => (
+            <a
+              key={s.name}
+              href={href}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16, padding: '15px 0', borderBottom: `1px solid ${sep}`, textDecoration: 'none' }}
+            >
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 16, color: c.h, fontWeight: 600, fontFamily: F }}>{s.name}</span>
+                {s.desc && <span style={{ display: 'block', fontSize: 12, color: sub, marginTop: 3, fontFamily: F }}>{s.desc}</span>}
+              </span>
+              {s.price && <span style={{ fontSize: 15, color: c.a, fontWeight: 700, whiteSpace: 'nowrap' as const, fontFamily: F }}>{s.price}</span>}
+            </a>
+          ))}
+          <div style={{ marginTop: 22 }}>
+            <a href={href} style={{ color: c.a, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none', borderBottom: `1.5px solid ${c.a}`, paddingBottom: 2 }}>
+              {content.labels?.allLink || cfg.allLink}
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+export function PricelistSection({ c, content, th, industry }: { c: TemplateColors; content: SiteContent; th: string; industry?: string }) {
+  /* Prices kept on the booking page. The customer still decides how much of
+   * them the start page shows: four services as a taster, or the whole list
+   * in text. Either way every link leads to the booking page. */
+  const external = content.pricelistMode === 'booking' && !!content.bookingUrl?.trim()
+  if (external && (content.pricelistPreview ?? 'promo') === 'promo') {
+    return <PricelistPromo c={c} content={content} industry={industry} />
+  }
+  const linkTo = external ? content.bookingUrl!.trim() : th
+  const cfg  = getIndConfig(industry)
+  const cats = content.menuCategories?.length
+    ? content.menuCategories
+    : SERVICES[baseIndustry(industry)] ?? SERVICES.other ?? []
+  if (!cats.length) return null
+  const sep = isDark(c.b) ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+  const sub = isDark(c.b) ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)'
+
+  return (
+    // The anchor "#prislista" is where price links land when no own page exists
+    <section id="prislista" style={{ background: c.b, padding: '72px 8%' }}>
+      <p data-kicker style={{ textAlign: 'center', fontSize: 12, color: c.a, letterSpacing: 3, textTransform: 'uppercase' as const, marginBottom: 40, fontFamily: F }}>
+        {content.labels?.menuLabel || cfg.menuLabel}
+      </p>
+      <div data-grid="services" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '40px 64px', maxWidth: 980, margin: '0 auto' }}>
+        {cats.map(cat => (
+          <div key={cat.category}>
+            <h3 style={{ fontSize: 17, fontWeight: 800, color: c.h, letterSpacing: 0.5, borderBottom: `2px solid ${c.a}`, paddingBottom: 8, marginBottom: 4, fontFamily: F }}>
+              {cat.category}
+            </h3>
+            {cat.items.map(item => (
+              <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16, padding: '11px 0', borderBottom: `1px solid ${sep}` }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 15, color: c.h, fontWeight: 600, fontFamily: F }}>{item.name}</p>
+                  {!item.hideDuration && item.duration && (
+                    <p style={{ fontSize: 12, color: sub, marginTop: 2, fontFamily: F }}>{item.duration}</p>
+                  )}
+                </div>
+                {!item.hidePrice && (
+                  <p style={{ fontSize: 15, color: c.a, fontWeight: 700, whiteSpace: 'nowrap' as const, fontFamily: F }}>{item.price}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div style={{ textAlign: 'center', marginTop: 40 }}>
+        <a href={linkTo} style={{ color: c.a, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none', borderBottom: `1.5px solid ${c.a}`, paddingBottom: 2 }}>
+          {content.labels?.allLink || cfg.allLink}
+        </a>
+      </div>
+    </section>
+  )
+}
+
+/* Marks a stretch of the page as belonging to a panel section, so a click in
+   the editor's preview can open the right one. display:contents means this
+   wrapper adds no box and cannot change a single pixel of any layout — it is
+   pure labelling, invisible on the published site. */
+function Editable({ id, sec, children }: { id: string; sec?: string; children: ReactNode }) {
+  /* data-edit → which panel section a click opens; data-sec → which movable
+     page section this is, for the floating move/hide tools in the editor. */
+  return <div data-edit={id} data-sec={sec} style={{ display: 'contents' }}>{children}</div>
+}
+
 function PageSections({ blocks, c, content, base, industry }: {
   /** The layout's own designed blocks. null = the layout already shows that
    *  content as part of its composition (Showcase's photo hero) — never twice. */
@@ -766,24 +1135,63 @@ function PageSections({ blocks, c, content, base, industry }: {
 }) {
   const features = { ...FEATURES_DEFAULT, ...(content.siteFeatures ?? {}) }
   const ids      = orderedIds(PAGE_SECTIONS, content.sectionOrder)
+  const siteRoot = siteBaseFrom(base)
+
+  /* "Läs mer" under a section that also lives as an own page — the start page
+   * shows the section, the link carries visitors (and Google) to the rest.
+   * Only published sites have the pages, so demos render no dead links. */
+  const readMore = (id: SectionPageId) => {
+    if (!siteRoot.startsWith('/s/') || !sectionPageEnabled(content, id)) return null
+    if (id === 'pricelist' && content.pricelistMode === 'booking' && content.bookingUrl?.trim()) return null
+    return (
+      <div style={{ background: c.bg, textAlign: 'center' as const, padding: '0 8% 56px' }}>
+        <a
+          href={`${siteRoot}/${SECTION_PAGES[id].path}`}
+          style={{ color: c.a, fontSize: 14, fontWeight: 600, fontFamily: F, textDecoration: 'none', borderBottom: `1.5px solid ${c.a}`, paddingBottom: 3 }}
+        >
+          {siteLabel(content.labels, 'readMore')}
+        </a>
+      </div>
+    )
+  }
 
   return (
     <>
       {ids.map(id => {
-        if (id in blocks) return <Fragment key={id}>{blocks[id]}</Fragment>
+        // Om oss & teamet is switchable like the other sections, but the block
+        // itself belongs to the layout — so the gate sits here, before it
+        if (id === 'about' && !features.about) return null
+        /* Prices on the booking page, shown as the four-service window: that
+           window already carries them, so the layout's own strip would say it
+           all twice. With the full list it stays — same as on any other site. */
+        if (id === 'services' && content.pricelistMode === 'booking' && content.bookingUrl?.trim()
+            && (content.pricelistPreview ?? 'promo') === 'promo') return null
+        // The panel section a click on this part of the page should open
+        const panel = id === 'services' ? 'pricelist' : id === 'blog' ? 'articles' : id
+        if (id in blocks) return (
+          <Editable key={id} id={panel} sec={id}>
+            {blocks[id]}{id === 'about' && readMore('about')}
+          </Editable>
+        )
+        // Photos and reviews live on the start page only — no page of their own
         if (id === 'gallery') return features.gallery ? (
-          <GallerySection
-            key={id}
-            c={c}
-            images={content.gallery_images}
-            alts={content.gallery_alts}
-            businessName={content.businessName}
-            count={content.galleryCount ?? 6}
-            labels={content.labels}
-          />
+          <Editable key={id} id={panel} sec={id}>
+            <GallerySection
+              c={c}
+              images={content.gallery_images}
+              alts={content.gallery_alts}
+              businessName={content.businessName}
+              count={content.galleryCount ?? 6}
+              labels={content.labels}
+            />
+          </Editable>
         ) : null
-        if (id === 'blog')    return features.blog    ? <ArticlesSection key={id} c={c} content={content} th={base} /> : null
-        if (id === 'reviews') return features.reviews ? <ReviewsSection key={id} c={c} content={content} th={base} industry={industry} /> : null
+        if (id === 'blog')      return features.blog    ? <Editable key={id} id={panel} sec={id}><ArticlesSection c={c} content={content} th={base} /></Editable> : null
+        if (id === 'reviews')   return features.reviews ? <Editable key={id} id={panel} sec={id}><ReviewsSection c={c} content={content} th={base} industry={industry} /></Editable> : null
+        {/* No readMore here: the price list ends with its own "Se prislista"
+            link to the very same page, and two links stacked on top of each
+            other only make a visitor wonder what the difference is. */}
+        if (id === 'pricelist') return features.pricelist ? <Editable key={id} id={panel} sec={id}><PricelistSection c={c} content={content} th={base} industry={industry} /></Editable> : null
         return null
       })}
     </>
@@ -951,12 +1359,22 @@ function ReviewGrid({ c, reviews, labels }: { c: TemplateColors; reviews: NonNul
   )
 }
 
-function Footer({ c, content }: { c: TemplateColors; content: SiteContent }) {
+function Footer({ c, content, base }: { c: TemplateColors; content: SiteContent; base?: string }) {
   const footerBg = isDark(c.bg) ? c.b : (isDark(c.nav) ? c.nav : c.b)
   const fg       = isDark(footerBg) ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)'
   const fgStrong = isDark(footerBg) ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)'
+
+  /* Internal links to the site's own pages — the paths Google follows to
+   * find them, and what ties the pages together as one site. Only published
+   * sites have the pages, so demos show no dead links. */
+  const siteRoot  = base?.startsWith('/s/') ? base.replace(/\/tjanster$/, '') : undefined
+  const pageLinks = siteRoot ? [
+    ...sitePageLinks(content, siteRoot).map(p => ({ label: p.label, href: p.href })),
+    { label: siteLabel(content.labels, 'contactTitle'), href: `${siteRoot}/kontakt` },
+  ] : []
+
   return (
-    <footer id="kontakt" style={{ background: footerBg, padding: '48px 8%', borderTop: `1px solid ${isDark(footerBg) ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
+    <footer data-edit="contact" id="kontakt" style={{ background: footerBg, padding: '48px 8%', borderTop: `1px solid ${isDark(footerBg) ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 32 }}>
         <div>
           <p style={{ fontSize: 16, fontWeight: 800, color: fgStrong, marginBottom: 8, fontFamily: F }}>{content.businessName}</p>
@@ -1004,8 +1422,15 @@ function Footer({ c, content }: { c: TemplateColors; content: SiteContent }) {
           )}
         </div>
       </div>
-      <div style={{ borderTop: `1px solid ${isDark(footerBg) ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`, marginTop: 40, paddingTop: 24, fontSize: 12, color: fg, fontFamily: F }}>
-        © 2025 {content.businessName}
+      <div style={{ borderTop: `1px solid ${isDark(footerBg) ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`, marginTop: 40, paddingTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 12 }}>
+        <span style={{ fontSize: 12, color: fg, fontFamily: F }}>© 2025 {content.businessName}</span>
+        {pageLinks.length > 0 && (
+          <nav aria-label="Sidor" style={{ display: 'flex', gap: 18, flexWrap: 'wrap' as const, background: 'transparent', padding: 0 }}>
+            {pageLinks.map(l => (
+              <a key={l.label} href={l.href} style={{ fontSize: 12, color: fgStrong, fontFamily: F, textDecoration: 'none' }}>{l.label}</a>
+            ))}
+          </nav>
+        )}
       </div>
     </footer>
   )
@@ -1094,7 +1519,6 @@ function CenteredSite({ c, content, th, base, industry }: { c: TemplateColors; c
         <p style={{ fontSize: 18, color: c.s, lineHeight: 1.8, maxWidth: 600, margin: '0 auto 32px', fontFamily: F }}>{content.aboutBody}</p>
         <p style={{ fontSize: 14, color: c.a, fontWeight: 600, fontFamily: F }}>{content.phone}  ·  {content.address}</p>
       </section>
-      <TeamSection c={c} content={content} />
       <section style={{ background: c.a, padding: '64px 8%', textAlign: 'center' }}>
         <h2 style={{ fontSize: 36, fontWeight: 800, color: isDark(c.a) ? '#ffffff' : '#0a0a0a', marginBottom: 12, letterSpacing: -0.8, fontFamily: F }}>{content.labels?.ctaBandTitle || cfg.ctaBandTitle}</h2>
         <p style={{ fontSize: 16, color: isDark(c.a) ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.6)', marginBottom: 32, fontFamily: F }}>{content.phone}</p>
@@ -1105,13 +1529,12 @@ function CenteredSite({ c, content, th, base, industry }: { c: TemplateColors; c
 
   return (
     <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
-      <Nav c={c} content={content} tjansterHref={th} />
-      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+      <Nav c={c} content={content} tjansterHref={th} base={base} />
       <main>
-        <PageSections blocks={{ hero: heroBlock, services: servicesBlock, about: aboutBlock }} c={c} content={content} base={base} industry={industry} />
+        <PageSections blocks={{ hero: <>{heroBlock}<StatsBar c={c} content={content} cfg={cfg} th={th} /></>, services: servicesBlock, about: aboutBlock }} c={c} content={content} base={base} industry={industry} />
       </main>
       <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
     </div>
   )
 }
@@ -1132,9 +1555,14 @@ function SplitSite({ c, content, th, base, industry }: { c: TemplateColors; cont
           <p style={{ color: c.a, fontSize: 11, letterSpacing: 4, textTransform: 'uppercase' as const, marginBottom: 24, fontFamily: F }}>
             {content.kicker}
           </p>
-          <h1 style={{ fontSize: 64, fontWeight: 900, color: c.h, lineHeight: 1.05, marginBottom: 36, letterSpacing: -2, fontFamily: F }}>
+          <h1 style={{ fontSize: 64, fontWeight: 900, color: c.h, lineHeight: 1.05, marginBottom: 20, letterSpacing: -2, fontFamily: F }}>
             {content.heroHeading}
           </h1>
+          {/* A headline names the promise; this sentence is what lets a
+              first-time visitor judge whether it is meant for them. */}
+          <p style={{ fontSize: 17, color: c.s, lineHeight: 1.7, maxWidth: 460, marginBottom: 32, fontFamily: F }}>
+            {content.heroBody}
+          </p>
           <div style={{ display: 'flex', gap: 16, marginBottom: 32 }}>
             <a href={content.bookingUrl || '#'} style={{ background: btnBg, color: btnFg, padding: '14px 32px', borderRadius: 6, fontSize: 15, fontWeight: 700, fontFamily: F, textDecoration: 'none', display: 'inline-block' }}>
               {content.ctaText}
@@ -1220,19 +1648,17 @@ function SplitSite({ c, content, th, base, industry }: { c: TemplateColors; cont
           </div>
         </div>
       </section>
-      <TeamSection c={c} content={content} />
     </>
   )
 
   return (
     <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
-      <Nav c={c} content={content} tjansterHref={th} />
-      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+      <Nav c={c} content={content} tjansterHref={th} base={base} />
       <main>
-        <PageSections blocks={{ hero: heroBlock, services: servicesBlock, about: aboutBlock }} c={c} content={content} base={base} industry={industry} />
+        <PageSections blocks={{ hero: <>{heroBlock}<StatsBar c={c} content={content} cfg={cfg} th={th} /></>, services: servicesBlock, about: aboutBlock }} c={c} content={content} base={base} industry={industry} />
       </main>
       <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
     </div>
   )
 }
@@ -1249,26 +1675,23 @@ function EditorialSite({ c, content, th, base, industry }: { c: TemplateColors; 
   return (
     <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
       {/* Minimal nav — no border, no background on parent */}
-      <nav aria-label="Navigering" style={{ background: c.nav, padding: '0 10%', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <nav data-edit="menu" aria-label="Navigering" style={{ background: c.nav, padding: '0 10%', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 20, fontWeight: 800, color: isDark(c.nav) ? '#ffffff' : c.h, fontFamily: F, letterSpacing: -0.5 }}>
           {content.businessName}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-          {content.navLinks.map((l, i) => {
-            const fg   = isDark(c.nav) ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)'
-            const ll   = l.toLowerCase()
-            const href = i === 0 ? th : ll.includes('kontakt') ? '#kontakt' : ll.includes('om') ? '#om-oss' : undefined
-            if (href) return <a key={l} href={href} style={{ color: fg, fontSize: 13, fontFamily: F, textDecoration: 'none' }}>{l}</a>
-            return <span key={l} style={{ color: fg, fontSize: 13, cursor: 'pointer', fontFamily: F }}>{l}</span>
+          {menuLinks(content, th, base).map(l => {
+            const fg = isDark(c.nav) ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)'
+            if (l.href) return <a key={l.label} href={l.href} style={{ color: fg, fontSize: 13, fontFamily: F, textDecoration: 'none' }}>{l.label}</a>
+            return <span key={l.label} style={{ color: fg, fontSize: 13, cursor: 'pointer', fontFamily: F }}>{l.label}</span>
           })}
         </div>
       </nav>
-      <StatsBar c={c} content={content} cfg={cfg} th={th} />
       <main>
-        <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+        <PageSections blocks={{ hero: <>{buildHero()}<StatsBar c={c} content={content} cfg={cfg} th={th} /></>, services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
       </main>
       <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
     </div>
   )
 
@@ -1278,9 +1701,12 @@ function EditorialSite({ c, content, th, base, industry }: { c: TemplateColors; 
           <p style={{ fontSize: 11, color: c.a, letterSpacing: 4, textTransform: 'uppercase' as const, marginBottom: 28, fontFamily: F }}>
             — {content.kicker}
           </p>
-          <h1 style={{ fontSize: 96, fontWeight: 900, color: c.h, lineHeight: 0.92, letterSpacing: -4, marginBottom: 48, fontFamily: F }}>
+          <h1 style={{ fontSize: 96, fontWeight: 900, color: c.h, lineHeight: 0.92, letterSpacing: -4, marginBottom: 28, fontFamily: F }}>
             {content.heroHeading}
           </h1>
+          <p style={{ fontSize: 17, color: c.s, lineHeight: 1.7, maxWidth: 480, marginBottom: 40, fontFamily: F }}>
+            {content.heroBody}
+          </p>
           <a href={content.bookingUrl || '#'} style={{ background: btnBg, color: btnFg, padding: '16px 40px', borderRadius: 0, fontSize: 15, fontWeight: 700, fontFamily: F, textDecoration: 'none', display: 'inline-block', alignSelf: 'flex-start' }}>
             {content.ctaText}
           </a>
@@ -1328,7 +1754,6 @@ function EditorialSite({ c, content, th, base, industry }: { c: TemplateColors; 
           </div>
         </div>
       </section>
-      <TeamSection c={c} content={content} />
     </>
   )}
 }
@@ -1347,13 +1772,12 @@ function HeritageSite({ c, content, th, base, industry }: { c: TemplateColors; c
 
   return (
     <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
-      <Nav c={c} content={content} centered tjansterHref={th} />
-      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+      <Nav c={c} content={content} centered tjansterHref={th} base={base} />
       <main>
-        <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+        <PageSections blocks={{ hero: <>{buildHero()}<StatsBar c={c} content={content} cfg={cfg} th={th} /></>, services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
       </main>
       <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
     </div>
   )
 
@@ -1453,7 +1877,6 @@ function HeritageSite({ c, content, th, base, industry }: { c: TemplateColors; c
           ))}
         </div>
       </section>
-      <TeamSection c={c} content={content} />
     </>
   )}
 }
@@ -1484,38 +1907,35 @@ function LuxurySite({ c, content, th, base, industry }: { c: TemplateColors; con
     <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
 
       {/* Luxury nav: centered logo, ALL CAPS small, thin accent line below */}
-      <nav aria-label="Navigering" style={{ background: c.nav, padding: '0 8%', position: 'relative' }}>
+      <nav data-edit="menu" aria-label="Navigering" style={{ background: c.nav, padding: '0 8%', position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 72, gap: 48 }}>
-          {content.navLinks.slice(0, 2).map((l, i) => {
-            const fg   = isDark(c.nav) ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)'
-            const ll   = l.toLowerCase()
-            const href = i === 0 ? th : ll.includes('kontakt') ? '#kontakt' : ll.includes('om') ? '#om-oss' : ll.includes('boka') ? (content.bookingUrl || '#') : undefined
-            if (href) return <a key={l} href={href} style={{ color: fg, fontSize: 11, letterSpacing: 2.5, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{l}</a>
-            return <span key={l} style={{ color: fg, fontSize: 11, letterSpacing: 2.5, textTransform: 'uppercase' as const, cursor: 'pointer', fontFamily: F }}>{l}</span>
+          {menuLinks(content, th, base).slice(0, 2).map(l => {
+            const fg = isDark(c.nav) ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)'
+            if (l.href) return <a key={l.label} href={l.href} style={{ color: fg, fontSize: 11, letterSpacing: 2.5, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{l.label}</a>
+            return <span key={l.label} style={{ color: fg, fontSize: 11, letterSpacing: 2.5, textTransform: 'uppercase' as const, cursor: 'pointer', fontFamily: F }}>{l.label}</span>
           })}
           <span style={{ fontSize: 18, fontWeight: 600, color: isDark(c.nav) ? '#ffffff' : c.h, fontFamily: F, letterSpacing: 1, textTransform: 'uppercase' as const, margin: '0 16px' }}>
             {content.businessName}
           </span>
-          {content.navLinks.slice(2).map((l) => {
-            const fg   = isDark(c.nav) ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)'
-            const ll   = l.toLowerCase()
-            const href = ll.includes('kontakt') ? '#kontakt' : ll.includes('om') ? '#om-oss' : ll.includes('boka') ? (content.bookingUrl || '#') : undefined
-            if (href) return <a key={l} href={href} style={{ color: fg, fontSize: 11, letterSpacing: 2.5, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{l}</a>
-            return <span key={l} style={{ color: fg, fontSize: 11, letterSpacing: 2.5, textTransform: 'uppercase' as const, cursor: 'pointer', fontFamily: F }}>{l}</span>
+          {menuLinks(content, th, base).slice(2).map(l => {
+            const fg = isDark(c.nav) ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)'
+            if (l.href) return <a key={l.label} href={l.href} style={{ color: fg, fontSize: 11, letterSpacing: 2.5, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{l.label}</a>
+            return <span key={l.label} style={{ color: fg, fontSize: 11, letterSpacing: 2.5, textTransform: 'uppercase' as const, cursor: 'pointer', fontFamily: F }}>{l.label}</span>
           })}
         </div>
-        <a href={content.bookingUrl || '#'} style={{ position: 'absolute', right: '8%', top: '50%', transform: 'translateY(-50%)', background: 'transparent', color: c.a, padding: '8px 24px', border: `1px solid ${c.a}`, fontSize: 10, fontWeight: 500, letterSpacing: 3, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>
+        {/* Filled, not outlined: on a phone the outline read as one more line
+            of thin type, and this is the only action visible before scrolling. */}
+        <a href={content.bookingUrl || '#'} style={{ position: 'absolute', right: '8%', top: '50%', transform: 'translateY(-50%)', background: c.a, color: isDark(c.a) ? '#ffffff' : '#0a0a0a', padding: '9px 26px', fontSize: 10, fontWeight: 700, letterSpacing: 3, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>
           {content.ctaText}
         </a>
         {/* Thin accent line */}
         <div style={{ height: 1, background: c.a, opacity: 0.4 }} />
       </nav>
-      <StatsBar c={c} content={content} cfg={cfg} th={th} />
       <main>
-        <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+        <PageSections blocks={{ hero: <>{buildHero()}<StatsBar c={c} content={content} cfg={cfg} th={th} /></>, services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
       </main>
       <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
     </div>
   )
 
@@ -1530,9 +1950,12 @@ function LuxurySite({ c, content, th, base, industry }: { c: TemplateColors; con
         <h1 style={{ fontSize: 60, fontWeight: 200, color: c.h, lineHeight: 1.15, maxWidth: 680, letterSpacing: -1, fontFamily: F }}>
           {content.heroHeading}
         </h1>
+        <p style={{ fontSize: 17, color: c.s, lineHeight: 1.85, maxWidth: 520, margin: '28px auto 0', fontFamily: F }}>
+          {content.heroBody}
+        </p>
         {/* Thin line */}
-        <div style={{ height: 1, width: 60, background: c.a, margin: '48px auto' }} />
-        <a href={content.bookingUrl || '#'} style={{ background: 'transparent', color: c.a, padding: '16px 48px', border: `1px solid ${c.a}`, fontSize: 11, letterSpacing: 4, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none', display: 'inline-block', borderRadius: 0 }}>
+        <div style={{ height: 1, width: 60, background: c.a, margin: '44px auto' }} />
+        <a href={content.bookingUrl || '#'} data-cta style={{ background: c.a, color: isDark(c.a) ? '#ffffff' : '#0a0a0a', padding: '17px 50px', fontSize: 11, fontWeight: 700, letterSpacing: 4, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none', display: 'inline-block', borderRadius: 0 }}>
           {content.ctaText}
         </a>
       </section>
@@ -1575,7 +1998,6 @@ function LuxurySite({ c, content, th, base, industry }: { c: TemplateColors; con
         <p style={{ fontSize: 15, color: c.s, maxWidth: 480, margin: '0 auto 24px', lineHeight: 1.9, fontFamily: F }}>{content.aboutBody}</p>
         <p style={{ fontSize: 13, color: c.a, letterSpacing: 2, fontFamily: F }}>{content.phone}  ·  {content.address}</p>
       </section>
-      <TeamSection c={c} content={content} />
     </>
   )}
 }
@@ -1593,7 +2015,7 @@ function ShowcaseSite({ c, content, th, base, industry }: { c: TemplateColors; c
     <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
       <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout(), gallery: null }} c={c} content={content} base={base} industry={industry} />
       <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
     </div>
   )
 
@@ -1610,7 +2032,7 @@ function ShowcaseSite({ c, content, th, base, industry }: { c: TemplateColors; c
           ))}
         </div>
         <div style={{ position: 'absolute', inset: 0, background: overlay, display: 'flex', flexDirection: 'column' }}>
-          <nav aria-label="Navigering" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 5%', background: 'transparent' }}>
+          <nav data-edit="menu" aria-label="Navigering" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 5%', background: 'transparent' }}>
             <span style={{ fontSize: 18, fontWeight: 800, color: '#ffffff', fontFamily: F, letterSpacing: 0.5 }}>
               {content.logo ? <img src={content.logo} alt={content.businessName} style={{ height: 30, display: 'inline-block', verticalAlign: 'middle' }} /> : content.businessName}
             </span>
@@ -1623,6 +2045,9 @@ function ShowcaseSite({ c, content, th, base, industry }: { c: TemplateColors; c
             <h1 style={{ fontSize: 54, fontWeight: 800, color: '#ffffff', letterSpacing: -1, lineHeight: 1.1, maxWidth: 700, marginBottom: 22, fontFamily: F, textShadow: '0 2px 24px rgba(0,0,0,0.45)' }}>
               {content.heroHeading}
             </h1>
+            <p style={{ fontSize: 17, color: '#ffffff', opacity: 0.9, lineHeight: 1.7, maxWidth: 560, marginBottom: 24, fontFamily: F, textShadow: '0 1px 12px rgba(0,0,0,0.5)' }}>
+              {content.heroBody}
+            </p>
             <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
               <a href={content.bookingUrl || '#kontakt'} style={{ background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '13px 34px', borderRadius: 8, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>{content.ctaText}</a>
               <a href={th} style={{ color: '#ffffff', fontSize: 14, fontFamily: F, textDecoration: 'underline' }}>{content.labels?.allLink || cfg.allLink}</a>
@@ -1658,7 +2083,6 @@ function ShowcaseSite({ c, content, th, base, industry }: { c: TemplateColors; c
         <h2 style={{ fontSize: 32, fontWeight: 800, color: c.h, marginBottom: 18, letterSpacing: -0.6, fontFamily: F }}>{content.aboutTitle}</h2>
         <p style={{ fontSize: 16, color: c.s, lineHeight: 1.8, maxWidth: 620, margin: '0 auto', fontFamily: F }}>{content.aboutBody}</p>
       </section>
-      <TeamSection c={c} content={content} />
     </>
   )}
 }
@@ -1674,10 +2098,10 @@ function DirectSite({ c, content, th, base, industry }: { c: TemplateColors; con
 
   return (
     <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
-      <Nav c={c} content={content} minimal tjansterHref={th} />
+      <Nav c={c} content={content} minimal tjansterHref={th} base={base} />
       <PageSections blocks={{ hero: buildHero(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
       <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
     </div>
   )
 
@@ -1716,161 +2140,6 @@ function DirectSite({ c, content, th, base, industry }: { c: TemplateColors; con
         <h2 style={{ fontSize: 28, fontWeight: 800, color: c.h, marginBottom: 14, letterSpacing: -0.5, fontFamily: F }}>{content.aboutTitle}</h2>
         <p style={{ fontSize: 15, color: c.s, lineHeight: 1.75, maxWidth: 600, margin: '0 auto', fontFamily: F }}>{content.aboutBody}</p>
       </section>
-      <TeamSection c={c} content={content} />
-    </>
-  )}
-}
-
-/* ── Kompakt — a business card, not a brochure ─────────────────────────────
-   Everything a visitor needs on one screen: who, when, where, book. */
-function CompactSite({ c, content, th, base, industry }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string }) {
-  const sep    = isDark(c.bg) ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'
-  const mapsHref = content.address?.trim()
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${content.businessName} ${content.address}`)}`
-    : undefined
-
-  return (
-    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
-      <PageSections blocks={{ hero: buildHero() }} c={c} content={content} base={base} industry={industry} />
-      <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
-    </div>
-  )
-
-  function buildHero() { return (
-      <section style={{ minHeight: '92vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '64px 8%' }}>
-        {content.logo
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={content.logo} alt={content.businessName} style={{ height: 54, marginBottom: 22 }} />
-          : <h1 style={{ fontSize: 40, fontWeight: 800, color: c.h, letterSpacing: -1, marginBottom: 10, fontFamily: F }}>{content.businessName}</h1>}
-        <p data-kicker style={{ fontSize: 13, color: c.a, letterSpacing: 3, textTransform: 'uppercase' as const, marginBottom: 26, fontFamily: F }}>{content.tagline}</p>
-
-        <div style={{ width: 48, height: 2, background: c.a, marginBottom: 26 }} />
-
-        <p style={{ fontSize: 15, color: c.s, fontFamily: F, marginBottom: 6 }}>{content.address}</p>
-        <p style={{ fontSize: 14, color: c.s, fontFamily: F, marginBottom: 32 }}>{content.hours}</p>
-
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const, justifyContent: 'center', marginBottom: 40 }}>
-          <a href={content.bookingUrl || `tel:${content.phone.replace(/\s/g, '')}`} data-cta style={{ background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '13px 34px', borderRadius: 10, fontSize: 15, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>{content.ctaText}</a>
-          <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ border: `1.5px solid ${sep}`, color: c.h, padding: '13px 26px', borderRadius: 10, fontSize: 15, fontWeight: 600, fontFamily: F, textDecoration: 'none' }}>{content.phone}</a>
-          {mapsHref && (
-            <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ border: `1.5px solid ${sep}`, color: c.h, padding: '13px 26px', borderRadius: 10, fontSize: 15, fontWeight: 600, fontFamily: F, textDecoration: 'none' }}>
-              {siteLabel(content.labels, 'directions')}
-            </a>
-          )}
-        </div>
-
-        <div style={{ width: '100%', maxWidth: 420 }}>
-          {content.services.map(s => (
-            <div key={s.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: `1px solid ${sep}` }}>
-              <p style={{ fontSize: 14, color: c.h, fontFamily: F }}>{s.name}</p>
-              <p style={{ fontSize: 14, color: c.a, fontWeight: 700, fontFamily: F, whiteSpace: 'nowrap' }}>{s.price}</p>
-            </div>
-          ))}
-          <a href={th} style={{ display: 'inline-block', marginTop: 18, color: c.a, fontSize: 13, fontFamily: F, textDecoration: 'underline' }}>
-            {content.labels?.allLink || getIndConfig(industry).allLink}
-          </a>
-        </div>
-      </section>
-  )}
-}
-
-/* ── Magasin — a front page, not a landing page ────────────────────────────
-   Built for the customer who writes: the newest article leads at full size,
-   the rest follow in a mixed grid. Empty? The services take the stage, so
-   the design never looks broken. */
-function MagazineSite({ c, content, th, base, industry }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string }) {
-  const cfg      = getIndConfig(industry)
-  const articles = publishedArticles(content.articles)
-  const [lead, ...rest] = articles
-  const sep = isDark(c.bg) ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)'
-  const artiklarBase = `${base.replace(/\/tjanster$/, '')}/artiklar`
-
-  return (
-    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
-      {/* Masthead — the name as a newspaper title. The masthead IS the nav,
-          so it stays put; the front page below it is the movable hero. */}
-      <header style={{ borderBottom: `2px solid ${c.h}`, padding: '28px 6% 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: `1px solid ${sep}`, paddingBottom: 10 }}>
-          <p style={{ fontSize: 11, color: c.s, letterSpacing: 2, textTransform: 'uppercase' as const, fontFamily: F }}>{content.tagline}</p>
-          <a href={content.bookingUrl || '#kontakt'} style={{ color: c.a, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{content.ctaText}</a>
-        </div>
-        <h1 style={{ fontSize: 58, fontWeight: 900, color: c.h, letterSpacing: -1.5, textAlign: 'center', padding: '22px 0 14px', fontFamily: F }}>
-          {content.businessName}
-        </h1>
-        <nav aria-label="Navigering" style={{ display: 'flex', justifyContent: 'center', gap: 32, rowGap: 8, flexWrap: 'wrap' as const, borderTop: `1px solid ${sep}`, padding: '12px 0', background: 'transparent' }}>
-          <a href={th} style={{ color: c.h, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{siteLabel(content.labels, 'navServices')}</a>
-          <a href={artiklarBase} style={{ color: c.h, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{siteLabel(content.labels, 'navArticles')}</a>
-          <a href="#om-oss" style={{ color: c.h, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{content.navLinks[1] ?? 'Om oss'}</a>
-          <a href="#kontakt" style={{ color: c.h, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{content.navLinks[2] ?? 'Kontakt'}</a>
-        </nav>
-      </header>
-      <PageSections blocks={{ hero: buildFront(), services: buildStrip(), about: buildAbout(), blog: null }} c={c} content={content} base={base} industry={industry} />
-      <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
-    </div>
-  )
-
-  function buildFront() { return (
-      <section style={{ padding: '48px 6%' }}>
-        {lead ? (
-          <div data-split style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 32, maxWidth: 1200, margin: '0 auto' }}>
-            <a href={`${artiklarBase}/${lead.slug}`} style={{ textDecoration: 'none' }}>
-              {lead.cover && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={lead.cover} alt={lead.coverAlt || lead.title} style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block', marginBottom: 18 }} />
-              )}
-              <p data-kicker style={{ fontSize: 11, color: c.a, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 10, fontFamily: F }}>{formatArticleDate(lead.date)}</p>
-              <h2 style={{ fontSize: 38, fontWeight: 800, color: c.h, lineHeight: 1.15, letterSpacing: -0.8, marginBottom: 12, fontFamily: F }}>{lead.title}</h2>
-              <p style={{ fontSize: 16, color: c.s, lineHeight: 1.7, fontFamily: F }}>{articleSummary(lead, 180)}</p>
-            </a>
-            <div style={{ borderLeft: `1px solid ${sep}`, paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 22 }}>
-              {rest.slice(0, 4).map(a => (
-                <a key={a.id} href={`${artiklarBase}/${a.slug}`} style={{ textDecoration: 'none', borderBottom: `1px solid ${sep}`, paddingBottom: 18 }}>
-                  <p data-kicker style={{ fontSize: 10, color: c.a, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 6, fontFamily: F }}>{formatArticleDate(a.date)}</p>
-                  <h3 style={{ fontSize: 17, fontWeight: 700, color: c.h, lineHeight: 1.3, fontFamily: F }}>{a.title}</h3>
-                </a>
-              ))}
-              {rest.length === 0 && content.services.map(s => (
-                <div key={s.name} style={{ borderBottom: `1px solid ${sep}`, paddingBottom: 16 }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: c.h, marginBottom: 4, fontFamily: F }}>{s.name}</h3>
-                  <p style={{ fontSize: 13, color: c.a, fontWeight: 700, fontFamily: F }}>{s.price}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div data-grid="services" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 28, maxWidth: 1100, margin: '0 auto' }}>
-            {content.services.map((s, i) => (
-              <div key={s.name} style={{ borderTop: `3px solid ${i === 0 ? c.a : c.h}`, paddingTop: 16 }}>
-                <h2 style={{ fontSize: 24, fontWeight: 800, color: c.h, letterSpacing: -0.4, marginBottom: 8, fontFamily: F }}>{s.name}</h2>
-                <p style={{ fontSize: 14, color: c.s, lineHeight: 1.65, marginBottom: 10, fontFamily: F }}>{s.desc}</p>
-                <p style={{ fontSize: 15, fontWeight: 800, color: c.a, fontFamily: F }}>{s.price}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-  )}
-
-  function buildStrip() { return (
-      <section style={{ background: c.b, padding: '40px 6%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20, maxWidth: 1100, margin: '0 auto', flexWrap: 'wrap' as const }}>
-          <p style={{ fontSize: 18, fontWeight: 800, color: c.h, fontFamily: F }}>{content.labels?.svcHeading || cfg.svcHeading}</p>
-          <a href={th} style={{ color: c.a, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none', borderBottom: `1.5px solid ${c.a}`, paddingBottom: 2 }}>{content.labels?.allLink || cfg.allLink}</a>
-        </div>
-      </section>
-  )}
-
-  function buildAbout() { return (
-    <>
-      <section id="om-oss" style={{ background: c.bg, padding: '64px 6%' }}>
-        <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center' }}>
-          <h2 style={{ fontSize: 30, fontWeight: 800, color: c.h, marginBottom: 16, letterSpacing: -0.6, fontFamily: F }}>{content.aboutTitle}</h2>
-          <p style={{ fontSize: 16, color: c.s, lineHeight: 1.8, fontFamily: F }}>{content.aboutBody}</p>
-        </div>
-      </section>
-      <TeamSection c={c} content={content} />
     </>
   )}
 }
@@ -1891,10 +2160,10 @@ function TeamSite({ c, content, th, base, industry }: { c: TemplateColors; conte
 
   return (
     <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
-      <Nav c={c} content={content} minimal tjansterHref={th} />
+      <Nav c={c} content={content} minimal tjansterHref={th} base={base} />
       <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
       <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
-      <Footer c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
     </div>
   )
 
@@ -1958,6 +2227,491 @@ function TeamSite({ c, content, th, base, industry }: { c: TemplateColors; conte
   )}
 }
 
+/* ── Stolpen — everything hangs off one spine ──────────────────────────────
+   A striped rail runs the full height of the page, the way the pole runs
+   down a barbershop doorframe. Every section is numbered against it, so a
+   visitor always knows how far down the page they are. */
+function PoleSite({ c, content, th, base, industry }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string }) {
+  const cfg  = getIndConfig(industry)
+  const sep  = isDark(c.bg) ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'
+  /* The pole: accent and background in a repeating diagonal, drawn once and
+     stretched down the whole page rather than repeated per section. */
+  const pole = `repeating-linear-gradient(-45deg, ${c.a} 0 10px, ${c.b} 10px 20px)`
+
+  return (
+    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F, display: 'grid', gridTemplateColumns: '14px 1fr' }}>
+      <div aria-hidden style={{ background: pole }} />
+      <div style={{ minWidth: 0 }}>
+        <Nav c={c} content={content} minimal tjansterHref={th} base={base} />
+        <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+        <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
+        <Footer c={c} content={content} base={base} />
+      </div>
+    </div>
+  )
+
+  /** The number that marks a section against the rail. */
+  function Marker({ n, label }: { n: string; label: string }) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22 }}>
+        <span style={{ fontSize: 12, fontWeight: 900, color: c.a, letterSpacing: 1, fontFamily: F }}>{n}</span>
+        <span style={{ width: 28, height: 2, background: c.a }} />
+        <span style={{ fontSize: 11, letterSpacing: 3, textTransform: 'uppercase' as const, color: c.s, fontFamily: F }}>{label}</span>
+      </div>
+    )
+  }
+
+  function buildHero() { return (
+    <>
+      <section style={{ padding: '72px 8% 60px', maxWidth: 1100 }}>
+        <Marker n="01" label={content.kicker} />
+        <h1 style={{ fontSize: 56, fontWeight: 900, color: c.h, letterSpacing: -1.5, lineHeight: 1.05, maxWidth: 780, marginBottom: 22, fontFamily: F }}>{content.heroHeading}</h1>
+        <p style={{ fontSize: 17, color: c.s, lineHeight: 1.8, maxWidth: 560, marginBottom: 32, fontFamily: F }}>{content.heroBody}</p>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' as const, marginBottom: 40 }}>
+          <a href={content.bookingUrl || '#kontakt'} data-cta style={{ background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '15px 36px', fontSize: 14, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{content.ctaText}</a>
+          <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ border: `2px solid ${c.h}`, color: c.h, padding: '13px 28px', fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>{content.phone}</a>
+        </div>
+        {/* The two facts a walk-in customer needs, side by side */}
+        <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap' as const, borderTop: `1px solid ${sep}`, paddingTop: 22 }}>
+          <div>
+            <p style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, marginBottom: 6, fontFamily: F }}>{siteLabel(content.labels, 'hoursTitle')}</p>
+            <p style={{ fontSize: 15, color: c.h, fontWeight: 600, fontFamily: F }}>{content.hours}</p>
+          </div>
+          <div>
+            <p style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, marginBottom: 6, fontFamily: F }}>{siteLabel(content.labels, 'contactTitle')}</p>
+            <p style={{ fontSize: 15, color: c.h, fontWeight: 600, fontFamily: F }}>{content.address}</p>
+          </div>
+        </div>
+      </section>
+      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+    </>
+  )}
+
+  function buildServices() { return (
+      <section id="prislista" style={{ background: c.b, padding: '64px 8%' }}>
+        <Marker n="02" label={content.labels?.svcKicker || cfg.svcKicker} />
+        <h2 style={{ fontSize: 32, fontWeight: 900, color: c.h, letterSpacing: -0.8, marginBottom: 32, fontFamily: F }}>{content.labels?.svcHeading || cfg.svcHeading}</h2>
+        <div data-grid="services" style={{ maxWidth: 760 }}>
+          {content.services.map((s, i) => (
+            <div key={s.name} style={{ display: 'flex', gap: 20, alignItems: 'baseline', padding: '18px 0', borderTop: i === 0 ? 'none' : `1px solid ${sep}` }}>
+              <span style={{ fontSize: 11, fontWeight: 900, color: c.a, fontFamily: F, minWidth: 24 }}>{String(i + 1).padStart(2, '0')}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ fontSize: 19, fontWeight: 800, color: c.h, marginBottom: 4, fontFamily: F }}>{s.name}</h3>
+                <p style={{ fontSize: 14, color: c.s, lineHeight: 1.65, fontFamily: F }}>{s.desc}</p>
+              </div>
+              <span style={{ fontSize: 16, fontWeight: 800, color: c.a, fontFamily: F, whiteSpace: 'nowrap' as const }}>{s.price}</span>
+            </div>
+          ))}
+        </div>
+        <a href={th} style={{ display: 'inline-block', marginTop: 26, color: c.a, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none', borderBottom: `2px solid ${c.a}`, paddingBottom: 2 }}>{content.labels?.allLink || cfg.allLink}</a>
+      </section>
+  )}
+
+  function buildAbout() { return (
+      <section id="om-oss" style={{ padding: '64px 8%' }}>
+        <Marker n="03" label={siteLabel(content.labels, 'aboutPageTitle')} />
+        <h2 style={{ fontSize: 32, fontWeight: 900, color: c.h, letterSpacing: -0.8, marginBottom: 18, fontFamily: F }}>{content.aboutTitle}</h2>
+        <p style={{ fontSize: 16, color: c.s, lineHeight: 1.85, maxWidth: 640, fontFamily: F }}>{content.aboutBody}</p>
+      </section>
+  )}
+}
+
+/* ── Rutnätet — hard tiles, no soft edges ──────────────────────────────────
+   Nothing rounded, nothing floating: the opening is a mosaic of solid blocks
+   with the background showing through as grout. Every tile carries exactly
+   one fact, so the whole offer is readable before a single scroll. */
+function GridSite({ c, content, th, base, industry }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string }) {
+  const cfg   = getIndConfig(industry)
+  const grout = c.bg
+  const photo = (content.gallery_images ?? []).find(src => src?.trim())
+  const top   = content.services[0]
+  const sep   = isDark(c.b) ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)'
+  const onA   = isDark(c.a) ? '#ffffff' : '#0a0a0a'
+
+  return (
+    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
+      <Nav c={c} content={content} minimal tjansterHref={th} base={base} />
+      <PageSections blocks={{ hero: buildTiles(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+      <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
+      <Footer c={c} content={content} base={base} />
+    </div>
+  )
+
+  function buildTiles() { return (
+    <>
+      <section data-grid="gallery" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gridAutoRows: 132, gap: 3, background: grout, padding: 3 }}>
+        {/* The name, two by two — the shopfront sign */}
+        <div style={{ gridColumn: 'span 2', gridRow: 'span 2', background: c.b, padding: '30px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <p data-kicker style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase' as const, color: c.a, fontFamily: F }}>{content.kicker}</p>
+          <h1 style={{ fontSize: 40, fontWeight: 900, color: c.h, letterSpacing: -1.2, lineHeight: 1.08, fontFamily: F }}>{content.heroHeading}</h1>
+          <p style={{ fontSize: 14, color: c.s, lineHeight: 1.7, fontFamily: F }}>{content.heroBody}</p>
+        </div>
+
+        {/* The photo, or a solid accent block when there is none yet */}
+        <div style={{ gridColumn: 'span 2', gridRow: 'span 2', background: photo ? c.b : c.a, overflow: 'hidden' }}>
+          {photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photo} alt={content.gallery_alts?.[0]?.trim() || content.businessName} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          ) : (
+            <div style={{ height: '100%', display: 'flex', alignItems: 'flex-end', padding: '30px 32px' }}>
+              <p style={{ fontSize: 22, fontWeight: 900, color: onA, letterSpacing: -0.5, lineHeight: 1.2, fontFamily: F }}>{content.tagline}</p>
+            </div>
+          )}
+        </div>
+
+        {/* One tile per fact: the headline service, when, where */}
+        {top && (
+          <div style={{ background: c.b, padding: '22px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <p style={{ fontSize: 15, fontWeight: 800, color: c.h, fontFamily: F }}>{top.name}</p>
+            <p style={{ fontSize: 22, fontWeight: 900, color: c.a, fontFamily: F }}>{top.price}</p>
+          </div>
+        )}
+        <div style={{ background: c.b, padding: '22px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <p style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, fontFamily: F }}>{siteLabel(content.labels, 'hoursTitle')}</p>
+          <p style={{ fontSize: 14, color: c.h, fontWeight: 600, lineHeight: 1.5, fontFamily: F }}>{content.hours}</p>
+        </div>
+        <div style={{ background: c.b, padding: '22px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <p style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, fontFamily: F }}>{siteLabel(content.labels, 'contactTitle')}</p>
+          <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ fontSize: 14, color: c.h, fontWeight: 600, lineHeight: 1.5, fontFamily: F, textDecoration: 'none' }}>{content.address}<br/>{content.phone}</a>
+        </div>
+        {/* The booking tile is the one block in the accent colour */}
+        {/* The one tile in the accent colour — nothing but the action, so it
+            reads as a button and not as another fact to take in. */}
+        <a href={content.bookingUrl || '#kontakt'} data-cta style={{ background: c.a, padding: '22px 24px', display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+          <span style={{ fontSize: 19, fontWeight: 900, color: onA, letterSpacing: -0.3, lineHeight: 1.25, fontFamily: F }}>{content.ctaText} →</span>
+        </a>
+      </section>
+      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+    </>
+  )}
+
+  function buildServices() { return (
+      <section id="prislista" style={{ padding: '64px 6%' }}>
+        <h2 style={{ fontSize: 30, fontWeight: 900, color: c.h, letterSpacing: -0.8, marginBottom: 28, fontFamily: F }}>{content.labels?.svcHeading || cfg.svcHeading}</h2>
+        <div data-grid="services" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
+          {content.services.map(s => (
+            <div key={s.name} style={{ background: c.b, padding: '26px 26px 24px', borderTop: `4px solid ${c.a}` }}>
+              <h3 style={{ fontSize: 18, fontWeight: 800, color: c.h, marginBottom: 8, fontFamily: F }}>{s.name}</h3>
+              <p style={{ fontSize: 14, color: c.s, lineHeight: 1.65, marginBottom: 14, fontFamily: F }}>{s.desc}</p>
+              <p style={{ fontSize: 17, fontWeight: 900, color: c.a, fontFamily: F }}>{s.price}</p>
+            </div>
+          ))}
+        </div>
+        <a href={th} style={{ display: 'inline-block', marginTop: 24, color: c.a, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none', borderBottom: `2px solid ${c.a}`, paddingBottom: 2 }}>{content.labels?.allLink || cfg.allLink}</a>
+      </section>
+  )}
+
+  function buildAbout() { return (
+      <section id="om-oss" style={{ padding: '0 6% 64px' }}>
+        <div style={{ background: c.b, padding: '48px 44px', borderTop: `1px solid ${sep}`, borderRight: `1px solid ${sep}`, borderBottom: `1px solid ${sep}`, borderLeft: `6px solid ${c.a}` }}>
+          <h2 style={{ fontSize: 28, fontWeight: 900, color: c.h, letterSpacing: -0.6, marginBottom: 16, fontFamily: F }}>{content.aboutTitle}</h2>
+          <p style={{ fontSize: 16, color: c.s, lineHeight: 1.85, maxWidth: 680, fontFamily: F }}>{content.aboutBody}</p>
+        </div>
+      </section>
+  )}
+}
+
+/* ── Verkstan — the wall is the page ───────────────────────────────────────
+   No bar, no card, no panel: a bare row of links floating on the surface and
+   a headline set straight onto it. The texture runs the whole way down, and
+   every section below sits on a translucent sheet laid over it, the way a
+   notice is taped to a workshop wall. */
+function WorkshopSite({ c, content, th, base, industry }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string }) {
+  const cfg   = getIndConfig(industry)
+  const wall  = backdropSrc(content, BACKDROPS.tra.src)
+  const sheet = 'rgba(12,10,9,0.72)'
+  const line  = 'rgba(255,255,255,0.16)'
+
+  return (
+    <div style={{ ...backdropStyle(wall, 0.42), backgroundAttachment: 'scroll', minHeight: '100vh', fontFamily: F }}>
+      <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+      <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
+      <Footer c={c} content={content} base={base} />
+    </div>
+  )
+
+  function buildHero() { return (
+    <>
+      <section style={{ background: 'transparent', padding: 0 }}>
+        {/* Links straight on the wall — no bar behind them */}
+        <nav data-edit="menu" aria-label="Navigering" style={{ display: 'flex', justifyContent: 'center', gap: 34, rowGap: 10, flexWrap: 'wrap' as const, padding: '28px 6%', background: 'transparent' }}>
+          {menuLinks(content, th, base).map(l => (
+            <a key={l.label} href={l.href ?? '#kontakt'} style={{ color: '#ffffff', fontSize: 15, letterSpacing: 2, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none', textShadow: '0 2px 10px rgba(0,0,0,0.6)' }}>{l.label}</a>
+          ))}
+        </nav>
+        <div style={{ minHeight: '72vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '60px 8%' }}>
+          <p data-kicker style={{ fontSize: 12, letterSpacing: 6, textTransform: 'uppercase' as const, color: '#ffffff', opacity: 0.8, marginBottom: 26, fontFamily: F, textShadow: '0 2px 10px rgba(0,0,0,0.6)' }}>{content.kicker}</p>
+          <h1 style={{ fontSize: 62, fontWeight: 800, color: '#ffffff', letterSpacing: 4, textTransform: 'uppercase' as const, lineHeight: 1.08, maxWidth: 900, marginBottom: 26, fontFamily: F, textShadow: '0 4px 28px rgba(0,0,0,0.65)' }}>
+            {content.heroHeading}
+          </h1>
+          <p style={{ fontSize: 17, color: '#ffffff', opacity: 0.9, lineHeight: 1.75, maxWidth: 560, marginBottom: 34, fontFamily: F, textShadow: '0 2px 14px rgba(0,0,0,0.7)' }}>{content.heroBody}</p>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' as const, justifyContent: 'center' }}>
+            <a href={content.bookingUrl || '#kontakt'} data-cta style={{ background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '16px 42px', fontSize: 14, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase' as const, fontFamily: F, textDecoration: 'none' }}>{content.ctaText}</a>
+            <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ border: '2px solid rgba(255,255,255,0.7)', color: '#ffffff', padding: '14px 30px', fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none' }}>{content.phone}</a>
+          </div>
+        </div>
+      </section>
+      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+    </>
+  )}
+
+  function buildServices() { return (
+      <section id="prislista" style={{ background: 'transparent', padding: '64px 7%' }}>
+        <div style={{ maxWidth: 940, margin: '0 auto', background: sheet, border: `1px solid ${line}`, padding: '40px 44px' }}>
+          <p data-kicker style={{ fontSize: 11, color: c.a, letterSpacing: 4, textTransform: 'uppercase' as const, marginBottom: 8, fontFamily: F }}>{content.labels?.svcKicker || cfg.svcKicker}</p>
+          <h2 style={{ fontSize: 30, fontWeight: 800, color: '#ffffff', letterSpacing: 1, marginBottom: 26, fontFamily: F }}>{content.labels?.svcHeading || cfg.svcHeading}</h2>
+          <div data-grid="services">
+            {content.services.map((s, i) => (
+              <div key={s.name} style={{ display: 'flex', gap: 18, alignItems: 'baseline', padding: '16px 0', borderTop: i === 0 ? 'none' : `1px solid ${line}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: '#ffffff', marginBottom: 4, fontFamily: F }}>{s.name}</h3>
+                  <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, fontFamily: F }}>{s.desc}</p>
+                </div>
+                <span style={{ fontSize: 16, fontWeight: 800, color: c.a, whiteSpace: 'nowrap' as const, fontFamily: F }}>{s.price}</span>
+              </div>
+            ))}
+          </div>
+          <a href={th} style={{ display: 'inline-block', marginTop: 22, color: c.a, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none', borderBottom: `2px solid ${c.a}`, paddingBottom: 2 }}>{content.labels?.allLink || cfg.allLink}</a>
+        </div>
+      </section>
+  )}
+
+  function buildAbout() { return (
+      <section id="om-oss" style={{ background: 'transparent', padding: '0 7% 64px' }}>
+        <div style={{ maxWidth: 940, margin: '0 auto', background: sheet, border: `1px solid ${line}`, padding: '40px 44px' }}>
+          <h2 style={{ fontSize: 28, fontWeight: 800, color: '#ffffff', letterSpacing: 1, marginBottom: 16, fontFamily: F }}>{content.aboutTitle}</h2>
+          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.82)', lineHeight: 1.85, maxWidth: 660, fontFamily: F }}>{content.aboutBody}</p>
+        </div>
+      </section>
+  )}
+}
+
+/* ── Skylten — one image, one promise, one button ──────────────────────────
+   A solid band across the top with the menu tucked behind a button, and
+   below it nothing but the room and a single thing to do. The emblem lower
+   down is where the shop signs its name. */
+function SignSite({ c, content, th, base, industry }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string }) {
+  const cfg  = getIndConfig(industry)
+  const shot = backdropSrc(content, BACKDROPS.tegel.src)
+  const sep  = isDark(c.bg) ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+
+  return (
+    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
+      <BurgerNav c={c} content={content} th={th} base={base} />
+      <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+      <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
+      <Footer c={c} content={content} base={base} />
+    </div>
+  )
+
+  function buildHero() { return (
+    <>
+      <section style={{ ...backdropStyle(shot, 0.5), minHeight: '88vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '72px 8%' }}>
+        <h1 style={{ fontSize: 50, fontWeight: 700, color: '#ffffff', lineHeight: 1.15, maxWidth: 760, marginBottom: 20, fontFamily: F, textShadow: '0 3px 26px rgba(0,0,0,0.6)' }}>
+          {content.heroHeading}
+        </h1>
+        <p style={{ fontSize: 17, color: '#ffffff', opacity: 0.9, lineHeight: 1.75, maxWidth: 540, marginBottom: 32, fontFamily: F, textShadow: '0 2px 14px rgba(0,0,0,0.7)' }}>{content.heroBody}</p>
+        <a href={content.bookingUrl || '#kontakt'} data-cta style={{ background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '16px 46px', borderRadius: 999, fontSize: 15, fontWeight: 700, fontFamily: F, textDecoration: 'none', marginBottom: 56 }}>
+          {content.ctaText}
+        </a>
+
+        {/* The emblem — the shop's name, framed, the way it sits on a sign */}
+        <div style={{ border: '2px solid rgba(255,255,255,0.75)', padding: '16px 34px', textAlign: 'center' }}>
+          <p style={{ fontSize: 22, fontWeight: 800, letterSpacing: 5, textTransform: 'uppercase' as const, color: '#ffffff', fontFamily: F, margin: 0 }}>{content.businessName}</p>
+          <p style={{ fontSize: 10, letterSpacing: 5, textTransform: 'uppercase' as const, color: 'rgba(255,255,255,0.75)', marginTop: 6, fontFamily: F }}>{content.tagline}</p>
+        </div>
+      </section>
+      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+    </>
+  )}
+
+  function buildServices() { return (
+      <section id="prislista" style={{ background: c.bg, padding: '72px 8%' }}>
+        <h2 style={{ fontSize: 32, fontWeight: 700, color: c.h, textAlign: 'center', marginBottom: 40, fontFamily: F }}>{content.labels?.svcHeading || cfg.svcHeading}</h2>
+        <div data-grid="services" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 28, maxWidth: 1020, margin: '0 auto' }}>
+          {content.services.map(s => (
+            <div key={s.name} style={{ background: c.b, padding: '30px 28px', textAlign: 'center', border: `1px solid ${sep}` }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: c.h, marginBottom: 10, fontFamily: F }}>{s.name}</h3>
+              <p style={{ fontSize: 14, color: c.s, lineHeight: 1.65, marginBottom: 16, fontFamily: F }}>{s.desc}</p>
+              <p style={{ fontSize: 17, fontWeight: 800, color: c.a, fontFamily: F }}>{s.price}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 34 }}>
+          <a href={th} style={{ color: c.a, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none', borderBottom: `2px solid ${c.a}`, paddingBottom: 2 }}>{content.labels?.allLink || cfg.allLink}</a>
+        </div>
+      </section>
+  )}
+
+  function buildAbout() { return (
+      <section id="om-oss" style={{ ...backdropStyle(shot, 0.72), padding: '80px 8%', textAlign: 'center' }}>
+        <h2 style={{ fontSize: 30, fontWeight: 700, color: '#ffffff', marginBottom: 18, fontFamily: F }}>{content.aboutTitle}</h2>
+        <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.86)', lineHeight: 1.9, maxWidth: 640, margin: '0 auto', fontFamily: F }}>{content.aboutBody}</p>
+      </section>
+  )}
+}
+
+/* ── Salongen — the room does the talking ──────────────────────────────────
+   Two decks of header, then a photograph with nothing written across it, and
+   a contact strip that rides along the bottom of the screen wherever the
+   visitor has scrolled to. Built for the salon whose interior is the pitch. */
+function FoyerSite({ c, content, th, base, industry }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string }) {
+  const cfg  = getIndConfig(industry)
+  const room = backdropSrc(content, BACKDROPS.linne.src)
+  const sep  = isDark(c.bg) ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.09)'
+
+  return (
+    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
+      <StackedNav c={c} content={content} th={th} base={base} />
+      <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+      <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
+      <ContactBar c={c} content={content} />
+      <Footer c={c} content={content} base={base} />
+    </div>
+  )
+
+  function buildHero() { return (
+    <>
+      {/* The room, uncovered — nothing is written over it on purpose. Until
+          there is a room to show, the band shrinks and carries the name
+          instead: a tall empty strip of texture reads as a broken page. */}
+      {isTexture(room) ? (
+        <section style={{ ...backdropStyle(room, 0.34), minHeight: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <p style={{ fontSize: 28, fontWeight: 700, letterSpacing: 6, textTransform: 'uppercase' as const, color: '#ffffff', textAlign: 'center', fontFamily: F, textShadow: '0 2px 18px rgba(0,0,0,0.55)' }}>
+            {content.businessName}
+          </p>
+        </section>
+      ) : (
+        <section style={{ ...backdropStyle(room, 0.08), minHeight: '62vh' }} aria-label={content.businessName} />
+      )}
+      <section style={{ background: c.bg, padding: '56px 8% 44px', textAlign: 'center' }}>
+        <p data-kicker style={{ fontSize: 11, letterSpacing: 4, textTransform: 'uppercase' as const, color: c.a, marginBottom: 16, fontFamily: F }}>{content.kicker}</p>
+        <h1 style={{ fontSize: 40, fontWeight: 700, color: c.h, lineHeight: 1.2, maxWidth: 720, margin: '0 auto 18px', fontFamily: F }}>{content.heroHeading}</h1>
+        <p style={{ fontSize: 17, color: c.s, lineHeight: 1.8, maxWidth: 580, margin: '0 auto 30px', fontFamily: F }}>{content.heroBody}</p>
+        <a href={content.bookingUrl || '#kontakt'} data-cta style={{ background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '15px 40px', fontSize: 14, fontWeight: 700, letterSpacing: 1, fontFamily: F, textDecoration: 'none', display: 'inline-block' }}>{content.ctaText}</a>
+      </section>
+      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+    </>
+  )}
+
+  function buildServices() { return (
+      <section id="prislista" style={{ background: c.b, padding: '68px 8%' }}>
+        <h2 style={{ fontSize: 28, fontWeight: 700, color: c.h, textAlign: 'center', letterSpacing: 1, marginBottom: 34, fontFamily: F }}>{content.labels?.svcHeading || cfg.svcHeading}</h2>
+        <div data-grid="services" style={{ maxWidth: 660, margin: '0 auto' }}>
+          {content.services.map((s, i) => (
+            <div key={s.name} style={{ padding: '18px 0', borderTop: i === 0 ? 'none' : `1px solid ${sep}`, display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'baseline' }}>
+              <div>
+                <h3 style={{ fontSize: 17, fontWeight: 700, color: c.h, marginBottom: 4, fontFamily: F }}>{s.name}</h3>
+                <p style={{ fontSize: 14, color: c.s, lineHeight: 1.6, fontFamily: F }}>{s.desc}</p>
+              </div>
+              <span style={{ fontSize: 16, fontWeight: 700, color: c.a, whiteSpace: 'nowrap' as const, fontFamily: F }}>{s.price}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 30 }}>
+          <a href={th} style={{ color: c.a, fontSize: 14, fontWeight: 700, fontFamily: F, textDecoration: 'none', borderBottom: `1.5px solid ${c.a}`, paddingBottom: 2 }}>{content.labels?.allLink || cfg.allLink}</a>
+        </div>
+      </section>
+  )}
+
+  function buildAbout() { return (
+      <section id="om-oss" style={{ background: c.bg, padding: '68px 8%', textAlign: 'center' }}>
+        <h2 style={{ fontSize: 28, fontWeight: 700, color: c.h, marginBottom: 16, fontFamily: F }}>{content.aboutTitle}</h2>
+        <p style={{ fontSize: 16, color: c.s, lineHeight: 1.9, maxWidth: 640, margin: '0 auto', fontFamily: F }}>{content.aboutBody}</p>
+      </section>
+  )}
+}
+
+/* ── Kemi — set in a serif, and it changes everything ──────────────────────
+   The one theme whose voice is typographic rather than structural: a serif
+   headline that turns italic halfway through, a washed image behind it, and
+   a text link where every other template puts a button. */
+function ChemistrySite({ c, content, th, base, industry }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string }) {
+  const cfg  = getIndConfig(industry)
+  const wash = backdropSrc(content, BACKDROPS.betong.src)
+  const sep  = isDark(c.bg) ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'
+
+  /* The headline breaks in two: the claim upright, the last few words in
+     italic. It reads as a thought finishing rather than a slogan ending. */
+  const words = content.heroHeading.trim().split(/\s+/)
+  const tail  = words.length > 3 ? words.slice(-2).join(' ') : ''
+  const head  = tail ? words.slice(0, -2).join(' ') : content.heroHeading
+
+  /* The wash: the accent colour laid over the surface so the opening reads as
+     a colour before it reads as a picture. It is what makes this theme
+     recognisable across the room, and it holds up over any photograph. */
+  const washed = backdropStyle(wash, 0.72, rgbOf(c.a))
+
+  return (
+    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
+      <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
+      <JsonLD content={content} industry={industry} url={publicUrlFrom(base)} />
+      <Footer c={c} content={content} base={base} />
+    </div>
+  )
+
+  function buildHero() { return (
+    <>
+      {/* Nav and headline share one washed field — the menu belongs to the
+          image here, not to a bar above it. */}
+      <section style={{ ...washed, position: 'relative' }}>
+        <nav data-edit="menu" aria-label="Navigering" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 7%', background: 'transparent', position: 'relative', zIndex: 3 }}>
+          <span style={{ width: 60 }} />
+          <span style={{ fontSize: 20, fontWeight: 400, letterSpacing: 7, textTransform: 'uppercase' as const, color: '#ffffff', fontFamily: F }}>
+            {content.logo
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={content.logo} alt={content.businessName} style={{ height: 28, display: 'block' }} />
+              : content.businessName}
+          </span>
+          <input type="checkbox" id={MENU_ID} className="kr-burger" aria-hidden />
+          <MenuOverlay c={c} content={content} th={th} base={base} fg="#ffffff" />
+        </nav>
+
+        <div style={{ minHeight: '62vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '48px 7% 60px' }}>
+          <h1 style={{ fontSize: 52, fontWeight: 400, color: '#ffffff', lineHeight: 1.22, maxWidth: 880, marginBottom: 24, fontFamily: F, textShadow: '0 3px 24px rgba(0,0,0,0.35)' }}>
+            {head}{tail && <> <em style={{ fontStyle: 'italic' }}>{tail}</em></>}
+          </h1>
+          <p style={{ fontSize: 17, color: '#ffffff', opacity: 0.95, lineHeight: 1.8, maxWidth: 560, fontFamily: F, textShadow: '0 2px 14px rgba(0,0,0,0.4)' }}>{content.heroBody}</p>
+        </div>
+
+        {/* The band the booking link sits on — a rule under a word, not a button */}
+        <div style={{ background: 'rgba(255,255,255,0.18)', padding: '22px 7%', textAlign: 'center' }}>
+          <a href={content.bookingUrl || '#kontakt'} data-cta style={{ color: '#ffffff', fontSize: 22, fontFamily: F, textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.9)', paddingBottom: 6 }}>
+            {content.ctaText}
+          </a>
+        </div>
+      </section>
+      <StatsBar c={c} content={content} cfg={cfg} th={th} />
+    </>
+  )}
+
+  function buildServices() { return (
+      <section id="prislista" style={{ background: c.bg, padding: '76px 8%' }}>
+        <p data-kicker style={{ fontSize: 12, color: c.a, letterSpacing: 3, textTransform: 'uppercase' as const, textAlign: 'center', marginBottom: 10, fontFamily: F }}>{content.labels?.svcKicker || cfg.svcKicker}</p>
+        <h2 style={{ fontSize: 36, fontWeight: 400, color: c.h, textAlign: 'center', marginBottom: 42, fontFamily: F }}>{content.labels?.svcHeading || cfg.svcHeading}</h2>
+        <div data-grid="services" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 36, maxWidth: 1000, margin: '0 auto' }}>
+          {content.services.map(s => (
+            <div key={s.name} style={{ textAlign: 'center', paddingTop: 20, borderTop: `1px solid ${sep}` }}>
+              <h3 style={{ fontSize: 21, fontWeight: 400, color: c.h, marginBottom: 10, fontFamily: F }}>{s.name}</h3>
+              <p style={{ fontSize: 14, color: c.s, lineHeight: 1.75, marginBottom: 14, fontFamily: F }}>{s.desc}</p>
+              <p style={{ fontSize: 15, color: c.a, fontStyle: 'italic', fontFamily: F }}>{s.price}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 40 }}>
+          <a href={th} style={{ color: c.h, fontSize: 16, fontFamily: F, textDecoration: 'none', borderBottom: `1px solid ${c.a}`, paddingBottom: 3 }}>{content.labels?.allLink || cfg.allLink}</a>
+        </div>
+      </section>
+  )}
+
+  function buildAbout() { return (
+      <section id="om-oss" style={{ background: c.b, padding: '76px 8%', textAlign: 'center' }}>
+        <h2 style={{ fontSize: 32, fontWeight: 400, color: c.h, marginBottom: 20, fontFamily: F }}>{content.aboutTitle}</h2>
+        <p style={{ fontSize: 17, color: c.s, lineHeight: 2, maxWidth: 640, margin: '0 auto', fontFamily: F }}>{content.aboutBody}</p>
+      </section>
+  )}
+}
+
 /* ── Export ─────────────────────────────────────────────────────────────── */
 
 export function PreviewSite({
@@ -1970,7 +2724,10 @@ export function PreviewSite({
    *  the template demo at /preview/<templateId>. */
   tjansterBase?:    string
 }) {
-  const content = contentOverride ?? CONTENT[industry] ?? CONTENT.other
+  const raw = contentOverride ?? CONTENT[baseIndustry(industry)] ?? CONTENT.other
+  /* Same order as the colors below: the theme sets the surface, anything the
+   * customer chose or uploaded replaces it. */
+  const content: SiteContent = raw.backdrop || !template.backdrop ? raw : { ...raw, backdrop: template.backdrop }
   /* The customer's colors win over the template's — same merge the published
    * pages get from site-data, so preview and live can't drift apart. */
   const c: TemplateColors = { ...template.colors, ...(content.colorOverrides ?? {}) }
@@ -1981,7 +2738,13 @@ export function PreviewSite({
    * there instead of to our internal pages. `base` stays internal: articles
    * and schema still belong to the site itself. */
   const external = content.pricelistMode === 'booking' && !!content.bookingUrl?.trim()
-  const th       = external ? content.bookingUrl!.trim() : base
+  /* Price-list links: the booking page when the list lives there, the own
+   * /tjanster page when one exists, otherwise the list on the start page —
+   * a published site without the own page must never link into a 404. */
+  const published = (tjansterBase ?? '').startsWith('/s/')
+  const th = external ? content.bookingUrl!.trim()
+    : published && !sectionPageEnabled(content, 'pricelist') ? '#prislista'
+    : base
 
   const layout = (() => {
     switch (template.layout) {
@@ -1991,9 +2754,13 @@ export function PreviewSite({
       case 'luxury':    return <LuxurySite    c={c} content={content} th={th} base={base} industry={industry} />
       case 'showcase':  return <ShowcaseSite  c={c} content={content} th={th} base={base} industry={industry} />
       case 'direct':    return <DirectSite    c={c} content={content} th={th} base={base} industry={industry} />
-      case 'compact':   return <CompactSite   c={c} content={content} th={th} base={base} industry={industry} />
-      case 'magazine':  return <MagazineSite  c={c} content={content} th={th} base={base} industry={industry} />
       case 'team':      return <TeamSite      c={c} content={content} th={th} base={base} industry={industry} />
+      case 'pole':      return <PoleSite      c={c} content={content} th={th} base={base} industry={industry} />
+      case 'grid':      return <GridSite      c={c} content={content} th={th} base={base} industry={industry} />
+      case 'workshop':  return <WorkshopSite  c={c} content={content} th={th} base={base} industry={industry} />
+      case 'sign':      return <SignSite      c={c} content={content} th={th} base={base} industry={industry} />
+      case 'foyer':     return <FoyerSite     c={c} content={content} th={th} base={base} industry={industry} />
+      case 'chemistry': return <ChemistrySite c={c} content={content} th={th} base={base} industry={industry} />
       default:          return <CenteredSite  c={c} content={content} th={th} base={base} industry={industry} />
     }
   })()
@@ -2003,7 +2770,7 @@ export function PreviewSite({
    * The font variable rides on the wrapper — every text style in the layouts
    * resolves through it, so one uploaded font restyles the whole site. */
   return (
-    <div className="kr-site" lang={content.siteLang || 'sv'} style={siteFontVars(content)}>
+    <div className="kr-site" lang={content.siteLang || 'sv'} style={siteFontVars(content, template.font)}>
       <SiteStyles />
       <SiteFontFace content={content} />
       {layout}

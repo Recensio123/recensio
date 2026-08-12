@@ -1,6 +1,6 @@
 'use client'
 import type { TemplateColors } from '@/app/onboarding/templates'
-import { formatArticleDate, type Article } from '@/lib/articles'
+import { formatArticleDate, type Article, type ArticleBlock } from '@/lib/articles'
 
 /*
  * An article, rendered.
@@ -45,7 +45,19 @@ export function ArticleBody({ article, c }: { article: Article; c: TemplateColor
         />
       )}
 
-      {article.blocks.map((block, i) => {
+      <BlocksBody blocks={article.blocks} c={c} altFallback={article.title} />
+    </>
+  )
+}
+
+/* The blocks alone — shared by articles and the sections' own pages, where
+   the customer fills in extra headings, texts and photo groups the same way. */
+export function BlocksBody({ blocks, c, altFallback }: { blocks: ArticleBlock[]; c: TemplateColors; altFallback?: string }) {
+  const fgSub = isDark(c.bg) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
+
+  return (
+    <>
+      {blocks.map((block, i) => {
         // Subheadings are what let a long article be skimmed — and what tells
         // Google which question each part of the page answers
         if (block.type === 'heading') {
@@ -83,7 +95,7 @@ export function ArticleBody({ article, c }: { article: Article; c: TemplateColor
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={im.src}
-                  alt={im.alt || article.title}
+                  alt={im.alt || altFallback || ''}
                   loading="lazy"
                   style={{ width: '100%', borderRadius: 10, display: 'block' }}
                 />

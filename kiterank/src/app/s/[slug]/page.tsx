@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { PreviewSite } from '@/app/preview/[templateId]/PreviewSite'
 import { getPublishedSite } from './site-data'
@@ -54,6 +54,8 @@ export default async function PublishedSitePage({ params }: Props) {
   const { slug } = await params
   const site = await getPublishedSite(slug)
   if (!site) notFound()
+  // Old address after a rename — send Google and visitors to the current one
+  if (site.slug !== slug) permanentRedirect(`/s/${site.slug}`)
 
   return (
     <PreviewSite

@@ -25,16 +25,32 @@ export const inputStyle = {
   color: '#f1f5f9', resize: 'vertical' as const,
 }
 
-export function Field({ label, value, onChange, multiline, placeholder, max, rows }: {
+export function Field({ label, value, onChange, multiline, placeholder, max, rows, field, marked }: {
   label: string; value: string; onChange: (v: string) => void
   multiline?: boolean; placeholder?: string; rows?: number
   /** Hard cap so long texts can't break the page layout. */
   max?: number
+  /** Names this field so a click on the page can point straight at it. */
+  field?: string
+  /** True when the page click landed on exactly this text. */
+  marked?: boolean
 }) {
+  // Replace the whole border shorthand, never just its colour — React warns
+  // (rightly) that mixing the two makes the result order-dependent.
+  const style = marked
+    ? { ...inputStyle, border: '1px solid #eab308', boxShadow: '0 0 0 3px rgba(234,179,8,0.18)' }
+    : inputStyle
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 5 }}>
-        <label style={{ flex: 1, fontSize: 12, fontWeight: 600, color: '#94a3b8', fontFamily: F }}>{label}</label>
+    <div data-panel-field={field} style={{ scrollMarginTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 5 }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: marked ? '#eab308' : '#94a3b8', fontFamily: F }}>{label}</label>
+        {/* Says out loud which text on the page this box holds */}
+        {marked && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#0f172a', background: '#eab308', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+            Vald på sidan
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
         {max != null && (
           <span style={{ fontSize: 11, fontFamily: F, color: value.length >= max ? '#f87171' : '#64748b' }}>
             {value.length}/{max}
@@ -42,8 +58,8 @@ export function Field({ label, value, onChange, multiline, placeholder, max, row
         )}
       </div>
       {multiline
-        ? <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows ?? 3} style={inputStyle} placeholder={placeholder} maxLength={max} />
-        : <input value={value} onChange={e => onChange(e.target.value)} style={inputStyle} placeholder={placeholder} maxLength={max} />}
+        ? <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows ?? 3} style={style} placeholder={placeholder} maxLength={max} />
+        : <input value={value} onChange={e => onChange(e.target.value)} style={style} placeholder={placeholder} maxLength={max} />}
     </div>
   )
 }

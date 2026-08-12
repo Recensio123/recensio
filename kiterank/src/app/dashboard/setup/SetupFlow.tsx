@@ -3,10 +3,12 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useLang } from '@/components/LanguageProvider'
 import { usePlan } from '@/components/PlanProvider'
-import { getTemplatesForIndustry } from '@/app/onboarding/templates'
+import { SALON_TEMPLATES } from '@/app/onboarding/templates'
+import { TRADES } from '@/lib/trades'
 import { type GbpState } from '@/components/dashboard/GoogleProfileGuide'
 import { GoogleConnectPanel } from '@/components/dashboard/GoogleConnectPanel'
 import { ExternalLink } from '@/components/ExternalLink'
+import { AboutFields, type AboutBusiness } from '@/app/onboarding/AboutFields'
 import {
   BLANK_PROFILE, siteIsOurs, SETUP_PROFILE_KEY, SETUP_DONE_KEY,
   type SetupProfile,
@@ -27,33 +29,23 @@ const FLOW_KEY = 'kiterank_setup_flow'
 const STEP_KEY = 'kiterank_setup_step'
 
 type StepId =
-  | 'intake' | 'template' | 'features'
+  | 'intake' | 'trade' | 'template' | 'about'
   | 'address' | 'connect' | 'measure' | 'profile' | 'done'
 
 type FlowState = {
+  /** Which salon trade — decides the designs offered and the whole draft. */
+  trade:    string | null
   template: string | null
-  features: string[]
+  /** What the customer told us about the business — becomes the site text. */
+  about:    AboutBusiness
   address:  string
   gbpState: GbpState
   profileDone: string[]   // gbp sub-steps ticked
 }
 
-// Salons only for now, so the industry question is gone and the templates
-// come straight from the salon set.
-const INDUSTRY = 'salon'
 
-const FEATURES = [
-  { id: 'booking',   sv: 'Bokningssystem på sidan', en: 'Booking system on the site', svd: 'Kunderna bokar tider direkt på din hemsida. Sköter du redan bokningen via en extern tjänst, som Bokadirekt, kan du stänga av den här.', end: 'Customers book appointments straight from your website. If you already handle booking through an external service, such as Bokadirekt, you can switch this off.' },
-  { id: 'pricelist', sv: 'Prislista',       en: 'Price list',       svd: 'Visa tjänster och priser tydligt',    end: 'Show services and prices clearly' },
-  { id: 'gallery',   sv: 'Bildgalleri',     en: 'Photo gallery',    svd: 'Visa upp ditt arbete med foton',      end: 'Show off your work with photos' },
-  { id: 'contact',   sv: 'Kontaktformulär', en: 'Contact form',     svd: 'Kunder kan skicka meddelanden',       end: 'Customers can send you messages' },
-  { id: 'reviews',   sv: 'Kundomdömen',     en: 'Customer reviews', svd: 'Lyft fram dina bästa recensioner',    end: 'Highlight your best reviews' },
-]
-
-// Everything on to start with — it is easier to switch a section off than to
-// discover one you never knew existed.
 const BLANK_FLOW: FlowState = {
-  template: null, features: FEATURES.map(f => f.id), address: '',
+  trade: null, template: null, about: { description: '', services: '', area: '', special: '', years: '', team: '' }, address: '',
   gbpState: 'unknown', profileDone: [],
 }
 
@@ -61,7 +53,7 @@ const T = {
   sv: {
     of: 'av',
     back: '← Tillbaka', next: 'Nästa →', finish: 'Klart →',
-    rail: { intake: 'Läget', template: 'Mall', features: 'Funktioner', address: 'Webbadress', connect: 'Koppling', measure: 'Mätning', profile: 'Google-profil', done: 'Klart' } as Record<StepId, string>,
+    rail: { intake: 'Läget', trade: 'Bransch', template: 'Design', about: 'Om er', address: 'Webbadress', connect: 'Koppling', measure: 'Mätning', profile: 'Google-profil', done: 'Klart' } as Record<StepId, string>,
 
     intakeTitle: 'Vad vill du ha hjälp med?',
     intakeSub:   'Välj det som stämmer för dig — valet avgör vilka steg du får härnäst.',
@@ -70,14 +62,18 @@ const T = {
     optBuild:    'Jag har ingen hemsida — eller vill se era alternativ',
     optBuildSub: 'Vi bygger sidan åt dig och sköter all mätning automatiskt. Du får titta igenom mallarna innan du bestämmer dig för något.',
 
-    templateTitle: 'Välj en mall',
+    tradeTitle: 'Vilken sorts salong driver du?',
+    tradeSub:   'Alla designer är öppna för alla — valet fyller hemsidan med prislista, artiklar och texter skrivna för just din bransch.',
+
+    templateTitle: 'Välj en design',
     templateSub:   'Klicka runt bland varianterna. Du kan byta mall och ändra färger och text när som helst efteråt.',
     preview:         'Öppna i helskärm',
     backToTemplates: '← Tillbaka till mallvalet',
     previewing:      'Förhandsgranskar:',
 
-    featuresTitle: 'Vad ska sidan innehålla?',
-    featuresSub:   'Allt går att slå på och av senare. Bokning rekommenderas — det är den som gör att vi kan visa vad varje kanal ger dig i kronor.',
+    aboutTitle: 'Berätta om din verksamhet',
+    aboutSub:   'Vi sätter ihop hela hemsidan av det du skriver här — dina ord, dina tjänster, din ort.',
+    aboutNudge: 'Av dina svar bygger vi hela hemsidan — startsida, om oss, prislista och sex artiklar. Ju mer du berättar, desto mer blir dina egna ord. Allt går att ändra sen.',
 
     addressTheirsTitle: 'Vad är adressen till din hemsida?',
     addressTheirsSub:   'Vi behöver den för att kunna mäta besöken och se hur du ligger till i sökresultaten.',
@@ -143,7 +139,7 @@ const T = {
   en: {
     of: 'of',
     back: '← Back', next: 'Next →', finish: 'Done →',
-    rail: { intake: 'Your setup', template: 'Template', features: 'Features', address: 'Web address', connect: 'Connection', measure: 'Measurement', profile: 'Google profile', done: 'Done' } as Record<StepId, string>,
+    rail: { intake: 'Your setup', trade: 'Trade', template: 'Design', about: 'About you', address: 'Web address', connect: 'Connection', measure: 'Measurement', profile: 'Google profile', done: 'Done' } as Record<StepId, string>,
 
     intakeTitle: 'What would you like help with?',
     intakeSub:   'Pick the one that fits — it decides which steps you get next.',
@@ -152,14 +148,18 @@ const T = {
     optBuild:    'I have no website — or I want to see your options',
     optBuildSub: 'We build the site for you and handle all the measurement automatically. You get to look through the templates before deciding on anything.',
 
-    templateTitle: 'Pick a template',
+    tradeTitle: 'What kind of salon do you run?',
+    tradeSub:   'Every design is open to everyone — this fills the site with a price list, articles and text written for your trade.',
+
+    templateTitle: 'Pick a design',
     templateSub:   'Click through the options. You can switch template and change colours and text at any time afterwards.',
     preview:         'Open full screen',
     backToTemplates: '← Back to templates',
     previewing:      'Previewing:',
 
-    featuresTitle: 'What should the site include?',
-    featuresSub:   'Everything can be switched on and off later. Booking is recommended — it is what lets us show what each channel brings you in kronor.',
+    aboutTitle: 'Tell us about your business',
+    aboutSub:   'We build the whole website from what you enter here — your words, your services, your area.',
+    aboutNudge: 'From your answers we build the whole site — home page, about, price list and six articles. The more you tell us, the more of it is in your own words. Everything can be changed later.',
 
     addressTheirsTitle: 'What is your website address?',
     addressTheirsSub:   'We need it to measure your visits and see where you rank in search results.',
@@ -280,12 +280,11 @@ export function SetupFlow({
     window.addEventListener('popstate', onPop)
     setReady(true)
     return () => window.removeEventListener('popstate', onPop)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function applyPreviewParam(id: string | null) {
     if (!id) { setPreview(null); return }
-    const tpl = getTemplatesForIndustry(INDUSTRY).find(t => t.id === id)
+    const tpl = SALON_TEMPLATES.find(t => t.id === id)
     setPreview(tpl ? { id: tpl.id, name: tpl.name } : null)
   }
 
@@ -327,7 +326,7 @@ export function SetupFlow({
   // what is already in place. Asking for a tracking code before checking would
   // send half of them chasing their web agency for work already done.
   const steps: StepId[] = ourSite
-    ? ['intake', 'template', 'features', 'done']
+    ? ['intake', 'trade', 'template', 'about', 'done']
     : ['intake', 'address', 'connect']
   // A saved step that no longer exists on this path falls back to the start
   const stepIdx = Math.max(0, steps.indexOf(stepId))
@@ -354,6 +353,7 @@ export function SetupFlow({
 
   const canAdvance = (() => {
     if (step === 'intake')   return path !== null
+    if (step === 'trade')    return !!flow.trade
     if (step === 'template') return !!flow.template
     // No point moving on before we know which profile situation they are in
     if (step === 'profile')  return flow.gbpState !== 'unknown'
@@ -363,6 +363,17 @@ export function SetupFlow({
 
   function goNext() {
     if (step === 'intake') persistProfile()
+    /* Leaving the about step writes the answers to the site. Fire and forget:
+     * the text is a starting point, and a failed write must not block someone
+     * from finishing setup — the editor is where it gets its final wording
+     * either way. */
+    if (step === 'about') {
+      void fetch('/api/webbplats', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ about: flow.about, industry: flow.trade ?? 'salon', template: flow.template ?? undefined }),
+      }).catch(() => {})
+    }
     // Reaching the end marks the flow as started, so the dashboard stops
     // sending them back here. Keyed on the destination rather than on any one
     // step, so it survives steps being added or removed.
@@ -422,11 +433,40 @@ export function SetupFlow({
         </Screen>
       )}
 
+      {/* ── Bransch ──────────────────────────────────────────────────
+          The choice that decides everything downstream: which designs are
+          offered, and which content pack fills the site. A nail salon and a
+          barbershop share nothing but the word "salong". */}
+      {step === 'trade' && (
+        <Screen title={t.tradeTitle} sub={t.tradeSub}>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {TRADES.map(tr => {
+              const on = flow.trade === tr.id
+              return (
+                <button
+                  key={tr.id}
+                  onClick={() => persistFlow({ ...flow, trade: tr.id, template: null })}
+                  className={`text-left rounded-xl border px-4 py-4 flex items-start gap-3 transition-colors ${
+                    on ? 'bg-navy-800 border-mustard/50' : 'bg-navy-800/50 border-navy-700 hover:border-navy-600'
+                  }`}
+                >
+                  <span className={`text-xl shrink-0 ${on ? 'text-mustard' : 'text-slate-500'}`}>{tr.pick.icon}</span>
+                  <span>
+                    <span className={`block text-sm font-semibold ${on ? 'text-mustard' : 'text-white'}`}>{tr.pick.label}</span>
+                    <span className="block text-xs text-slate-400 mt-0.5">{tr.pick.desc}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </Screen>
+      )}
+
       {/* ── Mall, med riktiga förhandsvisningar ──────────────────────── */}
       {step === 'template' && (
         <Screen title={t.templateTitle} sub={t.templateSub}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[540px] overflow-y-auto pr-1">
-            {getTemplatesForIndustry(INDUSTRY).map(tpl => {
+            {SALON_TEMPLATES.map(tpl => {
               const active = flow.template === tpl.id
               return (
                 <div
@@ -467,33 +507,16 @@ export function SetupFlow({
         </Screen>
       )}
 
-      {/* ── Funktioner ───────────────────────────────────────────────── */}
-      {step === 'features' && (
-        <Screen title={t.featuresTitle} sub={t.featuresSub}>
-          <div className="space-y-2">
-            {FEATURES.map(f => {
-              const on = flow.features.includes(f.id)
-              return (
-                <button
-                  key={f.id}
-                  onClick={() => persistFlow({
-                    ...flow,
-                    features: on ? flow.features.filter(x => x !== f.id) : [...flow.features, f.id],
-                  })}
-                  className={`w-full text-left rounded-xl border px-4 py-3 flex items-start gap-3 transition-colors ${
-                    on ? 'bg-navy-800 border-mustard/40' : 'bg-navy-800/50 border-navy-700 hover:border-navy-600'
-                  }`}
-                >
-                  <span className={`w-5 h-5 rounded-md border shrink-0 mt-0.5 flex items-center justify-center text-xs ${
-                    on ? 'bg-green-500/20 border-green-500/50 text-green-400' : 'border-navy-600 text-transparent'
-                  }`}>✓</span>
-                  <span>
-                    <span className="block text-sm font-medium text-white">{lang === 'sv' ? f.sv : f.en}</span>
-                    <span className="block text-xs text-slate-400 mt-0.5">{lang === 'sv' ? f.svd : f.end}</span>
-                  </span>
-                </button>
-              )
-            })}
+      {/* ── Om er ────────────────────────────────────────────────────
+          What the customer tells us here becomes the text on their site.
+          Which parts of the site to keep is a question for the editor, with
+          the finished site in front of them — not for a wizard where every
+          answer is a guess. */}
+      {step === 'about' && (
+        <Screen title={t.aboutTitle} sub={t.aboutSub}>
+          <p className="text-mustard text-sm font-medium -mt-2 mb-6">{t.aboutNudge}</p>
+          <div className="max-w-xl">
+            <AboutFields about={flow.about} onChange={next => persistFlow({ ...flow, about: next })} lang={lang} />
           </div>
         </Screen>
       )}

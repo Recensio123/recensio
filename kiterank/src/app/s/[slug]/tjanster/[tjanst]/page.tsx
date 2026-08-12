@@ -1,6 +1,6 @@
-import { notFound, redirect } from 'next/navigation'
+import { notFound, redirect, permanentRedirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { getPublishedSite, servicesOf, pricelistIsExternal, type PublishedSite, type ServiceOnSite } from '../../site-data'
+import { getPublishedSite, servicesOf, pricelistIsExternal, sectionHasPage, type PublishedSite, type ServiceOnSite } from '../../site-data'
 import { siteLabel } from '@/lib/siteLabels'
 import { siteFontVars, SiteFontFace } from '@/components/SiteFont'
 
@@ -18,7 +18,8 @@ type Props = { params: Promise<{ slug: string; tjanst: string }> }
 
 async function resolve(slugs: { slug: string; tjanst: string }): Promise<{ site: PublishedSite; service: ServiceOnSite; others: ServiceOnSite[] } | null> {
   const site = await getPublishedSite(slugs.slug)
-  if (!site) return null
+  // No own price pages — the keyword pages would be orphans of a hub that's gone
+  if (!site || !sectionHasPage(site, 'pricelist')) return null
   const all = servicesOf(site)
   const service = all.find(s => s.slug === slugs.tjanst)
   if (!service) return null
@@ -52,6 +53,8 @@ export default async function ServiceKeywordPage({ params }: Props) {
   const p = await params
   const r = await resolve(p)
   if (!r) notFound()
+  // Old address after a rename — send Google and visitors to the current one
+  if (r.site.slug !== p.slug) permanentRedirect(`/s/${r.site.slug}/tjanster/${p.tjanst}`)
 
   // Price list lives on the booking page — the keyword pages step aside too
   if (pricelistIsExternal(r.site)) redirect(`/s/${r.site.slug}`)

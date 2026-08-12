@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { buildSiteDraft } from '@/lib/siteTemplates'
+import { bookingServices } from '@/lib/trades'
 
-// Default services per industry — seeded into booking_services on setup
+// Trades outside the salon packs still keep a hand-written service list
 const DEFAULT_SERVICES: Record<string, { name: string; description: string; duration_minutes: number; price_sek: number }[]> = {
   salon: [
     { name: 'Klippning & styling',   description: 'Professionell klippning för alla hårtyper',          duration_minutes: 60,  price_sek: 850  },
@@ -59,10 +61,20 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { industry, template, features, language, bizName, slug } = await req.json()
+  const { industry, template, features, language, bizName, slug, about } = await req.json()
 
   if (!bizName?.trim() || !slug?.trim()) {
     return NextResponse.json({ error: 'Missing bizName or slug' }, { status: 400 })
+  }
+
+  /* Six answers in, a whole site out: headline, about text, process, FAQ,
+   * price list, six articles and a team, with their own words and town woven
+   * through. See lib/siteTemplates. */
+  const seeded: Record<string, unknown> = {
+    ...buildSiteDraft(about, industry, bizName),
+    // Everything on from the start — trimming down happens in the editor,
+    // with the real site in front of the customer
+    siteFeatures: { booking: true, pricelist: true, gallery: true, contact: true, blog: true, reviews: true, about: true },
   }
 
   const admin = createAdminClient()
@@ -115,6 +127,7 @@ export async function POST(req: NextRequest) {
       template,
       language,
       features,
+      content:    seeded,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'company_id' })
 
@@ -122,7 +135,10 @@ export async function POST(req: NextRequest) {
 
   // Seed default booking services if booking feature is enabled
   if (features?.booking) {
-    const services = DEFAULT_SERVICES[industry] ?? DEFAULT_SERVICES.salon
+    // A salon trade books what its price list says; anything else falls back
+    // to the hand-written lists above.
+    const fromPack = bookingServices(industry)
+    const services = fromPack.length ? fromPack : (DEFAULT_SERVICES[industry] ?? DEFAULT_SERVICES.salon)
     await admin
       .from('booking_services')
       .insert(services.map((s, i) => ({ ...s, company_id: company.id, sort_order: i })))

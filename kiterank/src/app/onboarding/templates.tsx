@@ -1,9 +1,11 @@
-// Template system: 10 options per industry
-// Colors capture the *feeling* of the industry — not the tools of the trade.
+// One list of designs, open to every salon trade. What the trade decides is
+// the content that fills them — see lib/trades and lib/siteTemplates.
 
 export type Layout =
   | 'centered' | 'split' | 'editorial' | 'heritage' | 'luxury'
-  | 'showcase' | 'direct' | 'compact' | 'magazine' | 'team'
+  | 'showcase' | 'direct' | 'team'
+  | 'pole' | 'grid'
+  | 'workshop' | 'sign' | 'foyer' | 'chemistry'
 
 export type TemplateColors = {
   bg:  string   // page background
@@ -20,6 +22,12 @@ export type Template = {
   tagline: string
   layout:  Layout
   colors:  TemplateColors
+  /** The typography the theme was drawn for — a key from SITE_FONTS. Only a
+   *  starting point: a font the customer picks themselves always wins. */
+  font?:   string
+  /** Which texture from BACKDROPS the theme stands on until the customer
+   *  uploads a picture of their own room. Backdrop layouts only. */
+  backdrop?: string
 }
 
 /* ── SVG thumbnail layouts ──────────────────────────────────────────────────
@@ -181,52 +189,6 @@ function Direct({ c, active }: TP) {
   )
 }
 
-function Compact({ c, active }: TP) {
-  return (
-    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-      <rect width="180" height="116" fill={c.bg}/>
-      <rect x="55" y="22" width="70" height="9" rx="1" fill={c.h}/>
-      <rect x="70" y="37" width="40" height="3" rx="1" fill={c.a} fillOpacity="0.8"/>
-      <rect x="82" y="46" width="16" height="2" rx="1" fill={c.a}/>
-      <rect x="58" y="54" width="64" height="3" rx="1" fill={c.s} fillOpacity="0.6"/>
-      <rect x="34" y="66" width="36" height="11" rx="5" fill={c.a}/>
-      <rect x="74" y="66" width="32" height="11" rx="5" fill="none" stroke={c.s} strokeWidth="1"/>
-      <rect x="110" y="66" width="36" height="11" rx="5" fill="none" stroke={c.s} strokeWidth="1"/>
-      <rect x="48" y="88" width="52" height="3" rx="1" fill={c.h} fillOpacity="0.7"/>
-      <rect x="116" y="88" width="16" height="3" rx="1" fill={c.a}/>
-      <rect x="48" y="96" width="46" height="3" rx="1" fill={c.h} fillOpacity="0.7"/>
-      <rect x="116" y="96" width="16" height="3" rx="1" fill={c.a}/>
-      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
-    </svg>
-  )
-}
-
-function Magazine({ c, active }: TP) {
-  return (
-    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-      <rect width="180" height="116" fill={c.bg}/>
-      {/* masthead */}
-      <rect x="55" y="8" width="70" height="10" rx="1" fill={c.h}/>
-      <line x1="10" y1="24" x2="170" y2="24" stroke={c.h} strokeWidth="1.5"/>
-      <rect x="52" y="28" width="16" height="2.5" rx="1" fill={c.s} fillOpacity="0.6"/>
-      <rect x="76" y="28" width="16" height="2.5" rx="1" fill={c.s} fillOpacity="0.6"/>
-      <rect x="100" y="28" width="16" height="2.5" rx="1" fill={c.s} fillOpacity="0.6"/>
-      {/* lead story + side column */}
-      <rect x="10" y="38" width="102" height="44" fill={c.a} fillOpacity="0.25"/>
-      <rect x="10" y="88" width="80" height="6" rx="1" fill={c.h}/>
-      <rect x="10" y="98" width="96" height="3" rx="1" fill={c.s} fillOpacity="0.6"/>
-      <line x1="120" y1="38" x2="120" y2="104" stroke={c.s} strokeOpacity="0.3"/>
-      {[40, 58, 76, 94].map(y => (
-        <g key={y}>
-          <rect x="128" y={y} width="14" height="2" rx="1" fill={c.a}/>
-          <rect x="128" y={y + 5} width="42" height="4" rx="1" fill={c.h} fillOpacity="0.85"/>
-        </g>
-      ))}
-      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
-    </svg>
-  )
-}
-
 function TeamThumb({ c, active }: TP) {
   return (
     <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
@@ -249,6 +211,215 @@ function TeamThumb({ c, active }: TP) {
   )
 }
 
+function Pole({ c, active }: TP) {
+  const stripes = [0, 12, 24, 36, 48, 60, 72, 84, 96, 108]
+  return (
+    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="180" height="116" fill={c.bg}/>
+      {/* the rail down the left edge */}
+      <rect x="0" y="0" width="9" height="116" fill={c.b}/>
+      <g clipPath="url(#poleClip)">
+        {stripes.map(y => <rect key={y} x="-6" y={y} width="22" height="6" fill={c.a} transform={`rotate(-45 0 ${y})`}/>)}
+      </g>
+      <defs><clipPath id="poleClip"><rect x="0" y="0" width="9" height="116"/></clipPath></defs>
+      {/* nav */}
+      <rect x="9" y="0" width="171" height="14" fill={c.nav}/>
+      <rect x="16" y="5" width="20" height="5" rx="1" fill={c.nav === c.bg ? c.h : '#ffffff'} fillOpacity="0.9"/>
+      <rect x="150" y="6" width="22" height="3" rx="1" fill={c.s} fillOpacity="0.6"/>
+      {/* 01 marker + big heading */}
+      <rect x="16" y="26" width="5" height="3" fill={c.a}/>
+      <rect x="24" y="27" width="12" height="1.5" fill={c.a}/>
+      <rect x="40" y="26" width="26" height="3" fill={c.s} fillOpacity="0.55"/>
+      <rect x="16" y="36" width="140" height="10" rx="0" fill={c.h}/>
+      <rect x="16" y="50" width="96"  height="10" rx="0" fill={c.h}/>
+      <rect x="16" y="66" width="80"  height="2.5" fill={c.s} fillOpacity="0.5"/>
+      <rect x="16" y="72" width="60"  height="2.5" fill={c.s} fillOpacity="0.3"/>
+      <rect x="16" y="82" width="42"  height="12" fill={c.a}/>
+      <rect x="64" y="82" width="34"  height="12" fill="none" stroke={c.h} strokeWidth="1.5"/>
+      {/* the two facts */}
+      <rect x="16" y="102" width="160" height="1" fill={c.h} fillOpacity="0.12"/>
+      <rect x="16" y="107" width="30" height="3" fill={c.h} fillOpacity="0.7"/>
+      <rect x="62" y="107" width="30" height="3" fill={c.h} fillOpacity="0.7"/>
+      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
+    </svg>
+  )
+}
+
+function GridThumb({ c, active }: TP) {
+  return (
+    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="180" height="116" fill={c.bg}/>
+      <rect width="180" height="14" fill={c.nav}/>
+      <rect x="10" y="4" width="22" height="6" rx="1" fill={c.nav === c.bg ? c.h : '#ffffff'} fillOpacity="0.9"/>
+      <rect x="150" y="5" width="22" height="3" rx="1" fill={c.s} fillOpacity="0.6"/>
+      {/* the mosaic — hard edges, background as grout */}
+      <rect x="4"  y="19" width="84" height="52" fill={c.b}/>
+      <rect x="12" y="26" width="20" height="2.5" fill={c.a}/>
+      <rect x="12" y="35" width="66" height="8" fill={c.h}/>
+      <rect x="12" y="47" width="48" height="8" fill={c.h}/>
+      <rect x="12" y="60" width="58" height="2.5" fill={c.s} fillOpacity="0.5"/>
+      <rect x="91" y="19" width="85" height="52" fill={c.a} fillOpacity="0.9"/>
+      <rect x="4"  y="74" width="41" height="26" fill={c.b}/>
+      <rect x="11" y="80" width="22" height="3" fill={c.h} fillOpacity="0.8"/>
+      <rect x="11" y="90" width="16" height="5" fill={c.a}/>
+      <rect x="48" y="74" width="41" height="26" fill={c.b}/>
+      <rect x="55" y="80" width="14" height="2.5" fill={c.a}/>
+      <rect x="55" y="90" width="26" height="3" fill={c.h} fillOpacity="0.7"/>
+      <rect x="92" y="74" width="41" height="26" fill={c.b}/>
+      <rect x="99" y="80" width="14" height="2.5" fill={c.a}/>
+      <rect x="99" y="90" width="26" height="3" fill={c.h} fillOpacity="0.7"/>
+      <rect x="136" y="74" width="40" height="26" fill={c.a}/>
+      <rect x="143" y="90" width="26" height="4" fill={isLight(c.a) ? '#0a0a0a' : '#ffffff'} fillOpacity="0.9"/>
+      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
+    </svg>
+  )
+}
+
+/* ── Miniatyrer för ytmallarna ──────────────────────────────────────────── */
+
+/** The shared ingredient: a textured surface behind the thumbnail, so these
+ *  four read as different from the flat-colour ten at a glance. */
+function Surface({ c, seed }: { c: TemplateColors; seed: number }) {
+  return (
+    <>
+      <rect width="180" height="116" fill={c.bg}/>
+      <g opacity="0.5">
+        {Array.from({ length: 7 }, (_, i) => (
+          <rect key={i} y={i * 17} width="180" height="17" fill={i % 2 ? c.b : c.a} fillOpacity={i % 3 === 0 ? 0.18 : 0.08}/>
+        ))}
+      </g>
+      <g opacity="0.28" stroke={c.h} strokeWidth="0.5">
+        {Array.from({ length: 6 }, (_, i) => (
+          <line key={i} x1="0" y1={(i + 1) * 17 + (seed % 3)} x2="180" y2={(i + 1) * 17 + (seed % 3)}/>
+        ))}
+      </g>
+    </>
+  )
+}
+
+function Workshop({ c, active }: TP) {
+  return (
+    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <Surface c={c} seed={1}/>
+      <rect width="180" height="116" fill="#000" fillOpacity="0.3"/>
+      {/* bare link row, no bar behind it */}
+      {[54, 78, 102, 126].map(x => <rect key={x} x={x} y="9" width="16" height="3" rx="0" fill="#fff" fillOpacity="0.85"/>)}
+      <rect x="24"  y="36" width="132" height="9" fill="#fff" fillOpacity="0.95"/>
+      <rect x="44"  y="50" width="92"  height="9" fill="#fff" fillOpacity="0.95"/>
+      <rect x="52"  y="66" width="76"  height="2.5" fill="#fff" fillOpacity="0.55"/>
+      <rect x="58"  y="76" width="34"  height="11" fill={c.a}/>
+      <rect x="96"  y="76" width="28"  height="11" fill="none" stroke="#fff" strokeOpacity="0.7"/>
+      {/* a taped-up sheet */}
+      <rect x="18" y="96" width="144" height="16" fill="#0c0a09" fillOpacity="0.72" stroke="#fff" strokeOpacity="0.16"/>
+      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
+    </svg>
+  )
+}
+
+function Sign({ c, active }: TP) {
+  return (
+    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <Surface c={c} seed={2}/>
+      <rect width="180" height="116" fill="#000" fillOpacity="0.34"/>
+      {/* solid band + hamburger */}
+      <rect width="180" height="15" fill={c.nav}/>
+      <rect x="10" y="5" width="26" height="5" rx="1" fill="#fff" fillOpacity="0.9"/>
+      <g fill="#fff" fillOpacity="0.85">
+        <rect x="152" y="5" width="16" height="1.6"/>
+        <rect x="152" y="8.2" width="16" height="1.6"/>
+        <rect x="152" y="11.4" width="16" height="1.6"/>
+      </g>
+      <rect x="30" y="30" width="120" height="8" fill="#fff" fillOpacity="0.95"/>
+      <rect x="52" y="44" width="76"  height="2.5" fill="#fff" fillOpacity="0.6"/>
+      <rect x="62" y="54" width="56"  height="12" rx="6" fill={c.a}/>
+      {/* framed emblem */}
+      <rect x="54" y="78" width="72" height="26" fill="none" stroke="#fff" strokeOpacity="0.75" strokeWidth="1.5"/>
+      <rect x="64" y="86" width="52" height="5" fill="#fff" fillOpacity="0.9"/>
+      <rect x="74" y="95" width="32" height="2" fill="#fff" fillOpacity="0.6"/>
+      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
+    </svg>
+  )
+}
+
+function Foyer({ c, active }: TP) {
+  return (
+    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="180" height="116" fill={c.bg}/>
+      {/* stacked header: wordmark deck, then the icon row */}
+      <rect x="66" y="6" width="48" height="6" rx="1" fill={c.h}/>
+      <rect x="76" y="15" width="28" height="2" rx="1" fill={c.a}/>
+      <rect y="21" width="180" height="13" fill={c.b}/>
+      <g fill={c.h} fillOpacity="0.8">
+        <rect x="12" y="25" width="12" height="1.4"/>
+        <rect x="12" y="27.4" width="12" height="1.4"/>
+        <rect x="12" y="29.8" width="12" height="1.4"/>
+      </g>
+      <rect x="78" y="25" width="24" height="4" rx="1" fill={c.h} fillOpacity="0.8"/>
+      <rect x="150" y="26" width="18" height="3" rx="1" fill={c.h} fillOpacity="0.6"/>
+      {/* the room, nothing written on it */}
+      <g>
+        <rect y="34" width="180" height="40" fill={c.a} fillOpacity="0.22"/>
+        {Array.from({ length: 5 }, (_, i) => (
+          <rect key={i} y={34 + i * 8} width="180" height="8" fill={c.h} fillOpacity={i % 2 ? 0.06 : 0.02}/>
+        ))}
+      </g>
+      <rect x="42" y="80" width="96" height="6" fill={c.h}/>
+      <rect x="58" y="91" width="64" height="2.5" fill={c.s} fillOpacity="0.6"/>
+      {/* the strip riding the bottom */}
+      <rect y="102" width="180" height="14" fill={c.a}/>
+      <rect x="30" y="107" width="34" height="3" fill={isLight(c.a) ? '#0a0a0a' : '#fff'} fillOpacity="0.85"/>
+      <rect x="74" y="107" width="26" height="3" fill={isLight(c.a) ? '#0a0a0a' : '#fff'} fillOpacity="0.85"/>
+      <rect x="110" y="107" width="40" height="3" fill={isLight(c.a) ? '#0a0a0a' : '#fff'} fillOpacity="0.85"/>
+      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
+    </svg>
+  )
+}
+
+function Chemistry({ c, active }: TP) {
+  return (
+    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="180" height="116" fill={c.bg}/>
+      {/* washed image behind the top two thirds */}
+      <rect width="180" height="80" fill={c.a} fillOpacity="0.5"/>
+      <g opacity="0.25">
+        {Array.from({ length: 5 }, (_, i) => (
+          <ellipse key={i} cx={30 + i * 32} cy={26 + (i % 2) * 22} rx="34" ry="20" fill={c.h}/>
+        ))}
+      </g>
+      {/* centred thin wordmark, burger right */}
+      <rect x="70" y="8" width="40" height="4" rx="0" fill="#fff" fillOpacity="0.9"/>
+      <g fill="#fff" fillOpacity="0.8">
+        <rect x="154" y="7" width="14" height="1.4"/>
+        <rect x="154" y="10" width="14" height="1.4"/>
+        <rect x="154" y="13" width="14" height="1.4"/>
+      </g>
+      {/* serif headline: upright then italic (skewed) */}
+      <rect x="20" y="32" width="88" height="7" fill="#fff" fillOpacity="0.95"/>
+      <g transform="skewX(-12)">
+        <rect x="126" y="32" width="42" height="7" fill="#fff" fillOpacity="0.95"/>
+      </g>
+      <rect x="20" y="45" width="60" height="7" fill="#fff" fillOpacity="0.95"/>
+      <rect x="34" y="60" width="112" height="2.5" fill="#fff" fillOpacity="0.6"/>
+      {/* translucent band with an underlined link */}
+      <rect y="80" width="180" height="18" fill="#fff" fillOpacity="0.18"/>
+      <rect x="64" y="86" width="52" height="4" fill="#fff" fillOpacity="0.95"/>
+      <rect x="64" y="92" width="52" height="1" fill="#fff" fillOpacity="0.9"/>
+      <rect x="26" y="106" width="30" height="3" fill={c.h} fillOpacity="0.7"/>
+      <rect x="76" y="106" width="30" height="3" fill={c.h} fillOpacity="0.7"/>
+      <rect x="126" y="106" width="30" height="3" fill={c.h} fillOpacity="0.7"/>
+      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
+    </svg>
+  )
+}
+
+/** Rough luminance test, so a tile's text reads on its own accent colour. */
+function isLight(hex: string): boolean {
+  const h = hex.replace('#', '')
+  if (h.length !== 6) return false
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16))
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150
+}
+
 export function TemplateThumbnail({ template, active }: { template: Template; active: boolean }) {
   const props = { c: template.colors, active }
   switch (template.layout) {
@@ -259,9 +430,13 @@ export function TemplateThumbnail({ template, active }: { template: Template; ac
     case 'luxury':    return <Luxury    {...props}/>
     case 'showcase':  return <Showcase  {...props}/>
     case 'direct':    return <Direct    {...props}/>
-    case 'compact':   return <Compact   {...props}/>
-    case 'magazine':  return <Magazine  {...props}/>
     case 'team':      return <TeamThumb {...props}/>
+    case 'pole':      return <Pole      {...props}/>
+    case 'grid':      return <GridThumb {...props}/>
+    case 'workshop':  return <Workshop  {...props}/>
+    case 'sign':      return <Sign      {...props}/>
+    case 'foyer':     return <Foyer     {...props}/>
+    case 'chemistry': return <Chemistry {...props}/>
   }
 }
 
@@ -277,17 +452,34 @@ export function TemplateThumbnail({ template, active }: { template: Template; ac
 const salon: Template[] = [
   { id:'s-atelier',  name:'Atelier',   tagline:'Exklusiv & editorial',      layout:'luxury',    colors:{ bg:'#0d0d0d', nav:'#0d0d0d', h:'#ffffff', a:'#c9a96e', s:'#888888', b:'#1a1a1a' } },
   { id:'s-studio',   name:'Studio',    tagline:'Modern & luftig',            layout:'centered',  colors:{ bg:'#f5f5f5', nav:'#ffffff', h:'#111111', a:'#111111', s:'#888888', b:'#e8e8e8' } },
-  { id:'s-barber',   name:'Barber',    tagline:'Klassisk & maskulin',        layout:'heritage',  colors:{ bg:'#f5f0e8', nav:'#2d4a2d', h:'#1a2e1a', a:'#c8a96e', s:'#5a4a3a', b:'#ede5d8' } },
+  { id:'s-barber',   name:'Klassisk',  tagline:'Tidlös & stram',             layout:'heritage',  colors:{ bg:'#f5f0e8', nav:'#2d4a2d', h:'#1a2e1a', a:'#c8a96e', s:'#5a4a3a', b:'#ede5d8' } },
   { id:'s-urban',    name:'Urban',     tagline:'Skarp & modern',             layout:'editorial', colors:{ bg:'#111111', nav:'#111111', h:'#ffffff', a:'#e03030', s:'#666666', b:'#1e1e1e' } },
   { id:'s-nordic',   name:'Nordic',    tagline:'Skandinavisk minimalism',    layout:'split',     colors:{ bg:'#f8f8f6', nav:'#f8f8f6', h:'#1a1a1a', a:'#1a1a1a', s:'#777777', b:'#eeede9' } },
 ]
 
-const spa: Template[] = [
-  { id:'sp-serenity', name:'Serenity', tagline:'Stilla & harmonisk',         layout:'centered',  colors:{ bg:'#f8faf6', nav:'#ffffff', h:'#2a3a2a', a:'#7a9a6a', s:'#8a9a80', b:'#edf2ea' } },
-  { id:'sp-stone',    name:'Stone',    tagline:'Jordig & naturlig',           layout:'split',     colors:{ bg:'#f5f0e8', nav:'#f5f0e8', h:'#2a2520', a:'#8a6a50', s:'#7a6a58', b:'#ede5d8' } },
-  { id:'sp-forest',   name:'Forest',   tagline:'Djup & återhämtande',        layout:'luxury',    colors:{ bg:'#0f1f0f', nav:'#0f1f0f', h:'#ffffff', a:'#8ab87a', s:'#5a7a5a', b:'#162016' } },
-  { id:'sp-blossom',  name:'Blossom',  tagline:'Blommig & delikat',          layout:'editorial', colors:{ bg:'#faf8ff', nav:'#ffffff', h:'#2a1a3a', a:'#8a70b8', s:'#8a80a0', b:'#f0ecfa' } },
-  { id:'sp-clay',     name:'Clay',     tagline:'Varm & hantverk',            layout:'heritage',  colors:{ bg:'#faf5f0', nav:'#c8704a', h:'#2a1a10', a:'#c8704a', s:'#8a6050', b:'#f2e8e0' } },
+/* Two compositions built around how a barbershop actually sells: the pole on
+   the doorframe, and a shopfront that states the whole offer without a
+   paragraph of prose. Offered to hair salons too — a men's or unisex salon
+   works the same way. */
+const barberLook: Template[] = [
+  { id:'bb-stolpen', name:'Stolpen',  tagline:'Klassisk barberarkänsla',    layout:'pole',  colors:{ bg:'#f6f3ec', nav:'#141414', h:'#141414', a:'#a32a24', s:'#645f57', b:'#e9e4d9' } },
+  { id:'bb-rutnat',  name:'Rutnätet', tagline:'Hårt, rakt och utan krusiduller', layout:'grid', colors:{ bg:'#0f1113', nav:'#0f1113', h:'#f4f4f2', a:'#d2622c', s:'#8a8f94', b:'#1a1d21' } },
+]
+
+/* ── Ytan som bärare ────────────────────────────────────────────────────────
+   The four themes built on a surface rather than a flat colour. Everything
+   before these paints a background swatch and lays boxes on it; these stand
+   on wood, brick, linen or concrete, and their menus get out of the way of
+   the picture instead of sitting in a bar across it. */
+const surfaces: Template[] = [
+  { id:'yt-verkstan', name:'Verkstan',  tagline:'Väggen är sidan',            layout:'workshop',  backdrop:'tra',
+    colors:{ bg:'#171310', nav:'#171310', h:'#f6efe6', a:'#d59b45', s:'#a8988a', b:'#211b16' } },
+  { id:'yt-skylten',  name:'Skylten',   tagline:'En bild, ett löfte, en knapp', layout:'sign',     backdrop:'tegel',
+    colors:{ bg:'#14100e', nav:'#0d0b0a', h:'#f7f2ec', a:'#c98a5e', s:'#9c8f85', b:'#1e1815' } },
+  { id:'yt-salongen', name:'Salongen',  tagline:'Rummet talar, raden följer med', layout:'foyer',  backdrop:'linne',
+    colors:{ bg:'#faf7f2', nav:'#faf7f2', h:'#241f1a', a:'#8a7355', s:'#6d635a', b:'#f0eae0' } },
+  { id:'yt-kemi',     name:'Kemi',      tagline:'Satt i antikva',              layout:'chemistry', backdrop:'betong', font:'playfair',
+    colors:{ bg:'#fbfbfa', nav:'#fbfbfa', h:'#141414', a:'#2f8f8a', s:'#5f5f5f', b:'#f1f1ee' } },
 ]
 
 const restaurant: Template[] = [
@@ -296,14 +488,6 @@ const restaurant: Template[] = [
   { id:'r-blackgold', name:'Prestige',  tagline:'Mörk & glamourös',           layout:'luxury',    colors:{ bg:'#0a0806', nav:'#0a0806', h:'#ffffff', a:'#c9a044', s:'#7a6a4a', b:'#140f08' } },
   { id:'r-coastal',   name:'Coastal',   tagline:'Ljus & havsnära',            layout:'split',     colors:{ bg:'#f8fbff', nav:'#ffffff', h:'#1a2a3a', a:'#2a6aaa', s:'#6a8aaa', b:'#eaf2fa' } },
   { id:'r-modern',    name:'Modern',    tagline:'Skarp & samtida',            layout:'editorial', colors:{ bg:'#fdfdfd', nav:'#fdfdfd', h:'#0a0a0a', a:'#e63030', s:'#666666', b:'#f5f5f5' } },
-]
-
-const beauty: Template[] = [
-  { id:'b-pearl',    name:'Pearl',     tagline:'Mjuk & delikat',             layout:'centered',  colors:{ bg:'#fdfbfa', nav:'#ffffff', h:'#2a2030', a:'#c87090', s:'#9a8090', b:'#f8f2f5' } },
-  { id:'b-rosegold', name:'Rose Gold', tagline:'Lyxig & feminin',            layout:'luxury',    colors:{ bg:'#1a0f14', nav:'#1a0f14', h:'#ffffff', a:'#c8907a', s:'#8a6070', b:'#241520' } },
-  { id:'b-clean',    name:'Studio',    tagline:'Ren & professionell',        layout:'editorial', colors:{ bg:'#fdfdfd', nav:'#fdfdfd', h:'#0a0a0a', a:'#0a0a0a', s:'#666666', b:'#f5f5f5' } },
-  { id:'b-glow',     name:'Glow',      tagline:'Varm & inbjudande',          layout:'split',     colors:{ bg:'#fff9f0', nav:'#ffffff', h:'#2a1a0a', a:'#e0a050', s:'#8a7060', b:'#f8f0e0' } },
-  { id:'b-plum',     name:'Plum',      tagline:'Djup & sofistikerad',        layout:'heritage',  colors:{ bg:'#0e0814', nav:'#0e0814', h:'#ffffff', a:'#c090e0', s:'#6a508a', b:'#160e1e' } },
 ]
 
 const fitness: Template[] = [
@@ -338,27 +522,50 @@ const other: Template[] = [
   { id:'o-gold',     name:'Prestige',  tagline:'Lyxig & exklusiv',           layout:'luxury',    colors:{ bg:'#080608', nav:'#080608', h:'#ffffff', a:'#c9a030', s:'#6a5a30', b:'#120f08' } },
 ]
 
-/* The five newer compositions, offered to every industry. The structure is
-   the theme — the accent just gives each industry a sensible starting hue. */
-function newCompositions(prefix: string, accent: string, darkAccent: string): Template[] {
-  return [
-    { id:`${prefix}-showcase`, name:'Showcase', tagline:'Bilderna först',           layout:'showcase', colors:{ bg:'#0e0e10', nav:'#0e0e10', h:'#ffffff', a:accent,     s:'#8a8a8a', b:'#17171a' } },
-    { id:`${prefix}-direkt`,   name:'Direkt',   tagline:'Bokningen över allt annat', layout:'direct',   colors:{ bg:'#ffffff', nav:'#ffffff', h:'#111111', a:darkAccent, s:'#666666', b:'#f4f4f2' } },
-    { id:`${prefix}-kompakt`,  name:'Kompakt',  tagline:'Allt på en skärm',          layout:'compact',  colors:{ bg:'#f7f6f3', nav:'#f7f6f3', h:'#141414', a:darkAccent, s:'#707070', b:'#ecebe7' } },
-    { id:`${prefix}-magasin`,  name:'Magasin',  tagline:'Artiklarna i framsätet',    layout:'magazine', colors:{ bg:'#fdfdfb', nav:'#fdfdfb', h:'#0d0d0d', a:darkAccent, s:'#606060', b:'#f2f1ec' } },
-    { id:`${prefix}-team`,     name:'Team',     tagline:'Personerna i centrum',      layout:'team',     colors:{ bg:'#faf7f2', nav:'#ffffff', h:'#241a12', a:darkAccent, s:'#7a6a5c', b:'#f0e9df' } },
-  ]
-}
+/* Three compositions that suit any trade. They used to be generated once per
+   industry with a different accent hue, which meant four cards all called
+   "Showcase" the moment the lists were merged. One each now — the accent is a
+   colour control, and colour was never what made them different. */
+const shared: Template[] = [
+  { id:'s2-showcase', name:'Showcase', tagline:'Bilderna först',            layout:'showcase', colors:{ bg:'#0e0e10', nav:'#0e0e10', h:'#ffffff', a:'#c9a96e', s:'#8a8a8a', b:'#17171a' } },
+  { id:'s2-direkt',   name:'Direkt',   tagline:'Bokningen över allt annat', layout:'direct',   colors:{ bg:'#ffffff', nav:'#ffffff', h:'#111111', a:'#a4762e', s:'#666666', b:'#f4f4f2' } },
+  { id:'s2-team',     name:'Team',     tagline:'Personerna i centrum',      layout:'team',     colors:{ bg:'#faf7f2', nav:'#ffffff', h:'#241a12', a:'#a4762e', s:'#7a6a5c', b:'#f0e9df' } },
+]
+
+/* ── One list, every salon ──────────────────────────────────────────────────
+   Every customer we build for is a salon, so gating designs by trade only
+   ever hid good work: a nail studio had no business being kept away from the
+   barbershop's grid or the spa's soft green. What the trade decides is the
+   *content* — the price list, the about text, the articles — and that comes
+   from its pack in lib/trades.
+
+   Order matters: the surface themes lead, because they are the ones that do
+   not look like a template. Then the compositions everyone shares, then the
+   older layouts in the palettes each trade was originally given — those keep
+   their names, since a look called Serenity is a different choice from one
+   called Atelier even where the structure underneath is the same. */
+export const SALON_TEMPLATES: Template[] = [
+  ...surfaces,
+  ...barberLook,
+  ...shared,
+  ...salon,
+]
 
 export const TEMPLATES_BY_INDUSTRY: Record<string, Template[]> = {
-  salon:      [...salon,      ...newCompositions('s2',  '#c9a96e', '#a4762e')],
-  spa:        [...spa,        ...newCompositions('sp2', '#8ab87a', '#4a7a3a')],
-  restaurant: [...restaurant, ...newCompositions('r2',  '#d4891a', '#b05a1a')],
-  beauty:     [...beauty,     ...newCompositions('b2',  '#e0a0c0', '#b05a80')],
-  fitness:    [...fitness,    ...newCompositions('f2',  '#ff6020', '#d84a10')],
-  craftsman:  [...craftsman,  ...newCompositions('cr2', '#e07a20', '#b05a10')],
-  cleaning:   [...cleaning,   ...newCompositions('cl2', '#4ab8ee', '#1a6aaa')],
-  other:      [...other,      ...newCompositions('o2',  '#e0b060', '#3a6a8a')],
+  /* Every salon trade sees the same list — see SALON_TEMPLATES. */
+  salon:      SALON_TEMPLATES,
+  barber:     SALON_TEMPLATES,
+  spa:        SALON_TEMPLATES,
+  beauty:     SALON_TEMPLATES,
+  nails:      SALON_TEMPLATES,
+  lashes:     SALON_TEMPLATES,
+  /* The trades from before the product narrowed to salons. Kept so an account
+     created back then still resolves to designs made for it. */
+  restaurant: [...restaurant, ...shared],
+  fitness:    [...fitness,    ...shared],
+  craftsman:  [...craftsman,  ...shared],
+  cleaning:   [...cleaning,   ...shared],
+  other:      SALON_TEMPLATES,
 }
 
 /* ── Ready-made palettes ────────────────────────────────────────────────────
@@ -368,6 +575,23 @@ export const TEMPLATES_BY_INDUSTRY: Record<string, Template[]> = {
 
 export type PalettePreset = { name: string; colors: TemplateColors }
 
+/* The colours the beauty and spa templates used to carry. Those templates were
+   the salon compositions in a different palette, which is not a template — so
+   the composition stayed once and the colour became a button. Nothing is lost:
+   picking Serenity here gives the same page Serenity used to give. */
+const RETIRED_LOOKS: PalettePreset[] = [
+  { name: 'Pearl',     colors: { bg:'#fdfbfa', nav:'#ffffff', h:'#2a2030', a:'#c87090', s:'#9a8090', b:'#f8f2f5' } },
+  { name: 'Rose Gold', colors: { bg:'#1a0f14', nav:'#1a0f14', h:'#ffffff', a:'#c8907a', s:'#8a6070', b:'#241520' } },
+  { name: 'Glow',      colors: { bg:'#fff9f0', nav:'#ffffff', h:'#2a1a0a', a:'#e0a050', s:'#8a7060', b:'#f8f0e0' } },
+  { name: 'Plum',      colors: { bg:'#0e0814', nav:'#0e0814', h:'#ffffff', a:'#c090e0', s:'#6a508a', b:'#160e1e' } },
+  { name: 'Journal',   colors: { bg:'#fdfdfd', nav:'#fdfdfd', h:'#0a0a0a', a:'#0a0a0a', s:'#666666', b:'#f5f5f5' } },
+  { name: 'Serenity',  colors: { bg:'#f8faf6', nav:'#ffffff', h:'#2a3a2a', a:'#7a9a6a', s:'#8a9a80', b:'#edf2ea' } },
+  { name: 'Stone',     colors: { bg:'#f5f0e8', nav:'#f5f0e8', h:'#2a2520', a:'#8a6a50', s:'#7a6a58', b:'#ede5d8' } },
+  { name: 'Forest',    colors: { bg:'#0f1f0f', nav:'#0f1f0f', h:'#ffffff', a:'#8ab87a', s:'#5a7a5a', b:'#162016' } },
+  { name: 'Blossom',   colors: { bg:'#faf8ff', nav:'#ffffff', h:'#2a1a3a', a:'#8a70b8', s:'#8a80a0', b:'#f0ecfa' } },
+  { name: 'Clay',      colors: { bg:'#faf5f0', nav:'#c8704a', h:'#2a1a10', a:'#c8704a', s:'#8a6050', b:'#f2e8e0' } },
+]
+
 export const PALETTE_PRESETS: Record<string, PalettePreset[]> = {
   salon: [
     { name: 'Bloom',    colors: { bg:'#fef9f8', nav:'#ffffff', h:'#2d2d2d', a:'#c9847a', s:'#9a8a89', b:'#f8efee' } },
@@ -375,6 +599,13 @@ export const PALETTE_PRESETS: Record<string, PalettePreset[]> = {
     { name: 'Noir',     colors: { bg:'#0a0a0a', nav:'#0a0a0a', h:'#ffffff', a:'#d4af37', s:'#666666', b:'#141414' } },
     { name: 'Fresh',    colors: { bg:'#ffffff', nav:'#ffffff', h:'#111111', a:'#2aa87c', s:'#777777', b:'#f0faf6' } },
     { name: 'Vintage',  colors: { bg:'#fdf6e3', nav:'#4a2040', h:'#2a1020', a:'#8b3a6b', s:'#6a4a58', b:'#f5e8d0' } },
+  ],
+  barber: [
+    { name: 'Mässing',  colors: { bg:'#111110', nav:'#111110', h:'#f2ece0', a:'#c08a3e', s:'#8d8578', b:'#1b1a17' } },
+    { name: 'Rakkniv',  colors: { bg:'#f6f3ec', nav:'#141414', h:'#141414', a:'#a32a24', s:'#645f57', b:'#e9e4d9' } },
+    { name: 'Rost',     colors: { bg:'#0f1113', nav:'#0f1113', h:'#f4f4f2', a:'#d2622c', s:'#8a8f94', b:'#1a1d21' } },
+    { name: 'Tobak',    colors: { bg:'#f7f2ea', nav:'#3a2a1c', h:'#241a12', a:'#8a5a2c', s:'#6f6156', b:'#ece3d5' } },
+    { name: 'Kritvit',  colors: { bg:'#ffffff', nav:'#ffffff', h:'#0d0d0d', a:'#0d0d0d', s:'#7a7a7a', b:'#f0efec' } },
   ],
   spa: [
     { name: 'Mist',     colors: { bg:'#f0f5fa', nav:'#ffffff', h:'#1a2a3a', a:'#4a7aaa', s:'#7a8a9a', b:'#e5eef7' } },
@@ -425,6 +656,40 @@ export const PALETTE_PRESETS: Record<string, PalettePreset[]> = {
   ],
 }
 
-export function getTemplatesForIndustry(industry: string | null): Template[] {
-  return TEMPLATES_BY_INDUSTRY[industry ?? 'other'] ?? other
+/** The designs an industry may pick from. Every salon trade gets the same
+ *  list; the older non-salon industries keep the ones drawn for them. */
+export function getTemplatesForIndustry(industry: string | null | undefined): Template[] {
+  return TEMPLATES_BY_INDUSTRY[industry ?? 'other'] ?? SALON_TEMPLATES
+}
+
+/* One set of palettes for every salon, assembled from the four trade sets plus
+   the looks the merged templates used to carry. Same reasoning as the designs:
+   a colour that suits a nail studio suits a barbershop that wants it. */
+const SALON_PALETTES: PalettePreset[] = (() => {
+  const all = [
+    ...(PALETTE_PRESETS.salon  ?? []),
+    ...(PALETTE_PRESETS.barber ?? []),
+    ...(PALETTE_PRESETS.beauty ?? []),
+    ...(PALETTE_PRESETS.spa    ?? []),
+    ...RETIRED_LOOKS,
+  ]
+  // Fresh appears in two of the sets, and the retired looks repeat a name or
+  // two — first one wins, so the list has no button that looks like a twin.
+  return all.filter((p, i) => all.findIndex(q => q.name === p.name) === i)
+})()
+
+/** The one-click looks a customer is offered. Every salon trade gets the same
+ *  set; the older non-salon industries keep theirs. */
+export function getPalettesForIndustry(industry: string | null | undefined): PalettePreset[] {
+  const key = industry ?? 'other'
+  if (['salon', 'barber', 'beauty', 'nails', 'lashes', 'spa', 'other'].includes(key)) return SALON_PALETTES
+  return PALETTE_PRESETS[key] ?? SALON_PALETTES
+}
+
+/** A saved template id resolved to a design. Undefined when the id is not one
+ *  we ship any more — the caller then falls back to the first design in the
+ *  customer's list, which is the whole handling a retired id needs. */
+export function resolveTemplate(id: string | null | undefined): Template | undefined {
+  if (!id) return undefined
+  return Object.values(TEMPLATES_BY_INDUSTRY).flat().find(t => t.id === id)
 }

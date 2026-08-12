@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import {
   getPublishedSite, articlesOf, articleSummary, articleImages, formatArticleDate,
@@ -50,8 +50,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function ArticlePage({ params }: Props) {
-  const r = await resolve(await params)
+  const p = await params
+  const r = await resolve(p)
   if (!r) notFound()
+  // Old address after a rename — send Google and visitors to the current one
+  if (r.site.slug !== p.slug) permanentRedirect(`/s/${r.site.slug}/artiklar/${p.artikel}`)
 
   const { site, article, others } = r
   const c = site.template.colors

@@ -15,7 +15,28 @@ export function SiteStyles() {
   return (
     <style dangerouslySetInnerHTML={{ __html: `
 .kr-site img { max-width: 100%; height: auto; }
+/* clip, not hidden: both stop a wide section from scrolling the page
+   sideways, but 'hidden' makes the root a scroll container, and that quietly
+   disables every position:sticky inside it — the contact strip among them.
+   The 'hidden' line stays first as the fallback for older browsers. */
 .kr-site { overflow-x: hidden; }
+.kr-site { overflow-x: clip; }
+
+/* The hide-away menu. Driven by a checkbox rather than JavaScript so it works
+   the same inside the editor, where a click on the page is already claimed by
+   the editing layer, as it does on the published site. */
+.kr-site .kr-burger { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+.kr-site .kr-menu-panel {
+  display: none;
+  position: fixed; inset: 0; z-index: 60;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; padding: 40px 8%;
+  backdrop-filter: blur(6px);
+}
+.kr-site .kr-burger:checked ~ .kr-menu-panel,
+.kr-site .kr-burger:checked ~ * .kr-menu-panel { display: flex; }
+.kr-site .kr-burger-btn { user-select: none; }
+.kr-site .kr-burger:focus-visible ~ * .kr-burger-btn { outline: 2px solid currentColor; outline-offset: 4px; }
 
 @media (max-width: 900px) {
   .kr-site [data-grid="services"] { grid-template-columns: repeat(2, 1fr) !important; }
