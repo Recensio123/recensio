@@ -92,7 +92,8 @@ const INITIAL_POSTS: PublishedPost[] = [
 
 const T = {
   sv: {
-    noPostTitle:     (d: number) => `Inget inlägg på ${d} dagar`,
+    noPostTitle:     (d: number) => `Inget inlägg på ${Math.round(d / 30)} månader`,
+    writeOne:        '+ Skriv ett inlägg',
     noPostSub:       'Ett inlägg i månaden räcker för att din profil ska se aktiv ut — och texten nedan är redan skriven åt dig.',
     ideaTooltip:     'Ett inläggsförslag baserat på vad folk söker efter i din bransch just nu. Regelbundna inlägg håller profilen aktiv — Google väger in det i lokala sökresultat.',
     ideaTitle:       'Veckans inläggsförslag',
@@ -129,7 +130,8 @@ const T = {
     activeLeft:      (d: number) => `Aktivt — ${d} dagar kvar`,
   },
   en: {
-    noPostTitle:     (d: number) => `No post in ${d} days`,
+    noPostTitle:     (d: number) => `No post in ${Math.round(d / 30)} months`,
+    writeOne:        '+ Write a post',
     noPostSub:       'One post a month is enough to keep your profile looking active — and the text below is already written for you.',
     ideaTooltip:     'A post idea based on what people are currently searching for in your industry. Posting regularly keeps your profile active — Google uses this as a light ranking signal for local search.',
     ideaTitle:       "This week's post idea",
@@ -168,9 +170,22 @@ const T = {
 }
 
 const MAX_CHARS    = 1500
+/*
+ * Six months, not one.
+ *
+ * A monthly nudge for something a salon does a few times a year is not a
+ * reminder, it is nagging — and a badge that is always lit stops being read.
+ * Half a year of silence is when a listing genuinely starts looking closed.
+ */
+const POST_NUDGE_DAYS = 180
 const daysSincePost = 47
 
-export function PostsTabTest2() {
+export function PostsTabTest2({ compact = false }: {
+  /* Inside the combined tab, posting is the smaller half: the composer stays
+   * folded away until someone asks for it. */
+  compact?: boolean
+}) {
+  const [composerOpen, setComposerOpen] = useState(false)
   const { lang } = useLang()
   const t = T[lang]
   const idea = getWeeklyPostIdea(lang)
@@ -242,7 +257,7 @@ export function PostsTabTest2() {
     <div className="space-y-6">
 
       {/* Nudge — monthly cadence, not a weekly treadmill */}
-      {daysSincePost > 30 && (
+      {daysSincePost > POST_NUDGE_DAYS && (
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3">
           <span className="text-amber-400 shrink-0 mt-0.5">●</span>
           <div>
@@ -254,8 +269,17 @@ export function PostsTabTest2() {
         </div>
       )}
 
+      {compact && !composerOpen && (
+        <button
+          onClick={() => setComposerOpen(true)}
+          className="w-full bg-navy-800 border border-navy-700 hover:border-navy-500 text-slate-300 hover:text-white rounded-xl py-3 text-sm font-medium transition-colors"
+        >
+          {t.writeOne}
+        </button>
+      )}
+
       {/* Post composer */}
-      <div>
+      <div className={compact && !composerOpen ? 'hidden' : undefined}>
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <Tooltip text={t.ideaTooltip}>
             <h2 className="text-xs font-medium text-slate-500 uppercase tracking-wider cursor-default">{t.ideaTitle}</h2>

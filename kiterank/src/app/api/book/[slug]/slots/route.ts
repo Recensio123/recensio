@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { slotsForDay, defaultAvailability, type StaffRow, type BookingRow, type BlockedRow } from '@/lib/bookingSlots'
+import { fetchStaff } from '@/lib/staffQuery'
+import { fetchPolicy } from '@/lib/bookingPolicy'
+import { slotsForDay, defaultAvailability, leadRuleFor, salonNow, type StaffRow, type BookingRow, type BlockedRow } from '@/lib/bookingSlots'
 
 type Params = { params: Promise<{ slug: string }> }
 
@@ -28,7 +30,15 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
 
+  /* A day that has already passed on the salon's own clock has no slots to
+   * show, whatever timezone the server happens to run in. */
+  if (date < salonNow().date) {
+    return NextResponse.json({ slots: [] })
+  }
+
   const dow = new Date(date + 'T12:00:00').getDay()
+  const policy = await fetchPolicy(admin, company.id)
+  const lead   = leadRuleFor(date, policy.lead_minutes)
 
   const { data: avail } = await admin
     .from('booking_availability')
@@ -58,13 +68,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   let staff: StaffRow[] = []
   let blocked: BlockedRow[] = []
   try {
-    const { data } = await admin
-      .from('staff')
-      .select('id, name, schedule')
-      .eq('company_id', company.id)
-      .eq('is_active', true)
-      .order('sort_order')
-    staff = (data ?? []) as StaffRow[]
+    staff = (await fetchStaff(admin, company.id) ?? []) as StaffRow[]
 
     const { data: bl } = await admin
       .from('blocked_times')
@@ -83,6 +87,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     staffId:  staffId || null,
     bookings: (existing ?? []) as BookingRow[],
     blocked,
+    lead,
   })
 
   return NextResponse.json({ slots })

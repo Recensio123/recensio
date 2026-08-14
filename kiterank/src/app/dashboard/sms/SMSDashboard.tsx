@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { useLang, type Lang } from '@/components/LanguageProvider'
 import { HelpButton } from '@/components/dashboard/HelpButton'
 import { Tooltip } from '@/components/Tooltip'
+import { KundlistaTab } from './KundlistaTab'
+import { ALL_ROWS, PLACEHOLDERS, smsSegments, type Mode, type TimeUnit } from './smsData'
 
 /*
  * SMS-utskick — two flows (reminder before, review request after), each
@@ -15,12 +17,9 @@ import { Tooltip } from '@/components/Tooltip'
  * TEMPLATES the customer receives stay Swedish regardless of dashboard language.
  */
 
-type Mode = 'auto' | 'manual'
-type TimeUnit = 'h' | 'd'
 
 // One salon per account — the salon name is written straight into the texts,
 // so the only placeholders are things that vary per booking.
-const PLACEHOLDERS = ['{namn}', '{datum}', '{tid}', '{tjänst}', '{länk}']
 
 const defaultReminder = (salon: string) =>
   `Hej {namn}! En påminnelse om din bokning: {tjänst} hos ${salon}, {datum} kl {tid}. Välkommen!`
@@ -184,39 +183,6 @@ function formatAfter(value: number, unit: TimeUnit, lang: Lang): string {
   return lang === 'sv'
     ? `${formatLead(value, unit, lang)} efter besöket`
     : `${formatLead(value, unit, lang)} after the visit`
-}
-
-// Sample bookings — mirrors the bookings table while it's empty in development.
-// hasPhone: false demonstrates the email fallback for customers without a mobile number.
-type Row = {
-  id: string; name: string; service: string; when: string
-  dateLabel: string; timeLabel: string; hasPhone: boolean
-}
-
-const UPCOMING: Row[] = [
-  { id: 'u1', name: 'Anna Karlsson', service: 'Klippning dam', when: 'Idag kl 10:00',    dateLabel: 'idag',    timeLabel: '10:00', hasPhone: true  },
-  { id: 'u2', name: 'Sara Blom',     service: 'Balayage',      when: 'Idag kl 13:00',    dateLabel: 'idag',    timeLabel: '13:00', hasPhone: true  },
-  { id: 'u3', name: 'Johan Persson', service: 'Herrklippning', when: 'Imorgon kl 09:30', dateLabel: 'imorgon', timeLabel: '09:30', hasPhone: false },
-]
-
-const COMPLETED: Row[] = [
-  { id: 'c1', name: 'Erik Sandberg',   service: 'Skägg & kontur',     when: 'I förrgår',     dateLabel: '', timeLabel: '', hasPhone: true  },
-  { id: 'c2', name: 'Maria Lindqvist', service: 'Slingor (helhuvud)', when: '4 dagar sedan', dateLabel: '', timeLabel: '', hasPhone: false },
-]
-
-function smsSegments(text: string): number {
-  return text.length === 0 ? 0 : Math.ceil(text.length / 160)
-}
-
-// Fill the template with this customer's details — the starting point for a
-// personalised message. {länk} stays; the review link is inserted at send time.
-function personalize(template: string, row: Row): string {
-  return template
-    .replaceAll('{namn}', row.name.split(' ')[0])
-    .replaceAll('{tjänst}', row.service.toLowerCase())
-    .replaceAll('{datum}', row.dateLabel || row.when)
-    .replaceAll('{tid}', row.timeLabel)
-    .replace(/\s+kl\s*[.!,]/g, m => m.replace(/\s+kl\s*/, '')) // tidy if {tid} was empty
 }
 
 /* ── Shared pieces ─────────────────────────────────────────────────────────── */
@@ -420,172 +386,15 @@ function DirtyTextInput({
   )
 }
 
-/* ── Customer list — send/skip + per-person message editing ────────────────── */
-
-function SendList({
-  rows, sent, onSend, buttonLabel, emailBackup, skipped, onToggleSkip, template, custom, onCustomChange,
-}: {
-  rows: Row[]
-  sent: Set<string>
-  onSend: (id: string) => void
-  buttonLabel: string
-  emailBackup: boolean
-  // When provided, the list runs in automatic mode: everyone is included by
-  // default and individual customers can be skipped instead of sent to.
-  skipped?: Set<string>
-  onToggleSkip?: (id: string) => void
-  // Per-person message overrides — editable from every row
-  template: string
-  custom: Record<string, string>
-  onCustomChange: (id: string, text: string | null) => void
-}) {
-  const { lang } = useLang()
-  const L = T[lang]
-  const autoMode = skipped !== undefined && onToggleSkip !== undefined
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [draft,     setDraft]     = useState('')
-
-  function openEditor(row: Row) {
-    setEditingId(row.id)
-    setDraft(custom[row.id] ?? personalize(template, row))
-  }
-
-  return (
-    <div className="bg-navy-900 rounded-xl border border-navy-700 divide-y divide-navy-700/60 mt-3">
-      {rows.map(r => {
-        const isSent    = sent.has(r.id)
-        const isSkipped = autoMode && skipped.has(r.id)
-        const viaEmail  = !r.hasPhone && emailBackup
-        const blocked   = !r.hasPhone && !emailBackup
-        const hasCustom = custom[r.id] !== undefined
-        const isEditing = editingId === r.id
-
-        return (
-          <div key={r.id}>
-            <div className={`px-4 py-3 flex items-center gap-3 flex-wrap ${isSkipped ? 'opacity-50' : ''}`}>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className={`text-sm font-medium truncate ${isSkipped ? 'text-slate-500' : 'text-white'}`}>{r.name}</p>
-                  {hasCustom && !isSkipped && (
-                    <span className="shrink-0 text-xs text-mustard bg-mustard/10 border border-mustard/20 px-1.5 py-0.5 rounded">
-                      {L.custom}
-                    </span>
-                  )}
-                </div>
-                <p className="text-slate-500 text-xs mt-0.5">{r.service} · {r.when}</p>
-              </div>
-
-              {viaEmail && !isSent && !isSkipped && !blocked && (
-                <span className="shrink-0 text-xs text-slate-500 bg-navy-700 border border-navy-600 px-1.5 py-0.5 rounded" title={L.viaEmailTitle}>
-                  {L.viaEmail}
-                </span>
-              )}
-
-              {/* Edit this person's message */}
-              {!isSent && !isSkipped && !blocked && (
-                <button
-                  onClick={() => isEditing ? setEditingId(null) : openEditor(r)}
-                  className={`shrink-0 text-xs px-2 py-1 rounded-lg border transition-colors ${
-                    isEditing
-                      ? 'text-mustard border-mustard/30 bg-mustard/10'
-                      : 'text-slate-500 border-navy-600 hover:text-mustard hover:border-mustard/40'
-                  }`}
-                  title={L.editTitle(r.name.split(' ')[0])}
-                >
-                  ✎
-                </button>
-              )}
-
-              {autoMode ? (
-                blocked ? (
-                  <span className="shrink-0 text-xs text-slate-500" title={L.noNumberTitle}>
-                    {L.noNumber}
-                  </span>
-                ) : isSkipped ? (
-                  <button
-                    onClick={() => onToggleSkip(r.id)}
-                    className="shrink-0 text-xs text-slate-400 border border-navy-600 hover:border-navy-500 hover:text-white px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    {L.includeAgain}
-                  </button>
-                ) : (
-                  <>
-                    <span className="shrink-0 text-xs text-green-400">{L.included}</span>
-                    <button
-                      onClick={() => onToggleSkip(r.id)}
-                      className="shrink-0 text-xs text-slate-500 hover:text-red-400 transition-colors"
-                      title={L.skipTitle}
-                    >
-                      {L.skip}
-                    </button>
-                  </>
-                )
-              ) : isSent ? (
-                <span className="shrink-0 text-xs text-green-400">{L.sent}</span>
-              ) : blocked ? (
-                <span className="shrink-0 text-xs text-slate-500" title={L.noNumberTitle}>
-                  {L.noNumber}
-                </span>
-              ) : (
-                <button
-                  onClick={() => onSend(r.id)}
-                  className="shrink-0 text-xs text-mustard border border-mustard/30 hover:bg-mustard/10 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  {buttonLabel}
-                </button>
-              )}
-            </div>
-
-            {/* Per-person message editor */}
-            {isEditing && (
-              <div className="px-4 pb-4 space-y-2 bg-navy-950/40">
-                <p className="text-slate-500 text-xs uppercase tracking-wider pt-3">{L.messageTo(r.name.split(' ')[0])}</p>
-                <textarea
-                  value={draft}
-                  onChange={e => setDraft(e.target.value)}
-                  rows={3}
-                  maxLength={480}
-                  className="w-full bg-navy-900 border border-navy-600 rounded-lg p-3 text-sm text-white leading-relaxed resize-none focus:outline-none focus:border-mustard"
-                />
-                <div className="flex items-center gap-3 flex-wrap">
-                  <button
-                    onClick={() => { onCustomChange(r.id, draft); setEditingId(null) }}
-                    className="text-xs bg-mustard hover:bg-mustard/90 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    {L.saveFor(r.name.split(' ')[0])}
-                  </button>
-                  {hasCustom && (
-                    <button
-                      onClick={() => { onCustomChange(r.id, null); setEditingId(null) }}
-                      className="text-xs text-slate-400 hover:text-white border border-navy-600 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      {L.backToTemplate}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setEditingId(null)}
-                    className="text-xs text-slate-500 hover:text-white transition-colors"
-                  >
-                    {L.cancel}
-                  </button>
-                  <Tooltip text={L.tipSegments}>
-                    <span className={`ml-auto text-xs tabular-nums ${smsSegments(draft) > 1 ? 'text-amber-400' : 'text-slate-500'}`}>
-                      {draft.length} {L.chars} · {smsSegments(draft)} SMS
-                    </span>
-                  </Tooltip>
-                </div>
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 /* ── Main ──────────────────────────────────────────────────────────────────── */
 
-export function SMSDashboard({ salonName }: { salonName: string }) {
+export function SMSDashboard({ salonName, confirmationSlot }: {
+  salonName: string
+  /** The booking confirmation editor, rendered under the sender names —
+   *  it is the third message the salon writes, and it belongs beside the
+   *  other two rather than in a section of its own. */
+  confirmationSlot?: React.ReactNode
+}) {
   const { lang } = useLang()
   const L = T[lang]
 
@@ -702,6 +511,34 @@ export function SMSDashboard({ salonName }: { salonName: string }) {
 
       <div className="space-y-6">
 
+      {/* ── Everything going out, in one list ────────────────────────────────
+          Leads the page because it answers the question a salon actually
+          opens this page with: what is about to be sent, to whom, and can I
+          stop it. The templates below are settings; this is the work. */}
+      <KundlistaTab
+        rows={ALL_ROWS}
+        emailBackup={emailBackup}
+        reminder={{
+          mode: reminderMode, template: savedReminderText, skip: reminderSkip,
+          sent: reminderSent, custom: reminderCustom,
+          timing: formatLead(leadValue, leadUnit, lang),
+        }}
+        review={{
+          mode: reviewMode, template: savedReviewText, skip: reviewSkip,
+          sent: reviewSent, custom: reviewCustom,
+          timing: formatAfter(afterValue, afterUnit, lang),
+        }}
+        onToggle={(flow, id) => flow === 'reminder'
+          ? toggleSkip(reminderSkip, setReminderSkip, 'kiterank_sms_reminder_skip', id)
+          : toggleSkip(reviewSkip, setReviewSkip, 'kiterank_sms_review_skip', id)}
+        onSend={(flow, id) => flow === 'reminder'
+          ? setReminderSent(prev => new Set(prev).add(id))
+          : setReviewSent(prev => new Set(prev).add(id))}
+        onCustomChange={(flow, id, text) => flow === 'reminder'
+          ? changeCustom(reminderCustom, setReminderCustom, 'kiterank_sms_reminder_custom', id, text)
+          : changeCustom(reviewCustom, setReviewCustom, 'kiterank_sms_review_custom', id, text)}
+      />
+
       {/* Provider note */}
       <div className="bg-navy-900 border border-navy-700 rounded-xl px-4 py-3 flex items-center gap-3">
         <span className="text-slate-500 shrink-0">✉</span>
@@ -796,6 +633,16 @@ export function SMSDashboard({ salonName }: { salonName: string }) {
         )
       })()}
 
+      {/* ── The booking confirmation, written by the salon ───────────────────
+          Sits with the sender names because all three answer "what does the
+          customer receive from us" — and it is the one message that already
+          reaches them today, on the booking receipt. */}
+      {confirmationSlot && (
+        <div className="bg-navy-800 rounded-xl border border-navy-700 p-6">
+          {confirmationSlot}
+        </div>
+      )}
+
       {/* ── 1. Bokningspåminnelser ───────────────────────────────────────── */}
       <div className="bg-navy-800 rounded-xl border border-navy-700 p-6 space-y-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -835,40 +682,13 @@ export function SMSDashboard({ salonName }: { salonName: string }) {
           </div>
         )}
 
-        {reminderMode === 'auto' ? (
-          <div>
-            <p className="text-green-400/80 text-xs flex items-center gap-2">
-              <span>●</span> {L.reminderAutoOn(formatLead(leadValue, leadUnit, lang))}
-              {reminderSkip.size > 0 && <span className="text-slate-500">{L.excluded(reminderSkip.size)}</span>}.
-            </p>
-            <SendList
-              rows={UPCOMING}
-              sent={reminderSent}
-              onSend={() => {}}
-              buttonLabel=""
-              emailBackup={emailBackup}
-              skipped={reminderSkip}
-              onToggleSkip={id => toggleSkip(reminderSkip, setReminderSkip, 'kiterank_sms_reminder_skip', id)}
-              template={savedReminderText}
-              custom={reminderCustom}
-              onCustomChange={(id, text) => changeCustom(reminderCustom, setReminderCustom, 'kiterank_sms_reminder_custom', id, text)}
-            />
-          </div>
-        ) : (
-          <div>
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{L.reminderManualHead}</p>
-            <SendList
-              rows={UPCOMING}
-              sent={reminderSent}
-              onSend={id => setReminderSent(prev => new Set(prev).add(id))}
-              buttonLabel={L.sendReminder}
-              emailBackup={emailBackup}
-              template={savedReminderText}
-              custom={reminderCustom}
-              onCustomChange={(id, text) => changeCustom(reminderCustom, setReminderCustom, 'kiterank_sms_reminder_custom', id, text)}
-            />
-          </div>
-        )}
+        {/* Who gets it, and any personal wording, lives in the list at the
+            top of the page — one place for every message going out. */}
+        <p className={reminderMode === 'auto' ? 'text-green-400/80 text-xs flex items-center gap-2' : 'text-slate-500 text-xs'}>
+          {reminderMode === 'auto'
+            ? <><span>●</span> {L.reminderAutoOn(formatLead(leadValue, leadUnit, lang))}</>
+            : L.reminderManualHead}
+        </p>
       </div>
 
       {/* ── 2. Recensionsförfrågan ───────────────────────────────────────── */}
@@ -913,41 +733,13 @@ export function SMSDashboard({ salonName }: { salonName: string }) {
           </div>
         )}
 
-        {reviewMode === 'auto' ? (
-          <div>
-            <p className="text-green-400/80 text-xs flex items-center gap-2">
-              <span>●</span> {L.reviewAutoOn(formatAfter(afterValue, afterUnit, lang))}
-              {reviewSkip.size > 0 && <span className="text-slate-500">{L.excluded(reviewSkip.size)}</span>}.
-            </p>
-            <SendList
-              rows={COMPLETED}
-              sent={reviewSent}
-              onSend={() => {}}
-              buttonLabel=""
-              emailBackup={emailBackup}
-              skipped={reviewSkip}
-              onToggleSkip={id => toggleSkip(reviewSkip, setReviewSkip, 'kiterank_sms_review_skip', id)}
-              template={savedReviewText}
-              custom={reviewCustom}
-              onCustomChange={(id, text) => changeCustom(reviewCustom, setReviewCustom, 'kiterank_sms_review_custom', id, text)}
-            />
-          </div>
-        ) : (
-          <div>
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{L.reviewManualHead}</p>
-            <SendList
-              rows={COMPLETED}
-              sent={reviewSent}
-              onSend={id => setReviewSent(prev => new Set(prev).add(id))}
-              buttonLabel={L.sendRequest}
-              emailBackup={emailBackup}
-              template={savedReviewText}
-              custom={reviewCustom}
-              onCustomChange={(id, text) => changeCustom(reviewCustom, setReviewCustom, 'kiterank_sms_review_custom', id, text)}
-            />
-          </div>
-        )}
-
+        {/* Who gets it, and any personal wording, lives in the list at the
+            top of the page — one place for every message going out. */}
+        <p className={reviewMode === 'auto' ? 'text-green-400/80 text-xs flex items-center gap-2' : 'text-slate-500 text-xs'}>
+          {reviewMode === 'auto'
+            ? <><span>●</span> {L.reviewAutoOn(formatAfter(afterValue, afterUnit, lang))}</>
+            : L.reviewManualHead}
+        </p>
         <p className="text-slate-500 text-xs border-t border-navy-700 pt-3">
           {L.policy}
         </p>

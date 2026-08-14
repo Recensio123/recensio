@@ -38,6 +38,10 @@ export type AdsKeyword = {
   ctr:           number
   avgCpcMicros:  number
   conversions:   number
+  /* metrics.conversions_from_interactions_rate — Google's own conversion rate.
+     Dividing conversions by clicks ourselves lands close but not identical,
+     because Google counts a conversion against the day of the click. */
+  conversionRate?: number
   spendMicros:   number
   isWasted:       boolean
   qualityScore?:  number                // Google Ads QualityScoreInfo.quality_score — 1–10
@@ -164,4 +168,19 @@ export type AdsData = {
     impressions:  number
     conversions:  number
   }
+
+  /* ── Reported by Google, added for the Google-only overview ────────────────
+   * Optional so the existing modes keep working untouched.
+   *
+   * cost_per_conversion is Google's own figure. Dividing spend by conversions
+   * ourselves lands close but not identical — Google counts conversions by the
+   * time of the click, not the time of the conversion — and a number that
+   * disagrees with what the customer sees inside Google Ads makes us look
+   * wrong, not precise.
+   *
+   * The weekly and yearly spend series are segments.week and segments.year on
+   * the same query that already returns segments.month. */
+  costPerConversionMicros?: number
+  spendTrendWeekly?:        { month: string; spendMicros: number }[]
+  spendTrendYearly?:        { month: string; spendMicros: number }[]
 }

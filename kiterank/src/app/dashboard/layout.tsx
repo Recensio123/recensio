@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { currentAccess } from '@/lib/access'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/dashboard/Sidebar'
 import { TooltipProvider } from '@/components/TooltipProvider'
@@ -8,18 +8,18 @@ import { LanguageProvider } from '@/components/LanguageProvider'
 import { DataCoverageProvider } from '@/components/DataCoverageProvider'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  /* Who is asking decides both which salon this is and how much of it they
+   * see. An account the salon created is not an owner and must not be sent
+   * off to onboarding to build a second one. */
+  const access = await currentAccess()
+  if (!access) redirect('/auth/login')
 
   const admin = createAdminClient()
 
   const { data: company } = await admin
     .from('companies')
     .select('id, name')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
+    .eq('id', access.companyId)
     .maybeSingle()
 
   // New user — hasn't connected Google yet
@@ -67,6 +67,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               companyName={company?.name ?? 'Your business'}
               reviewBadge={unanswered}
               connectionStatus={!company ? 'disconnected' : !snapshot ? 'connected' : 'live'}
+              role={access.role}
             />
             <main className="flex-1 overflow-auto pt-14 lg:pt-0">
               {children}

@@ -4,10 +4,27 @@ import { createAdminClient } from '@/lib/supabase/admin'
 type Params = { params: Promise<{ slug: string }> }
 
 /* The cancellation the confirmation page links to. The token is the secret:
- * whoever holds the link made the booking, no login needed. The 24-hour rule
- * the flow promises ("Kostnadsfri avbokning upp till 24 timmar innan") is
- * enforced here — closer than that, the page tells them to call instead, so
- * the salon gets a voice and a chance to refill the slot. */
+ * whoever holds the link made the booking, no login needed.
+ *
+ * How close to the appointment self-cancel stays open is the salon's own
+ * policy (booking_cancel_hours, set under Bokningar → Inställningar). The
+ * default is 0 — cancel anytime — because a customer who cannot cancel
+ * usually just fails to show up, and an honest cancellation at least hands
+ * the slot back. Inside the window the page points to the phone instead. */
+
+async function lookupCompany(slug: string) {
+  const admin = createAdminClient()
+  const { data } = await admin.from('companies').select('id, name').eq('slug', slug).single()
+  if (!data) return null
+  // The policy column is a later migration — without it, anytime applies
+  let cancelHours = 0
+  try {
+    const { data: policy, error } = await admin
+      .from('companies').select('booking_cancel_hours').eq('id', data.id).single()
+    if (!error) cancelHours = policy?.booking_cancel_hours ?? 0
+  } catch { /* pre-migration database */ }
+  return { ...data, cancelHours }
+}
 
 // GET — look the booking up so the page can show what is being cancelled
 export async function GET(req: NextRequest, { params }: Params) {
@@ -16,7 +33,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
 
   const admin = createAdminClient()
-  const { data: company } = await admin.from('companies').select('id, name').eq('slug', slug).single()
+  const company = await lookupCompany(slug)
   if (!company) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const { data: booking } = await admin
@@ -29,12 +46,13 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!booking) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   return NextResponse.json({
-    company:     company.name,
-    service:     booking.service_name,
-    date:        booking.booking_date,
-    time:        booking.start_time.slice(0, 5),
-    status:      booking.status,
-    cancellable: cancellable(booking.booking_date, booking.start_time),
+    company:      company.name,
+    service:      booking.service_name,
+    date:         booking.booking_date,
+    time:         booking.start_time.slice(0, 5),
+    status:       booking.status,
+    cancellable:  cancellable(booking.booking_date, booking.start_time, company.cancelHours),
+    cancel_hours: company.cancelHours,
   })
 }
 
@@ -45,7 +63,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
 
   const admin = createAdminClient()
-  const { data: company } = await admin.from('companies').select('id').eq('slug', slug).single()
+  const company = await lookupCompany(slug)
   if (!company) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const { data: booking } = await admin
@@ -58,8 +76,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!booking) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (booking.status === 'cancelled') return NextResponse.json({ ok: true })
 
-  if (!cancellable(booking.booking_date, booking.start_time)) {
-    return NextResponse.json({ error: 'too_late' }, { status: 409 })
+  if (!cancellable(booking.booking_date, booking.start_time, company.cancelHours)) {
+    return NextResponse.json({ error: 'too_late', cancel_hours: company.cancelHours }, { status: 409 })
   }
 
   const { error } = await admin
@@ -71,7 +89,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true })
 }
 
-function cancellable(date: string, time: string): boolean {
+/** Open until the salon's window closes; with 0 hours, until the slot starts. */
+function cancellable(date: string, time: string, hours: number): boolean {
   const start = new Date(`${date}T${time.length === 5 ? time + ':00' : time}`)
-  return start.getTime() - Date.now() > 24 * 60 * 60 * 1000
+  return start.getTime() - Date.now() > hours * 60 * 60 * 1000
 }

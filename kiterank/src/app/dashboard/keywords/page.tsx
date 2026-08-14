@@ -19,7 +19,6 @@ const mockQueries = [
 
 // 28% branded (people searching the company name), 72% non-branded (people discovering via service searches)
 // Derived from Search Console queries containing the business name vs. generic service queries
-const MOCK_BRANDED_PCT = 28
 
 const mockTrend = Array.from({ length: 6 }, (_, i) => {
   const d           = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
@@ -36,25 +35,6 @@ const MOCK_PREV = { clicks: 85, impressions: 4_800, avgPosition: 11.4 }
 
 // Google Ads summary — spend + sessions from GA4 paid channel, keywords from Ads API (Phase 3)
 const MOCK_PAID = { spend: 1_850, spendPrev: 1_400, sessions: 94, keywords: 12 }
-
-// Weekly movers — DataForSEO rank tracker, current week vs previous week
-const MOCK_WEEKLY_MOVERS = {
-  gained: [
-    { query: 'frisör hornstull',            position: 6  },
-    { query: 'slingor stockholm',           position: 9  },
-  ],
-  lost: [
-    { query: 'barberare södermalm', positionPrev: 14 },
-  ],
-  improved: [
-    { query: 'frisör södermalm',    position: 3,  positionPrev: 5  },
-    { query: 'boka frisör online',  position: 4,  positionPrev: 7  },
-    { query: 'klippning dam södermalm', position: 8, positionPrev: 12 },
-  ],
-  dropped: [
-    { query: 'billig frisör stockholm', position: 9, positionPrev: 6 },
-  ],
-}
 
 export default async function SEOPage() {
   const supabase = await createClient()
@@ -84,9 +64,7 @@ export default async function SEOPage() {
       trend={mockTrend}
       prev={MOCK_PREV}
       isLive={isLive}
-      brandedPct={MOCK_BRANDED_PCT}
       paid={MOCK_PAID}
-      weeklyMovers={MOCK_WEEKLY_MOVERS}
     />
   )
 }

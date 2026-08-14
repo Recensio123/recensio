@@ -8,13 +8,6 @@ import { SEODashboardTest2 } from './SEODashboardTest2'
 
 type PrevData = { clicks: number; impressions: number; avgPosition: number }
 
-interface WeeklyMovers {
-  gained:   Array<{ query: string; position: number }>
-  lost:     Array<{ query: string; positionPrev: number }>
-  improved: Array<{ query: string; position: number; positionPrev: number }>
-  dropped:  Array<{ query: string; position: number; positionPrev: number }>
-}
-
 type PaidData = {
   spend:     number
   spendPrev: number
@@ -22,14 +15,12 @@ type PaidData = {
   keywords:  number
 }
 
-export function SEODashboard({ queries, trend, prev, isLive, brandedPct, paid = null, weeklyMovers }: {
+export function SEODashboard({ queries, trend, prev, isLive, paid = null }: {
   queries:       Query[]
   trend:         TrendPoint[]
   prev:          PrevData
   isLive:        boolean
-  brandedPct:    number
   paid?:         PaidData | null
-  weeklyMovers?: WeeklyMovers
 }) {
-  return <SEODashboardTest2 queries={queries} trend={trend} prev={prev} isLive={isLive} brandedPct={brandedPct} paid={paid} weeklyMovers={weeklyMovers} />
+  return <SEODashboardTest2 queries={queries} trend={trend} prev={prev} isLive={isLive} paid={paid} />
 }

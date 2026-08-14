@@ -7,12 +7,13 @@ import { useEffect, useState } from 'react'
  * call instead: the salon gets a voice and a chance to save the hour. */
 
 type Info = {
-  company:     string
-  service:     string
-  date:        string
-  time:        string
-  status:      string
-  cancellable: boolean
+  company:      string
+  service:      string
+  date:         string
+  time:         string
+  status:       string
+  cancellable:  boolean
+  cancel_hours: number
 }
 
 const MONTHS_SV = ['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december']
@@ -101,8 +102,9 @@ export function AvbokaFlow({ slug, token }: { slug: string; token: string }) {
             ) : (
               <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '14px 16px' }}>
                 <p style={{ fontSize: '14px', color: '#92400e', margin: 0, lineHeight: 1.6 }}>
-                  Din tid är närmare än 24 timmar bort och kan inte avbokas här.
-                  Ring salongen så hjälper de dig.
+                  {info.cancel_hours > 0
+                    ? `Din tid är närmare än ${info.cancel_hours} timmar bort och kan inte avbokas här. Ring salongen så hjälper de dig.`
+                    : 'Tiden har redan börjat och kan inte avbokas här. Ring salongen så hjälper de dig.'}
                 </p>
               </div>
             )}

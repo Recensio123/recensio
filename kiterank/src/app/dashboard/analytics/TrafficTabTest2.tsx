@@ -5,7 +5,7 @@ import { useLang } from '@/components/LanguageProvider'
 import { type AnalyticsData, type Period, type Source } from './types'
 import { CHANNEL_COLORS, CHANNEL_TOOLTIPS, DONUT_COLORS, DONUT_PALETTE, CATEGORY_COLORS, CATEGORY_TOOLTIPS } from './constants'
 import { fmtDuration } from './helpers'
-import { usePlan } from '@/components/PlanProvider'
+import { usePlan, hasBooking } from '@/components/PlanProvider'
 import { useCoverage, coveredValue } from '@/components/DataCoverageProvider'
 import { CoverageNote } from '@/components/dashboard/CoverageNote'
 
@@ -212,7 +212,7 @@ export function TrafficTabTest2({
   const { plan } = usePlan()
   const { lang } = useLang()
   const t = T[lang]
-  const bookingMode = plan === 'testbok'
+  const bookingMode = hasBooking(plan)
 
   // How far back the site tag reaches. Every cross-period figure below is
   // checked against it; state signals — verdicts, engagement, shares — are not.

@@ -5,10 +5,8 @@ import { PeriodSelector, type Period } from '@/components/dashboard/PeriodSelect
 import { useLang, type Lang } from '@/components/LanguageProvider'
 import { SEOTrendChart }      from './TrendChart'
 import type { Query }         from './KeywordTable'
-import { KeywordTableTest2, type TableTab } from './KeywordTableTest2'
-import { LocalGridPanel }     from './LocalGridPanel'
+import { KeywordTableTest2, DEFAULT_SORT, type TableSort, type SortCol } from './KeywordTableTest2'
 import { OpportunitiesPanelTest2 } from './OpportunitiesPanelTest2'
-import { PositionChangesPanelTest } from './PositionChangesPanelTest'
 import { type TrendPoint }    from './TrendChart'
 import { ActionPlanLink }     from '@/components/dashboard/ActionPlanLink'
 import { HelpButton }         from '@/components/dashboard/HelpButton'
@@ -90,17 +88,10 @@ const T = {
     trendYearly:   'Organisk trafik — senaste 3 åren',
     trendMonthly:  'Organisk trafik — senaste 6 månaderna',
     trendStart:    'Organisk trafik — sedan start',
-    branded1:      'sökte efter din',
-    brandedWord:   'tjänst',
-    branded2:      ', inte ditt namn — nya kunder som hittar dig',
-    brandedTip:    'Andelen sökningar som gällde din typ av tjänst i stället för ditt företagsnamn. De som söker på tjänsten är nya kunder — de som söker på ditt namn känner redan till dig.',
     keywordsTitle: 'Dina sökord',
     keywordsTip:   'Varje sökfras din hemsida har visats för på Google, sorterade efter hur ofta du synts.',
     opportunities: 'Möjligheter',
     opportunitiesTip: 'Sökord du inte rankar för ännu — förslag att satsa på, växande efterfrågan, säsongstoppar och din egen bevakningslista.',
-    localGrid:     'Lokal sökkarta',
-    localGridTip:  'Var du rankar på Google Maps i ditt område. Varje ruta är ungefär 1 km² — ju mörkare grön, desto högre upp visas du i lokala sökningar i det området.',
-    localGridSub:  'Var du visas i Google Maps-resultat i ditt område.',
     actionContext: 'Vill du klättra i placeringarna?',
     period: { Weekly: 'mot förra veckan', Monthly: 'mot förra månaden', Yearly: 'mot förra året' } as Record<Period, string>,
   },
@@ -122,17 +113,10 @@ const T = {
     trendYearly:   'Organic traffic — last 3 years',
     trendMonthly:  'Organic traffic — last 6 months',
     trendStart:    'Organic traffic — since we started',
-    branded1:      'searched for your',
-    brandedWord:   'service',
-    branded2:      ', not your name — new customers finding you',
-    brandedTip:    'The share of searches for your type of service rather than your business name. Service searches are new customers — people searching your name already know you.',
     keywordsTitle: 'Your keywords',
     keywordsTip:   'Every search term your website has appeared for on Google, sorted by how often you were seen.',
     opportunities: 'Opportunities',
     opportunitiesTip: "Keywords you don't rank for yet — suggestions to target, growing demand, seasonal peaks, and your own watchlist.",
-    localGrid:     'Local search grid',
-    localGridTip:  'Where you rank on Google Maps across your service area. Each cell is roughly 1 km² — the darker the green, the higher you appear in local search for that neighbourhood.',
-    localGridSub:  'Where you appear in Google Maps results across your area.',
     actionContext: 'Want to climb these rankings?',
     period: { Weekly: 'WoW', Monthly: 'MoM', Yearly: 'YoY' } as Record<Period, string>,
   },
@@ -143,20 +127,17 @@ export function SEODashboardTest2({
   trend,
   prev,
   isLive,
-  brandedPct,
 }: {
   queries:    Query[]
   trend:      TrendPoint[]
   prev:       PrevData
   isLive:     boolean
-  brandedPct: number
   paid?:      unknown
-  weeklyMovers?: unknown
 }) {
   const { lang } = useLang()
   const t = T[lang]
   const [period,   setPeriod]   = useState<Period>('Monthly')
-  const [tableTab, setTableTab] = useState<TableTab>('all')
+  const [tableSort, setTableSort] = useState<TableSort>(DEFAULT_SORT)
   const periodLabel = t.period[period]
 
   // How far back our Search Console record actually reaches. A change
@@ -213,8 +194,10 @@ export function SEODashboardTest2({
   }
 
   // KPI cards jump straight to the matching table view — a number you can act on
-  function jumpToTable(tab: TableTab) {
-    setTableTab(tab)
+  /* A KPI card points at a column, not at a verdict — the table has no
+   * opinionated views left to land on. */
+  function jumpToTable(col: SortCol) {
+    setTableSort({ col, dir: col === 'position' ? 'asc' : 'desc' })
     document.getElementById('keyword-table-t2')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -239,7 +222,7 @@ export function SEODashboardTest2({
       value:   `${page1Count} ${t.of} ${queries.length}`,
       delta:   null,
       sub:     t.viewAll,
-      onClick: () => jumpToTable('all'),
+      onClick: () => jumpToTable('position'),
     },
     {
       label:   t.kpiQuick,
@@ -248,7 +231,9 @@ export function SEODashboardTest2({
       delta:   null,
       sub:     t.seeWhich,
       highlight: quickWins > 0,
-      onClick: () => jumpToTable('quickwins'),
+      /* Positions 4–15 sit immediately under the top three, so ordering by
+       * position puts them near the top of the list the card points at. */
+      onClick: () => jumpToTable('position'),
     },
   ]
 
@@ -312,26 +297,12 @@ export function SEODashboardTest2({
           })}
         </div>
 
-        {/* What changed — the reason to come back every week */}
-        <PositionChangesPanelTest period={period} />
-
         {/* Traffic chart */}
         <div>
           <SEOTrendChart trend={chartTrend} title={trendTitle} />
           <MeasuringSince coverage={coverage} className="mt-3" />
         </div>
 
-        {/* Branded % — single line callout, in customer language */}
-        <div className="flex items-center gap-3 px-1 flex-wrap">
-          <div className="flex-1 min-w-[120px] h-1.5 rounded-full overflow-hidden bg-navy-700">
-            <div className="h-full bg-green-500 rounded-full" style={{ width: `${100 - brandedPct}%` }} />
-          </div>
-          <Tooltip text={t.brandedTip}>
-            <p className="text-slate-500 text-xs shrink-0 cursor-default">
-              <span className="text-white font-medium">{100 - brandedPct}%</span> {t.branded1} <span className="text-slate-300">{t.brandedWord}</span>{t.branded2}
-            </p>
-          </Tooltip>
-        </div>
       </section>
 
       {/* ── Section 2: Your keywords ────────────────────────────────────────── */}
@@ -341,7 +312,7 @@ export function SEODashboardTest2({
             {t.keywordsTitle}
           </p>
         </Tooltip>
-        <KeywordTableTest2 queries={queries} activeTab={tableTab} onTabChange={setTableTab} period={period} />
+        <KeywordTableTest2 queries={queries} sort={tableSort} onSortChange={setTableSort} period={period} />
       </section>
 
       {/* ── Section 3: Opportunities — one home for keywords you don't rank for ── */}
@@ -351,19 +322,9 @@ export function SEODashboardTest2({
             {t.opportunities}
           </p>
         </Tooltip>
-        <OpportunitiesPanelTest2 queries={queries} />
+        <OpportunitiesPanelTest2 />
       </section>
 
-      {/* ── Section 4: Local search grid ────────────────────────────────────── */}
-      <section className="space-y-3">
-        <Tooltip text={t.localGridTip}>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-default">
-            {t.localGrid}
-          </p>
-        </Tooltip>
-        <p className="text-slate-500 text-xs -mt-1">{t.localGridSub}</p>
-        <LocalGridPanel />
-      </section>
 
       <ActionPlanLink context={t.actionContext} />
 

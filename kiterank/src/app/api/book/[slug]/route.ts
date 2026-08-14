@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { bookingSeedsFrom, bookingServices } from '@/lib/trades'
+import { fetchStaff } from '@/lib/staffQuery'
+import { fetchPolicy } from '@/lib/bookingPolicy'
 import {
   addMinutes, assignStaff, staffFree, timeToMins, defaultAvailability,
+  autoConfirmFor, leadFor, leadRuleFor, salonNow, tooSoon,
   type StaffRow, type BookingRow, type BlockedRow, type Availability,
 } from '@/lib/bookingSlots'
 
@@ -26,6 +29,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (error || !company) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
+
+  /* The salon's own rules, so the flow shows exactly what it decided. */
+  const policy = await fetchPolicy(admin, company.id)
 
   let { data: services } = await admin
     .from('booking_services')
@@ -54,21 +60,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // Staff is a later migration — an older database just has none, and the
   // flow then skips the person step on its own.
-  let staff: { id: string; name: string; title: string | null; image: string | null }[] = []
-  try {
-    const { data } = await admin
-      .from('staff')
-      .select('id, name, title, image')
-      .eq('company_id', company.id)
-      .eq('is_active', true)
-      .order('sort_order')
-    staff = data ?? []
-  } catch { /* pre-migration database */ }
+  const staffRows = await fetchStaff(admin, company.id)
+  const staff = (staffRows ?? []).map(s => ({ id: s.id, name: s.name, title: s.title, image: s.image }))
 
   return NextResponse.json({
-    company:  { name: company.name, slug: company.slug },
-    services: services ?? [],
+    company:           { name: company.name, slug: company.slug },
+    services:          services ?? [],
     staff,
+    cancel_hours:      policy.cancel_hours,
+    confirmation_text: policy.confirmation_text,
   })
 }
 
@@ -115,7 +115,16 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   /* Re-check the slot at write time — two visitors can be staring at the
    * same free 14:00, and the second one to press the button must be told
-   * no rather than double-booking the chair. */
+   * no rather than double-booking the chair. The same goes for the notice
+   * rule: a page left open since this morning must not book 10:00 at noon. */
+  const policy = await fetchPolicy(admin, company.id)
+  const lead   = leadRuleFor(booking_date, policy.lead_minutes)
+  const TOO_SOON = 'Den tiden ligger för nära inpå. Välj en senare tid, eller ring salongen.'
+
+  if (booking_date < salonNow().date) {
+    return NextResponse.json({ error: TOO_SOON }, { status: 409 })
+  }
+
   const dow = new Date(booking_date + 'T12:00:00').getDay()
   const { data: avail } = await admin
     .from('booking_availability')
@@ -140,15 +149,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   let blocked: BlockedRow[] = []
   let hasStaffTables = false
   try {
-    const { data, error: staffErr } = await admin
-      .from('staff')
-      .select('id, name, schedule')
-      .eq('company_id', company.id)
-      .eq('is_active', true)
-      .order('sort_order')
-    if (!staffErr) {
+    const rows = await fetchStaff(admin, company.id)
+    if (rows) {
       hasStaffTables = true
-      staff = (data ?? []) as StaffRow[]
+      staff = rows as StaffRow[]
       const { data: bl } = await admin
         .from('blocked_times')
         .select('staff_id, start_time, end_time')
@@ -162,21 +166,38 @@ export async function POST(req: NextRequest, { params }: Params) {
   const bookings = (existing ?? []) as BookingRow[]
   let assigned: StaffRow | null = null
 
+  const startM = timeToMins(start_time)
+  const common = { startMins: startM, duration: totalDuration, dow, salon: hours as Availability, bookings, blocked, lead }
+
   if (staff.length > 0) {
     if (staff_id) {
       const chosen = staff.find(s => s.id === staff_id)
-      if (!chosen || !staffFree(chosen, timeToMins(start_time), totalDuration, dow, hours as Availability, bookings, blocked)) {
+      if (!chosen) {
+        return NextResponse.json({ error: 'Tiden är inte längre ledig' }, { status: 409 })
+      }
+      /* Split the two refusals apart: "she cannot take you that soon" is a
+       * different thing to tell a customer than "that hour is taken". */
+      if (tooSoon(startM, lead, leadFor(chosen, policy.lead_minutes))) {
+        return NextResponse.json({ error: TOO_SOON }, { status: 409 })
+      }
+      if (!staffFree({ staff: chosen, ...common })) {
         return NextResponse.json({ error: 'Tiden är inte längre ledig' }, { status: 409 })
       }
       assigned = chosen
     } else {
-      assigned = assignStaff(staff, start_time, totalDuration, dow, hours as Availability, bookings, blocked)
+      const pick = { staff, startTime: start_time, duration: totalDuration, dow, salon: hours as Availability, bookings, blocked }
+      assigned = assignStaff({ ...pick, lead })
       if (!assigned) {
-        return NextResponse.json({ error: 'Tiden är inte längre ledig' }, { status: 409 })
+        // Would anyone have been free if the notice rule were lifted?
+        const wouldFit = assignStaff(pick)
+        return NextResponse.json(
+          { error: wouldFit ? TOO_SOON : 'Tiden är inte längre ledig' }, { status: 409 })
       }
     }
   } else {
-    const startM = timeToMins(start_time)
+    if (tooSoon(startM, lead, policy.lead_minutes)) {
+      return NextResponse.json({ error: TOO_SOON }, { status: 409 })
+    }
     const taken = bookings.some(b =>
       timeToMins(b.start_time) < startM + totalDuration && timeToMins(b.end_time) > startM)
     if (taken) {
@@ -184,22 +205,43 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Upsert customer (match on company + phone)
-  const { data: customer } = await admin
+  /* Free slot, inside working hours: the salon decides whether that is
+   * enough. Auto means the customer leaves with a confirmed time; manual
+   * means the chair sees the request first and the confirmation follows. */
+  const autoConfirm = autoConfirmFor(assigned, policy.auto_confirm)
+
+  /* The customer register, one row per phone number. Not an upsert: the
+   * unique index on (company_id, phone) is partial (WHERE phone IS NOT NULL)
+   * and ON CONFLICT cannot target it — the upsert failed silently on every
+   * booking and no customer was ever registered. Select-then-write instead. */
+  const { data: existingCustomer } = await admin
     .from('customers')
-    .upsert(
-      {
-        company_id:  company.id,
-        name:        customer_name,
-        phone:       customer_phone,
-        email:       customer_email || null,
-        sms_opt_in:  sms_opt_in ?? true,
-        updated_at:  new Date().toISOString(),
-      },
-      { onConflict: 'company_id,phone', ignoreDuplicates: false }
-    )
     .select('id')
-    .single()
+    .eq('company_id', company.id)
+    .eq('phone', customer_phone)
+    .maybeSingle()
+
+  let customer = existingCustomer
+  if (existingCustomer) {
+    await admin
+      .from('customers')
+      .update({ name: customer_name, email: customer_email || null, sms_opt_in: sms_opt_in ?? true, updated_at: new Date().toISOString() })
+      .eq('id', existingCustomer.id)
+  } else {
+    const { data: created } = await admin
+      .from('customers')
+      .insert({
+        company_id: company.id,
+        name:       customer_name,
+        phone:      customer_phone,
+        email:      customer_email || null,
+        sms_opt_in: sms_opt_in ?? true,
+        updated_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single()
+    customer = created
+  }
 
   const reference = shortRef()
   const base = {
@@ -217,7 +259,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     customer_email:           customer_email || null,
     customer_note:            customer_note  || null,
     source:                   'online',
-    status:                   'pending',
+    status:                   autoConfirm ? 'confirmed' : 'pending',
   }
 
   /* The staff columns are the newer migration. Insert with them first; a
@@ -225,13 +267,24 @@ export async function POST(req: NextRequest, { params }: Params) {
    * still understands. */
   let cancelToken: string | null = null
   if (hasStaffTables) {
-    const { data: row, error: err } = await admin
+    const withStaff = {
+      ...base,
+      staff_id:       assigned?.id ?? null,
+      booking_ref:    reference,
+      source_channel: source_channel || null,
+    }
+    /* Whether the name on the booking was the customer's choice or ours. The
+     * column is a later migration, so fall back to the row without it. */
+    let row = await admin
       .from('bookings')
-      .insert({ ...base, staff_id: assigned?.id ?? null, booking_ref: reference, source_channel: source_channel || null })
+      .insert({ ...withStaff, staff_requested: Boolean(staff_id) })
       .select('cancel_token')
       .single()
-    if (err) return NextResponse.json({ error: err.message }, { status: 500 })
-    cancelToken = row?.cancel_token ?? null
+    if (row.error) {
+      row = await admin.from('bookings').insert(withStaff).select('cancel_token').single()
+    }
+    if (row.error) return NextResponse.json({ error: row.error.message }, { status: 500 })
+    cancelToken = row.data?.cancel_token ?? null
   } else {
     const { error: err } = await admin.from('bookings').insert(base)
     if (err) return NextResponse.json({ error: err.message }, { status: 500 })
@@ -241,6 +294,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     ok:         true,
     reference,
     staff_name: assigned?.name ?? null,
+    status:     base.status,
     cancel_url: cancelToken ? `/book/${slug}/avboka/${cancelToken}` : null,
   })
 }

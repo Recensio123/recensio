@@ -84,14 +84,20 @@ function KeywordDetail({
   k,
   currency,
   campaign,
+  showDiagnosis = true,
 }: {
   k:        AdsKeyword
   currency: string
   campaign: AdsCampaign | undefined
+  /* The closing sentence is our reading of the numbers, not Google's. The
+     Google-only tab turns it off; everything above it is Google either way. */
+  showDiagnosis?: boolean
 }) {
   const { lang } = useLang()
   const sv = lang === 'sv'
-  const convRate = k.clicks > 0 ? (k.conversions / k.clicks) * 100 : 0
+  const convRate = k.conversionRate !== undefined
+    ? k.conversionRate * 100
+    : k.clicks > 0 ? (k.conversions / k.clicks) * 100 : 0
   const qs       = k.qualityScore
   const hasQsSub = k.expectedCtr || k.adRelevance || k.landingPageExp
 
@@ -99,7 +105,9 @@ function KeywordDetail({
 
   // One-line diagnosis — withheld until there's enough data to mean something
   let diagnosis: { text: string; tone: 'warn' | 'good' | 'neutral' } | null = null
-  if (isTesting) {
+  if (!showDiagnosis) {
+    diagnosis = null
+  } else if (isTesting) {
     diagnosis = {
       text: sv
         ? `Bara ${k.clicks} klick hittills — för lite data för att dra några slutsatser. Låt det rulla ett tag till innan du ändrar något.`
@@ -274,14 +282,16 @@ const PAGE_SIZE = 10
 
 type KwFilter = KeywordStatus
 
-function KeywordPerformanceList({
+export function KeywordPerformanceList({
   keywords,
   campaigns,
   currency,
+  showDiagnosis = true,
 }: {
   keywords:  AdsKeyword[]
   campaigns: AdsCampaign[]
   currency:  string
+  showDiagnosis?: boolean
 }) {
   const { lang } = useLang()
   const sv = lang === 'sv'
@@ -452,7 +462,7 @@ function KeywordPerformanceList({
 
                   {/* Expand panel */}
                   {isOpen && (
-                    <KeywordDetail k={k} currency={currency} campaign={camp} />
+                    <KeywordDetail k={k} currency={currency} campaign={camp} showDiagnosis={showDiagnosis} />
                   )}
                 </div>
               )

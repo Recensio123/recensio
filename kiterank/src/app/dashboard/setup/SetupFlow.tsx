@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useLang } from '@/components/LanguageProvider'
-import { usePlan } from '@/components/PlanProvider'
+import { usePlan, hasBooking } from '@/components/PlanProvider'
 import { SALON_TEMPLATES } from '@/app/onboarding/templates'
 import { TRADES } from '@/lib/trades'
 import { type GbpState } from '@/components/dashboard/GoogleProfileGuide'
@@ -551,7 +551,7 @@ export function SetupFlow({
                     lang === 'sv' ? 'Din Google-profil — visningar, samtal och vägbeskrivningar' : 'Your Google profile — views, calls, and directions',
                     lang === 'sv' ? 'Din hemsida — besök och förfrågningar' : 'Your website — visits and enquiries',
                     lang === 'sv' ? 'Sökresultaten — vilka sökningar som leder till dig' : 'Search results — which searches lead to you',
-                    ...(plan === 'testbok' ? [lang === 'sv' ? 'Bokningarna — vad varje kanal ger dig i kronor' : 'Bookings — what each channel brings you in kronor'] : []),
+                    ...(hasBooking(plan) ? [lang === 'sv' ? 'Bokningarna — vad varje kanal ger dig i kronor' : 'Bookings — what each channel brings you in kronor'] : []),
                   ].map((line, i) => (
                     <li key={i} className="text-xs text-slate-300 flex gap-2">
                       <span className="text-green-400">✓</span>{line}
@@ -625,7 +625,7 @@ export function SetupFlow({
                 lang === 'sv' ? 'Din Google-profil — visningar, samtal och vägbeskrivningar' : 'Your Google profile — views, calls, and directions',
                 lang === 'sv' ? 'Din hemsida — besök och förfrågningar' : 'Your website — visits and enquiries',
                 lang === 'sv' ? 'Sökresultaten — vilka sökningar som leder till dig' : 'Search results — which searches lead to you',
-                ...(plan === 'testbok' ? [lang === 'sv' ? 'Bokningarna — vad varje kanal ger dig i kronor' : 'Bookings — what each channel brings you in kronor'] : []),
+                ...(hasBooking(plan) ? [lang === 'sv' ? 'Bokningarna — vad varje kanal ger dig i kronor' : 'Bookings — what each channel brings you in kronor'] : []),
               ].map((line, i) => (
                 <li key={i} className="text-xs text-slate-300 flex gap-2">
                   <span className="text-green-400">✓</span>{line}

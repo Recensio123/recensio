@@ -144,6 +144,11 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
   const [bookingRef,   setBookingRef]   = useState('')
   const [cancelUrl,    setCancelUrl]    = useState<string | null>(null)
   const [assignedName, setAssignedName] = useState<string | null>(null)
+  /* Whether the salon confirmed the time itself or wants to look at it
+   * first — the receipt must not promise a time nobody has accepted. */
+  const [awaitingOk,   setAwaitingOk]   = useState(false)
+  const [cancelHours,  setCancelHours]  = useState(0)
+  const [confirmText,  setConfirmText]  = useState<string | null>(null)
 
   // Booking values. Several services combine into one visit — the slot is
   // their total length, so "klippning + skägg" books as one appointment.
@@ -175,8 +180,23 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
   useEffect(() => {
     fetch(`/api/book/${slug}`)
       .then(r => r.json())
-      .then(d => { setServices(d.services ?? []); setStaff(d.staff ?? []) })
+      .then(d => {
+        setServices(d.services ?? []); setStaff(d.staff ?? [])
+        setCancelHours(d.cancel_hours ?? 0); setConfirmText(d.confirmation_text ?? null)
+      })
   }, [slug])
+
+  /** The salon's own confirmation wording, with the booking woven in. */
+  function personalizedConfirmation(): string | null {
+    if (!confirmText) return null
+    return confirmText
+      .replaceAll('{namn}',        name.trim() || 'du')
+      .replaceAll('{behandling}',  selectedServices.map(s => s.name).join(' + '))
+      .replaceAll('{datum}',       selectedDate ? formatDateLong(selectedDate) : '')
+      .replaceAll('{tid}',         selectedTime ?? '')
+      .replaceAll('{medarbetare}', assignedName ?? staffName ?? companyName)
+      .replaceAll('{salong}',      companyName)
+  }
 
   /* Slots load when something the grid depends on actually changes — picking
    * a date, or arriving at the step after changing services or person. */
@@ -233,6 +253,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
     setBookingRef(data.reference ?? '')
     setCancelUrl(data.cancel_url ?? null)
     setAssignedName(data.staff_name ?? null)
+    setAwaitingOk(data.status === 'pending')
     setStep('success')
     setSubmitting(false)
   }
@@ -677,8 +698,12 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
               >
                 {submitting ? 'Bokar…' : 'Bekräfta bokning'}
               </button>
+              {/* The promise mirrors the salon's own policy — the cancel page
+                  enforces exactly this number. */}
               <p style={{ textAlign: 'center', fontSize: '12px', color: '#ccc', marginTop: '12px' }}>
-                Kostnadsfri avbokning upp till 24 timmar innan
+                {cancelHours === 0
+                  ? 'Kostnadsfri avbokning när som helst'
+                  : `Kostnadsfri avbokning upp till ${cancelHours} timmar innan`}
               </p>
             </div>
           )}
@@ -686,21 +711,32 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
           {/* Success */}
           {step === 'success' && (
             <div style={{ textAlign: 'center', padding: '20px 0 12px' }}>
-              {/* Check circle */}
+              {/* A tick for a time that is settled; a clock for one the salon
+                  still has to look at. Promising "Bokad!" for a request the
+                  salon may decline is the one thing this screen must not do. */}
               <div style={{
                 width: '68px', height: '68px', borderRadius: '50%', background: '#111',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 margin: '0 auto 22px',
               }}>
-                <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
-                  <path d="M7 17l7 7 13-13" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                {awaitingOk ? (
+                  <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                    <circle cx="17" cy="17" r="12" stroke="white" strokeWidth="2.5" />
+                    <path d="M17 10v7.5l5 3" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                    <path d="M7 17l7 7 13-13" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
               </div>
               <h2 style={{ fontSize: '26px', fontWeight: 700, color: '#111', letterSpacing: '-0.02em', marginBottom: '8px' }}>
-                Bokad!
+                {awaitingOk ? 'Tack — din tid är önskad' : 'Bokad!'}
               </h2>
-              <p style={{ color: '#777', fontSize: '15px', lineHeight: 1.6, marginBottom: '22px' }}>
-                Din tid är reserverad — salongen bekräftar den.
+              <p style={{ color: '#777', fontSize: '15px', lineHeight: 1.6, marginBottom: '22px', whiteSpace: 'pre-line' }}>
+                {awaitingOk
+                  ? `${companyName} går igenom din önskade tid och bekräftar den. Du får din bokningsbekräftelse så snart tiden är godkänd.`
+                  : personalizedConfirmation() ?? 'Din tid är bokad och klar.'}
               </p>
               {bookingRef && (
                 <div style={{ display: 'inline-block', background: '#f5f5f3', borderRadius: '8px', padding: '8px 18px', marginBottom: '24px' }}>
@@ -719,6 +755,11 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                 <div style={{ fontSize: '14px', color: '#aaa', marginTop: '2px' }}>
                   {companyName}{assignedName ? ` · ${assignedName}` : ''}
                 </div>
+                {awaitingOk && (
+                  <div style={{ marginTop: '10px', display: 'inline-block', background: '#f5f5f3', borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: 600, color: '#666' }}>
+                    Väntar på bekräftelse
+                  </div>
+                )}
               </div>
               {/* The cancellation link IS the confirmation for now — nothing
                   is sent anywhere yet, so this page has to hand it over. */}
@@ -732,7 +773,9 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                   </a>
                 </div>
               )}
-              <p style={{ marginTop: '22px', fontSize: '15px', color: '#666' }}>Vi ser fram emot ditt besök! 👋</p>
+              <p style={{ marginTop: '22px', fontSize: '15px', color: '#666' }}>
+                {awaitingOk ? 'Vi hör av oss inom kort.' : 'Vi ser fram emot ditt besök! 👋'}
+              </p>
             </div>
           )}
         </div>

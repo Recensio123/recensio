@@ -3,10 +3,12 @@ import { useMemo } from 'react'
 import { Tooltip } from '@/components/Tooltip'
 import { type GBPData } from './types'
 import { type Period } from '@/components/dashboard/PeriodSelector'
-import { usePlan } from '@/components/PlanProvider'
+import { usePlan, hasBooking } from '@/components/PlanProvider'
 import { useLang } from '@/components/LanguageProvider'
 import { useCoverage, coveredValue } from '@/components/DataCoverageProvider'
 import { CoverageNote, MeasuringSince } from '@/components/dashboard/CoverageNote'
+import { KomIgangKort } from './KomIgangKort'
+import { KonkurrentKort } from './KonkurrentKort'
 
 // Booking attribution — mock until the booking page stores its referrer.
 // Bookings whose visit started from the GBP listing's booking link.
@@ -46,10 +48,9 @@ const T = {
     allCaughtUp:       'Allt klart — inget behöver din uppmärksamhet just nu.',
     reviewsWaiting:    (n: number) => `${n} recension${n === 1 ? '' : 'er'} väntar på svar`,
     replyNow:          'Svara nu',
-    noPost:            (d: number) => `Inget inlägg på ${d} dagar — dags för månadens inlägg (texten är redan skriven åt dig)`,
+    noPost:            (d: number) => `Inget inlägg på ${Math.round(d / 30)} månader — dags igen (texten är redan skriven åt dig)`,
     writePost:         'Skriv ett inlägg',
-    checklistLeft:     (n: number) => `${n} punkt${n === 1 ? '' : 'er'} kvar i din profil-checklista`,
-    finishChecklist:   'Slutför checklistan',
+    setupLink:         'Profilens uppsättning',
     actionsTooltip:    'Riktiga kundhändelser direkt från din Google-profil denna månad — det tydligaste måttet på vad profilen ger ditt företag.',
     actionsTitle:      { Weekly: 'Vad din profil gav dig denna vecka', Monthly: 'Vad din profil gav dig denna månad', Yearly: 'Vad din profil gav dig i år' } as Record<Period, string>,
     actionsTitleStart: 'Vad din profil gav dig sedan start',
@@ -77,10 +78,9 @@ const T = {
     allCaughtUp:       'All caught up — nothing needs your attention right now.',
     reviewsWaiting:    (n: number) => `${n} review${n === 1 ? '' : 's'} waiting for a reply`,
     replyNow:          'Reply now',
-    noPost:            (d: number) => `No post in ${d} days — time for this month's post (it's already written for you)`,
+    noPost:            (d: number) => `No post in ${Math.round(d / 30)} months — time for another (the text is already written for you)`,
     writePost:         'Write a post',
-    checklistLeft:     (n: number) => `${n} item${n === 1 ? '' : 's'} left on your profile checklist`,
-    finishChecklist:   'Finish checklist',
+    setupLink:         'Profile setup',
     actionsTooltip:    'Real customer actions taken directly from your Google listing this month — the clearest measure of what your profile is doing for your business.',
     actionsTitle:      { Weekly: 'What your profile brought in this week', Monthly: 'What your profile brought in this month', Yearly: 'What your profile brought in this year' } as Record<Period, string>,
     actionsTitleStart: 'What your profile brought in since we started',
@@ -110,12 +110,13 @@ export function OverviewTabTest2({
   period      = 'Monthly',
   periodLabel = 'MoM',
   auditPassed = 0,
-  auditTotal  = 10,
+  auditTotal  = 8,
   onTabChange,
 }: {
   data:          GBPData
   period?:       Period
   periodLabel?:  string
+  /** The one-time setup only — the recurring items live in the list below. */
   auditPassed?:  number
   auditTotal?:   number
   onTabChange?:  (tab: string) => void
@@ -123,7 +124,7 @@ export function OverviewTabTest2({
   const { plan } = usePlan()
   const { lang } = useLang()
   const t = T[lang]
-  const bookingMode  = plan === 'testbok'
+  const bookingMode  = hasBooking(plan)
 
   // How far back our record for this source actually reaches. A delta is only
   // safe to render once the preceding period is covered too.
@@ -176,20 +177,15 @@ export function OverviewTabTest2({
       urgent: data.unansweredReviews >= 3,
     })
   }
-  if (data.daysSincePost > 30) {
+  /* Half a year, not a month. Posting is something a salon does a few times
+   * a year; asking every month turned an occasional job into a standing
+   * reproach, and a list that is always full is a list nobody reads. */
+  if (data.daysSincePost > 180) {
     attention.push({
       text:   t.noPost(data.daysSincePost),
       button: t.writePost,
-      tab:    'posts',
-      urgent: data.daysSincePost > 60,
-    })
-  }
-  if (auditPassed < auditTotal) {
-    attention.push({
-      text:   t.checklistLeft(auditTotal - auditPassed),
-      button: t.finishChecklist,
-      tab:    'audit',
-      urgent: auditPassed / auditTotal < 0.6,
+      tab:    'content',
+      urgent: data.daysSincePost > 365,
     })
   }
 
@@ -248,8 +244,15 @@ export function OverviewTabTest2({
   const maxTotal = Math.max(...chartTrend.map(v => v.searchViews + v.mapsViews), 1)
   const MAX_BAR  = 100
 
+  const setupDone = auditPassed >= auditTotal
+
   return (
     <div className="space-y-4">
+
+      {/* Setting up, while that is still the honest description of the work */}
+      {!setupDone && (
+        <KomIgangKort passed={auditPassed} total={auditTotal} onOpen={() => onTabChange?.('audit')} />
+      )}
 
       {/* Needs attention — merged action strip */}
       {attention.length > 0 ? (
@@ -405,6 +408,21 @@ export function OverviewTabTest2({
         </div>
         <MeasuringSince coverage={coverage} className="mt-3" />
       </div>
+
+      {/* Where you stand locally — a card, not a tab */}
+      <KonkurrentKort onOpen={() => onTabChange?.('competitors')} />
+
+      {/* Once setup is done it stops shouting, but stays reachable */}
+      {setupDone && (
+        <div className="pt-1">
+          <button
+            onClick={() => onTabChange?.('audit')}
+            className="text-xs text-slate-500 hover:text-white transition-colors"
+          >
+            {t.setupLink} →
+          </button>
+        </div>
+      )}
 
     </div>
   )

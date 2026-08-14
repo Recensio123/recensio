@@ -1,11 +1,12 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { usePlan } from '@/components/PlanProvider'
+import { usePlan, hasBooking } from '@/components/PlanProvider'
 import { useLang } from '@/components/LanguageProvider'
 import { HelpButton } from '@/components/dashboard/HelpButton'
 import { MOCK_ACTIONS } from './action-plan/ActionPlanPanel'
 import { ProgressRing, HABITS, MOCK_STREAK, MOCK_WINS, loadWeek, saveWeek } from './action-plan/ActionPlanTest2'
+import { BokningarHemSection } from './BokningarHemSection'
 
 /*
  * Home — summary + weekly actions in one page.
@@ -148,7 +149,7 @@ export function HomeTest2({ companyName }: { companyName: string }) {
   const { plan } = usePlan()
   const { lang } = useLang()
   const t = T[lang]
-  const bookingMode = plan === 'testbok'
+  const bookingMode = hasBooking(plan)
   const d = MOCK_DATA
   const unanswered = d.reviewCount - d.responded
 
@@ -407,6 +408,11 @@ export function HomeTest2({ companyName }: { companyName: string }) {
           })}
         </div>
       </div>
+
+      {/* ── Bokningarna, mitt i marknadsföringen ─────────────────────────────
+          The loop the platform promises: the sections above say what the
+          marketing brought in, this says what it booked in kronor. */}
+      {bookingMode && <BokningarHemSection />}
 
       {/* ── Channel row ──────────────────────────────────────────────────── */}
       <div>

@@ -7,16 +7,46 @@ import { useCoverage, coveredValue, type Coverage } from '@/components/DataCover
 import { CoverageNote } from '@/components/dashboard/CoverageNote'
 import type { Query } from './KeywordTable'
 
-export type TableTab = 'all' | 'top3' | 'quickwins' | 'needswork' | 'lowctr'
-type TagId = 'top3' | 'quickwin' | 'needswork' | 'lowctr'
+/*
+ * Search Console's own table, and nothing else.
+ *
+ * Everything here is a figure Google returned: the phrase as it was typed,
+ * clicks, impressions, click rate, average position. We round, we format, we
+ * translate a position into its results page — no ranking of our own, no
+ * thresholds, no verdicts.
+ *
+ * What was removed, and why. The status column ("Snabb vinst", "Behöver
+ * arbete") was our judgement wearing the table's clothing, and the click rate
+ * it judged against came from a curve written into the code — a plausible
+ * number that Google never said. Sitting inside a data table it read as
+ * measurement. The three sort tabs were the same problem one level up: they
+ * decided for the salon which end of the list mattered.
+ *
+ * Sorting now belongs to whoever is reading. Every column sorts both ways;
+ * the default is clicks, highest first, because that is Search Console's own
+ * default and inheriting it is one fewer opinion of ours.
+ *
+ * Judgement has not gone away — it lives next door in "Satsa på härnäst",
+ * where it is visibly ours.
+ */
+export type SortCol = 'query' | 'position' | 'change' | 'clicks' | 'impressions' | 'ctr'
+export type TableSort = { col: SortCol; dir: 'asc' | 'desc' }
+
+export const DEFAULT_SORT: TableSort = { col: 'clicks', dir: 'desc' }
+
+/* Numbers open on their largest value, text opens A–Ö, and position opens at
+   the top of Google — mechanical defaults, so one click means one thing. */
+const FIRST_DIR: Record<SortCol, 'asc' | 'desc'> = {
+  query: 'asc', position: 'asc', change: 'desc', clicks: 'desc', impressions: 'desc', ctr: 'desc',
+}
 
 /* ─── Period scaling ───────────────────────────────────────────────────────────
    Mock data is monthly at the source. Flow metrics (clicks, impressions) scale
    with the selected period: weekly ≈ monthly / 4.3, yearly ≈ monthly × 12.
-   State metrics (position, position change, status tags, tab counts) never
-   scale, so tags/filters/counts are always computed from the original monthly
-   values. CTR is a ratio and stays the same. All factors are fixed and
-   deterministic — no randomness in render. */
+   State metrics (position, position change) never scale. CTR is a ratio and
+   stays the same. All factors are fixed and deterministic — no randomness in
+   render. On a live account the period is a date range sent to Google, and
+   none of this scaling applies. */
 const FLOW_FACTOR: Record<Period, number> = { Weekly: 1 / 4.3, Monthly: 1, Yearly: 12 }
 // Delta-% vs previous period should differ plausibly per period: WoW swings are
 // smaller/noisier, YoY reflects cumulative growth. Fixed per-row wobble keeps
@@ -35,7 +65,7 @@ function adjustPeriodChange(change: number | undefined, i: number, period: Perio
 /* Flow figures are period-scaled, then trimmed to the days our Search Console
    record actually reaches back to. A yearly total assumes 365 days of
    measurement; on a property registered last week the honest figure is the
-   part we measured. Position, tags and CTR are untouched — they are state. */
+   part we measured. Position and CTR are untouched — they are state. */
 function displayFlowFor(q: Query, i: number, period: Period, coverage: Coverage): DisplayFlow {
   const f = FLOW_FACTOR[period]
   return {
@@ -47,163 +77,70 @@ function displayFlowFor(q: Query, i: number, period: Period, coverage: Coverage)
 
 const T = {
   sv: {
-    tabs: {
-      all:       'Alla',
-      top3:      'Topp 3',
-      quickwins: 'Snabba vinster',
-      needswork: 'Behöver arbete',
-      lowctr:    'Setts men inte klickats',
-    } as Record<TableTab, string>,
-    tags: {
-      top3:      'Topp 3',
-      quickwin:  'Snabb vinst',
-      needswork: 'Behöver arbete',
-      lowctr:    'Får inga klick',
-    } as Record<TagId, string>,
+    keywordsWord: 'sökord',
+    searchPlaceholder: 'Sök bland dina sökord…',
     page1: 'Sida 1', page2: 'Sida 2', page3plus: 'Sida 3+',
     colKeyword:     'Sökord',
-    colKeywordTip:  'Den exakta frasen någon skrev in på Google. Klicka på en rad för en full genomgång.',
+    colKeywordTip:  'Den exakta frasen någon skrev in på Google. Klicka på en rad för alla siffror.',
     colPosition:    'Plats',
-    colPositionTip: 'Var du rankar på Google och vilken resultatsida det motsvarar. Plats 1 är allra högst upp. Den lilla pilen visar månadens förändring.',
+    colPositionTip: 'Din genomsnittliga placering i Googles resultat för frasen, avrundad till närmaste hela plats, och vilken resultatsida det motsvarar. Snittet räknas fram av Google själv.',
+    colChange:      'Förändring',
+    colChangeTip:   'Placeringen nu jämfört med föregående period. Grönt betyder att du klättrat, rött att du tappat. Streck betyder att frasen saknas i den ena perioden.',
     colClicks:      'Klick',
-    colClicksTip:   'Hur många gånger någon klickade sig till din hemsida från det här sökresultatet förra månaden.',
+    colClicksTip:   'Hur många gånger någon klickade sig till din hemsida från det här sökresultatet.',
     colSeen:        'Visningar',
-    colSeenTip:     'Hur många gånger din sida visades i sökresultaten för den här frasen, oavsett om någon klickade eller inte.',
+    colSeenTip:     'Hur många gånger din sida visades i sökresultaten för frasen, oavsett om någon klickade eller inte.',
     colCtr:         'Andel klick',
-    colCtrTip:      'Hur stor andel av dem som såg dig som faktiskt klickade sig vidare till din sida.',
-    colStatus:      'Status',
-    colStatusTip:   'En snabb etikett som visar vad sökordet behöver. Håll muspekaren över en etikett för förklaring — eller klicka på raden för hela genomgången.',
-    tagTips: {
-      top3:      'Du ligger bland de tre översta resultaten, dit de flesta klicken går. Håll sidan uppdaterad.',
-      quickwin:  'Plats 4–15 — nära toppen. En liten förbättring kan ge många fler besökare.',
-      needswork: 'Plats 21 eller längre bak. Kräver riktat arbete med innehållet för att nå sida 1.',
-      lowctr:    'Du syns på sida 1 men får ovanligt få klick. Oftast beror det på en svag sidtitel.',
-    } as Record<TagId, string>,
-    emptyState:     'Inga sökord i den här kategorin.',
+    colCtrTip:      'Hur stor andel av dem som såg dig som klickade sig vidare. Googles eget tal.',
+    emptyState:     'Inga sökord ännu.',
+    emptySearch:    'Ingen sökfras matchar det du skrev.',
     prev: 'Föregående', next: 'Nästa',
-    // Modal
+    /* Utan den här raden ser en kort lista ut som att ingen söker på dem. */
+    footnote: 'Listan visar alla sökfraser Google rapporterar för din sida. Ovanliga sökningar utelämnas av Google av integritetsskäl och kan därför saknas.',
+    // Detaljvy
     mPosition:    'Plats',
-    mThisMonth:   { Weekly: 'denna vecka', Monthly: 'denna månad', Yearly: 'i år' } as Record<Period, string>,
-    mOnGoogle:    (page: string) => `${page} på Google`,
     mClicks:      { Weekly: 'Klick per vecka', Monthly: 'Klick per månad', Yearly: 'Klick per år' } as Record<Period, string>,
     mVsLastMonth: { Weekly: 'mot förra veckan', Monthly: 'mot förra månaden', Yearly: 'mot förra året' } as Record<Period, string>,
     mCtr:         'Andel klick',
-    mExpected:    (pct: string) => `Förväntat ${pct}%`,
-    top3Text:     'Det här sökordet går bra. Du ligger bland de 3 översta resultaten — dit över 60 % av alla klick går. Håll sidan uppdaterad och håll koll på om placeringen sjunker.',
+    mThisMonth:   { Weekly: 'denna vecka', Monthly: 'denna månad', Yearly: 'i år' } as Record<Period, string>,
+    mOnGoogle:    (page: string) => `${page} på Google`,
     seenPerMonth: { Weekly: 'Visningar per vecka', Monthly: 'Visningar per månad', Yearly: 'Visningar per år' } as Record<Period, string>,
-    posThisMonth: { Weekly: 'Plats denna vecka', Monthly: 'Plats denna månad', Yearly: 'Plats i år' } as Record<Period, string>,
-    unitShort:    { Weekly: 'vecka', Monthly: 'mån', Yearly: 'år' } as Record<Period, string>,
-    freq:         { Weekly: 'i veckan', Monthly: 'i månaden', Yearly: 'per år' } as Record<Period, string>,
-    every:        { Weekly: 'varje vecka', Monthly: 'varje månad', Yearly: 'varje år' } as Record<Period, string>,
+    posChange:    'Förändring i plats',
     spots:        (n: number) => `${n} plats${n === 1 ? '' : 'er'}`,
-    quickwinText: (pos: number) =>
-      `Du visas redan nära toppen av Google för den här sökningen. Plats #${pos} är strax utanför där de flesta klicken hamnar — de 3 översta resultaten får runt 60 % av alla klick. En liten förbättring i placering kan ge betydligt fler besökare utan att du betalar för annonser.`,
-    estGain:      'Möjlig ökning om topp 3',
-    estGainVal:   (n: number, unit: string) => `~+${n} klick/${unit}`,
-    toClimb:      'Platser att klättra',
-    toClimbVal:   (n: number) => `${n} plats${n === 1 ? '' : 'er'} till topp 3`,
-    howTo:        'Så förbättrar du det',
-    tips: [
-      'Gör sidan mer utförlig än de som ligger före dig — gå djupare in på ämnet, svara på följdfrågor och lägg till exempel.',
-      'Länka till den här sidan från andra relevanta sidor på din hemsida. Varje länk visar Google att sidan är viktig.',
-      'Kontrollera att sökordet finns med i sidans titel, i huvudrubriken och på ett naturligt sätt i första stycket.',
-    ],
-    needsworkText: (page: number, impressions: string, clicks: number, freq: string) =>
-      `Det här sökordet ligger på sida ${page} eller längre bak — nästan ingen bläddrar så långt. Med ${impressions} sökningar ${freq} men bara ${clicks} klick till dig syns du utan att få besökare. Det behövs riktat arbete med innehåll eller teknisk SEO för att nå sida 1.`,
-    yourClicks:   { Weekly: 'Dina klick per vecka', Monthly: 'Dina klick per månad', Yearly: 'Dina klick per år' } as Record<Period, string>,
-    lowctrText:   (pos: number, expPct: string, ctrPct: string, missed: number, every: string) =>
-      `Du ligger på sida 1 för den här sökningen men får klart färre klick än vad som är normalt för plats #${pos}. En normal andel klick här vore runt ${expPct} % — din är ${ctrPct} %. Det är ungefär ${missed} missade klick ${every}. Vanligaste orsaken är en svag sidtitel eller sidbeskrivning som inte sticker ut i sökresultaten.`,
-    expClicksAt:   'Förväntade klick på platsen',
-    perMonth:      (n: number, unit: string) => `~${n}/${unit}`,
-    actualClicks:  'Dina faktiska klick',
-    actualClicksVal: (n: number, unit: string) => `${n}/${unit}`,
-    missedPerMonth: { Weekly: 'Missade klick / vecka', Monthly: 'Missade klick / månad', Yearly: 'Missade klick / år' } as Record<Period, string>,
-    posChange:     'Förändring i plats',
+    source:       'Alla siffror kommer från Google Search Console.',
   },
   en: {
-    tabs: {
-      all:       'All',
-      top3:      'Top 3',
-      quickwins: 'Quick wins',
-      needswork: 'Needs work',
-      lowctr:    'Seen but not clicked',
-    } as Record<TableTab, string>,
-    tags: {
-      top3:      'Top 3',
-      quickwin:  'Quick win',
-      needswork: 'Needs work',
-      lowctr:    'Not clicked',
-    } as Record<TagId, string>,
+    keywordsWord: 'keywords',
+    searchPlaceholder: 'Search your keywords…',
     page1: 'Page 1', page2: 'Page 2', page3plus: 'Page 3+',
     colKeyword:     'Keyword',
-    colKeywordTip:  'The exact phrase someone typed into Google. Click any row for a full breakdown.',
+    colKeywordTip:  'The exact phrase someone typed into Google. Click any row for every figure.',
     colPosition:    'Position',
-    colPositionTip: "Where you rank on Google and which results page that puts you on. Position 1 is the very top. The small arrow shows this month's change.",
+    colPositionTip: 'Your average position in Google results for this phrase, rounded to the nearest whole place, and the results page that puts you on. The average is calculated by Google itself.',
+    colChange:      'Change',
+    colChangeTip:   'Position now versus the previous period. Green means you climbed, red means you slipped. A dash means the phrase is missing from one of the periods.',
     colClicks:      'Clicks',
-    colClicksTip:   'How many times someone clicked your website from this search result last month.',
+    colClicksTip:   'How many times someone clicked through to your website from this search result.',
     colSeen:        'Times seen',
     colSeenTip:     'How many times your site appeared in search results for this phrase, whether clicked or not.',
     colCtr:         'Click rate',
-    colCtrTip:      'What percentage of the people who saw you actually clicked through to your site.',
-    colStatus:      'Status',
-    colStatusTip:   'A quick label showing what the keyword needs. Hover a tag for an explanation — or click the row for the full breakdown.',
-    tagTips: {
-      top3:      'You are in the top 3 results, where most clicks go. Keep the page well-maintained.',
-      quickwin:  'Position 4–15 — close to the top. A small improvement can bring many more visitors.',
-      needswork: 'Position 21 or deeper. Needs dedicated content work to reach page 1.',
-      lowctr:    'You appear on page 1 but get unusually few clicks. Usually caused by a weak page title.',
-    } as Record<TagId, string>,
-    emptyState:     'No keywords in this category.',
+    colCtrTip:      "What share of the people who saw you clicked through. Google's own figure.",
+    emptyState:     'No keywords yet.',
+    emptySearch:    'No phrase matches what you typed.',
     prev: 'Prev', next: 'Next',
-    // Modal
+    footnote: 'The list shows every search phrase Google reports for your site. Google omits rare searches for privacy reasons, so some may be missing.',
+    // Detail view
     mPosition:    'Position',
-    mThisMonth:   { Weekly: 'this week', Monthly: 'this month', Yearly: 'this year' } as Record<Period, string>,
-    mOnGoogle:    (page: string) => `${page} on Google`,
     mClicks:      { Weekly: 'Weekly clicks', Monthly: 'Monthly clicks', Yearly: 'Yearly clicks' } as Record<Period, string>,
     mVsLastMonth: { Weekly: 'vs last week', Monthly: 'vs last month', Yearly: 'vs last year' } as Record<Period, string>,
     mCtr:         'Click rate',
-    mExpected:    (pct: string) => `Expected ${pct}%`,
-    top3Text:     "This keyword is performing well. You're in the top 3 results — where over 60% of all search clicks go. Keep the page well-maintained and monitor for any position drops.",
+    mThisMonth:   { Weekly: 'this week', Monthly: 'this month', Yearly: 'this year' } as Record<Period, string>,
+    mOnGoogle:    (page: string) => `${page} on Google`,
     seenPerMonth: { Weekly: 'Times seen per week', Monthly: 'Times seen per month', Yearly: 'Times seen per year' } as Record<Period, string>,
-    posThisMonth: { Weekly: 'Position this week', Monthly: 'Position this month', Yearly: 'Position this year' } as Record<Period, string>,
-    unitShort:    { Weekly: 'wk', Monthly: 'mo', Yearly: 'yr' } as Record<Period, string>,
-    freq:         { Weekly: 'weekly', Monthly: 'monthly', Yearly: 'yearly' } as Record<Period, string>,
-    every:        { Weekly: 'every week', Monthly: 'every month', Yearly: 'every year' } as Record<Period, string>,
+    posChange:    'Position change',
     spots:        (n: number) => `${n} spot${n === 1 ? '' : 's'}`,
-    quickwinText: (pos: number) =>
-      `You already appear near the top of Google for this search. Position #${pos} is just outside where most traffic goes — the top 3 results capture around 60% of all clicks. A relatively small improvement in ranking could bring significantly more visitors without any ad spend.`,
-    estGain:      'Estimated gain if top 3',
-    estGainVal:   (n: number, unit: string) => `~+${n} clicks/${unit}`,
-    toClimb:      'Positions to climb',
-    toClimbVal:   (n: number) => `${n} spot${n === 1 ? '' : 's'} to top 3`,
-    howTo:        'How to improve it',
-    tips: [
-      'Make the page more thorough than what currently ranks above you — cover the topic in more depth, answer follow-up questions, and add examples.',
-      'Add internal links to this page from other relevant pages on your site. Each link signals to Google that this page is important.',
-      'Check that the keyword appears in the page title, the main heading, and naturally in the first paragraph.',
-    ],
-    needsworkText: (page: number, impressions: string, clicks: number, freq: string) =>
-      `This keyword is buried on page ${page} or deeper — almost nobody scrolls that far. With ${impressions} ${freq} searches but only ${clicks} click${clicks !== 1 ? 's' : ''} reaching you, it's generating visibility but virtually no traffic. This needs a dedicated content or technical SEO effort to move onto page 1.`,
-    yourClicks:   { Weekly: 'Your weekly clicks', Monthly: 'Your monthly clicks', Yearly: 'Your yearly clicks' } as Record<Period, string>,
-    lowctrText:   (pos: number, expPct: string, ctrPct: string, missed: number, every: string) =>
-      `You're ranking on page 1 for this term but your click rate is well below what's typical at position #${pos}. A normal click rate here would be around ${expPct}% — yours is ${ctrPct}%. That's roughly ${missed} missed click${missed !== 1 ? 's' : ''} ${every}. The most common cause is a weak page title or meta description that doesn't stand out in the search results.`,
-    expClicksAt:   'Expected clicks at position',
-    perMonth:      (n: number, unit: string) => `~${n}/${unit}`,
-    actualClicks:  'Your actual clicks',
-    actualClicksVal: (n: number, unit: string) => `${n}/${unit}`,
-    missedPerMonth: { Weekly: 'Missed clicks / week', Monthly: 'Missed clicks / month', Yearly: 'Missed clicks / year' } as Record<Period, string>,
-    posChange:     'Position change',
+    source:       'All figures come from Google Search Console.',
   },
-}
-
-const TAB_IDS: TableTab[] = ['all', 'top3', 'quickwins', 'needswork', 'lowctr']
-
-function expectedCTR(position: number) {
-  return 0.28 * Math.pow(0.75, position - 1)
-}
-
-function extraClicksIfTop3(position: number, impressions: number) {
-  return Math.max(Math.round((0.15 - expectedCTR(position)) * impressions), 0)
 }
 
 function fmt(n: number) {
@@ -212,26 +149,26 @@ function fmt(n: number) {
     : n.toLocaleString('sv-SE')
 }
 
+function fmtPct(ratio: number) {
+  return (ratio * 100).toLocaleString('sv-SE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'
+}
+
+/* Google reports position to one decimal, being an average rather than a rank.
+   A salon reads "plats 3", not "plats 3,2", so the decimal is rounded off —
+   2,4 shows as 2 and 2,5 shows as 3. Sorting still runs on Google's full
+   figure, so two phrases that both display as 3 keep their true order. */
+function fmtPosition(position: number) {
+  return String(Math.round(position))
+}
+
 // Positions mean little to a non-marketer — pages are how people actually think
-// about Google results, so every position is shown with its page label.
+// about Google results. Pure arithmetic on Google's own number: 1–10 is page 1.
 function pageLabel(position: number, lang: Lang) {
   const p = Math.round(position)
   const t = T[lang]
   if (p <= 10) return t.page1
   if (p <= 20) return t.page2
   return t.page3plus
-}
-
-function getTag(q: Query, avgCTR: number): { id: TagId; color: string } | null {
-  if (q.position <= 3)
-    return { id: 'top3',      color: 'text-white bg-navy-600 border-navy-500'             }
-  if (q.position >= 4 && q.position <= 15)
-    return { id: 'quickwin',  color: 'text-green-400 bg-green-500/10 border-green-500/20' }
-  if (q.position > 20)
-    return { id: 'needswork', color: 'text-mustard bg-mustard/10 border-mustard/20'       }
-  if (q.position <= 10 && q.impressions > 30 && q.ctr < avgCTR * 0.5)
-    return { id: 'lowctr',    color: 'text-red-400 bg-red-500/10 border-red-500/20'       }
-  return null
 }
 
 /* ─── Stat row helper ──────────────────────────────────────────────────────── */
@@ -244,39 +181,27 @@ function StatRow({ label, value, color }: { label: string; value: string; color:
   )
 }
 
-/* ─── Detail modal ─────────────────────────────────────────────────────────── */
+/* ─── Detail view ──────────────────────────────────────────────────────────────
+   The same four figures the row shows, with room to breathe. What used to live
+   here — an expected click rate, a projected gain from reaching the top three,
+   a list of things to go and fix — was advice, and none of it came from
+   Google. It belongs in the action plan, not behind a row in a data table. */
 function KeywordDetailModal({
   query: q,
   display: d,
   period,
-  avgCTR,
   showDelta,
   onClose,
 }: {
   query:     Query
   display:   DisplayFlow
   period:    Period
-  avgCTR:    number
   showDelta: boolean
   onClose:   () => void
 }) {
   const { lang } = useLang()
   const t = T[lang]
-  // Tag is a state metric — always derived from the original monthly values.
-  const tag = getTag(q, avgCTR)
-  // Flow-derived figures use the period-scaled clicks/impressions so the
-  // modal's numbers match the table row that opened it.
-  const { expCTR, expClicks, extra, missedClicks } = useMemo(() => {
-    const expCTR    = expectedCTR(q.position)
-    const expClicks = Math.round(expCTR * d.impressions)
-    return {
-      expCTR,
-      expClicks,
-      extra:        extraClicksIfTop3(q.position, d.impressions),
-      missedClicks: Math.max(0, expClicks - d.clicks),
-    }
-  }, [q, d])
-  const posDir       =
+  const posDir =
     q.positionChange !== undefined && q.positionChange !== 0
       ? q.positionChange < 0 ? 'up' : 'down'
       : null
@@ -293,14 +218,7 @@ function KeywordDetailModal({
       >
         {/* Header */}
         <div className="flex items-start justify-between p-5 pb-4">
-          <div>
-            <p className="text-white font-semibold text-base leading-snug">&ldquo;{q.query}&rdquo;</p>
-            {tag && (
-              <span className={`inline-flex mt-2 text-xs border px-2 py-0.5 rounded-full ${tag.color}`}>
-                {t.tags[tag.id]}
-              </span>
-            )}
-          </div>
+          <p className="text-white font-semibold text-base leading-snug">&ldquo;{q.query}&rdquo;</p>
           <button
             onClick={onClose}
             className="text-slate-500 hover:text-white transition-colors ml-4 mt-0.5 cursor-pointer"
@@ -316,7 +234,7 @@ function KeywordDetailModal({
           {([
             {
               label: t.mPosition,
-              value: `#${Math.round(q.position)}`,
+              value: fmtPosition(q.position),
               sub:   posDir
                 ? <span className={posDir === 'up' ? 'text-green-400' : 'text-red-400'}>
                     {posDir === 'up' ? '↑' : '↓'}{Math.abs(q.positionChange!)} {t.mThisMonth[period]}
@@ -336,10 +254,8 @@ function KeywordDetailModal({
             },
             {
               label: t.mCtr,
-              value: `${(q.ctr * 100).toFixed(1)}%`,
-              sub:   tag?.id === 'lowctr'
-                ? <span className="text-red-400">{t.mExpected((expCTR * 100).toFixed(1))}</span>
-                : null,
+              value: fmtPct(q.ctr),
+              sub:   null,
             },
           ] as { label: string; value: string; sub: React.ReactNode }[]).map((m, i) => (
             <div key={i} className={`px-4 py-3 ${i > 0 ? 'border-l border-navy-700' : ''}`}>
@@ -350,154 +266,123 @@ function KeywordDetailModal({
           ))}
         </div>
 
-        {/* Explanation + details */}
-        <div className="p-5 space-y-4">
-
-          {tag?.id === 'top3' && (<>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              {t.top3Text}
-            </p>
-            <div className="bg-navy-900 rounded-xl p-4 space-y-2">
-              <StatRow label={t.seenPerMonth[period]} value={fmt(d.impressions)} color="text-blue-400" />
-              {posDir && (
-                <StatRow
-                  label={t.posThisMonth[period]}
-                  value={`${posDir === 'up' ? '↑' : '↓'} ${t.spots(Math.abs(q.positionChange!))}`}
-                  color={posDir === 'up' ? 'text-green-400' : 'text-red-400'}
-                />
-              )}
-            </div>
-          </>)}
-
-          {tag?.id === 'quickwin' && (<>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              {t.quickwinText(Math.round(q.position))}
-            </p>
-            <div className="bg-navy-900 rounded-xl p-4 space-y-2">
-              <StatRow label={t.seenPerMonth[period]} value={fmt(d.impressions)} color="text-slate-300" />
-              {extra > 0 && <StatRow label={t.estGain} value={t.estGainVal(extra, t.unitShort[period])} color="text-green-400" />}
+        <div className="p-5 space-y-3">
+          <div className="bg-navy-900 rounded-xl p-4 space-y-2">
+            <StatRow label={t.seenPerMonth[period]} value={fmt(d.impressions)} color="text-slate-300" />
+            {posDir && (
               <StatRow
-                label={t.toClimb}
-                value={t.toClimbVal(Math.max(0, Math.round(q.position) - 3))}
-                color="text-green-400"
+                label={t.posChange}
+                value={`${posDir === 'up' ? '↑' : '↓'} ${t.spots(Math.abs(q.positionChange!))}`}
+                color={posDir === 'up' ? 'text-green-400' : 'text-red-400'}
               />
-            </div>
-            <div className="space-y-2">
-              <p className="text-slate-500 text-xs font-medium uppercase tracking-wide">{t.howTo}</p>
-              <ul className="space-y-2">
-                {t.tips.map((tip, i) => (
-                  <li key={i} className="flex gap-2.5 text-slate-400 text-xs leading-relaxed">
-                    <span className="text-green-400 font-bold mt-0.5 shrink-0">{i + 1}.</span>
-                    {tip}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </>)}
-
-          {tag?.id === 'needswork' && (<>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              {t.needsworkText(Math.ceil(q.position / 10), fmt(d.impressions), d.clicks, t.freq[period])}
-            </p>
-            <div className="bg-navy-900 rounded-xl p-4 space-y-2">
-              <StatRow label={t.seenPerMonth[period]} value={fmt(d.impressions)} color="text-slate-300" />
-              <StatRow label={t.yourClicks[period]}   value={String(d.clicks)}       color="text-mustard"    />
-              <StatRow label={t.mCtr}         value={`${(q.ctr * 100).toFixed(1)}%`} color="text-mustard" />
-            </div>
-          </>)}
-
-          {tag?.id === 'lowctr' && (<>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              {t.lowctrText(Math.round(q.position), (expCTR * 100).toFixed(1), (q.ctr * 100).toFixed(1), missedClicks, t.every[period])}
-            </p>
-            <div className="bg-navy-900 rounded-xl p-4 space-y-2">
-              <StatRow label={t.seenPerMonth[period]}  value={fmt(d.impressions)}            color="text-slate-300"    />
-              <StatRow label={t.expClicksAt}   value={t.perMonth(expClicks, t.unitShort[period])}         color="text-green-400/80" />
-              <StatRow label={t.actualClicks}  value={t.actualClicksVal(d.clicks, t.unitShort[period])}   color="text-red-400"      />
-              {missedClicks > 0 && (
-                <StatRow label={t.missedPerMonth[period]} value={`~${missedClicks}`} color="text-mustard" />
-              )}
-            </div>
-          </>)}
-
-          {!tag && (
-            <div className="bg-navy-900 rounded-xl p-4 space-y-2">
-              <StatRow label={t.seenPerMonth[period]} value={fmt(d.impressions)} color="text-slate-300" />
-              <StatRow label={t.mCtr} value={`${(q.ctr * 100).toFixed(1)}%`} color="text-slate-300" />
-              {posDir && (
-                <StatRow
-                  label={t.posChange}
-                  value={`${posDir === 'up' ? '↑' : '↓'} ${Math.abs(q.positionChange!)} ${t.mThisMonth[period]}`}
-                  color={posDir === 'up' ? 'text-green-400' : 'text-red-400'}
-                />
-              )}
-            </div>
-          )}
-
+            )}
+          </div>
+          <p className="text-slate-600 text-xs">{t.source}</p>
         </div>
       </div>
     </div>
   )
 }
 
+/* ─── Sortable column header ───────────────────────────────────────────────── */
+function ColHeader({ col, label, tip, sort, onSort, align = 'right' }: {
+  col:    SortCol
+  label:  string
+  tip:    string
+  sort:   TableSort
+  onSort: (col: SortCol) => void
+  align?: 'left' | 'right'
+}) {
+  const active = sort.col === col
+  return (
+    <Tooltip text={tip}>
+      <button
+        onClick={() => onSort(col)}
+        className={`flex items-center gap-1 w-full cursor-pointer transition-colors hover:text-slate-300 ${
+          align === 'right' ? 'justify-end' : ''
+        } ${active ? 'text-slate-300' : ''}`}
+      >
+        {label}
+        <span className={`text-[9px] leading-none ${active ? 'text-mustard' : 'text-transparent'}`}>
+          {active && sort.dir === 'asc' ? '▲' : '▼'}
+        </span>
+      </button>
+    </Tooltip>
+  )
+}
+
 const PAGE_SIZE = 10
 
-/* ─── Main table — controlled filter so KPI cards can jump straight to a view ── */
+/* ─── Main table ───────────────────────────────────────────────────────────── */
 export function KeywordTableTest2({
   queries,
-  activeTab,
-  onTabChange,
+  sort,
+  onSortChange,
   period = 'Monthly',
 }: {
-  queries:     Query[]
-  activeTab:   TableTab
-  onTabChange: (tab: TableTab) => void
-  period?:     Period
+  queries:      Query[]
+  sort:         TableSort
+  onSortChange: (sort: TableSort) => void
+  period?:      Period
 }) {
   const { lang } = useLang()
   const t = T[lang]
   const [selected, setSelected] = useState<Query | null>(null)
   const [page,     setPage]     = useState(1)
+  const [search,   setSearch]   = useState('')
 
-  // Per-row clicks-change is a period-over-period comparison; positions and
-  // status tags are current state and stay visible regardless of coverage.
+  // Per-row clicks-change is a period-over-period comparison; positions are
+  // current state and stay visible regardless of coverage.
   const coverage  = useCoverage('search', period)
   const showDelta = coverage.state === 'full'
 
-  const avgCTR = queries.length > 0
-    ? queries.reduce((s, q) => s + q.ctr, 0) / queries.length
-    : 0
-
-  // Period-scaled flow figures per query, for display only. Tags, tab counts
-  // and filtering below always run on the original (monthly) values.
+  // Period-scaled flow figures per query, for display only.
   const flowByQuery = useMemo(
     () => new Map(queries.map((q, i) => [q, displayFlowFor(q, i, period, coverage)])),
     [queries, period, coverage],
   )
 
-  const counts = {
-    all:       queries.length,
-    top3:      queries.filter(q => q.position <= 3).length,
-    quickwins: queries.filter(q => q.position >= 4 && q.position <= 15).length,
-    needswork: queries.filter(q => q.position > 20).length,
-    lowctr:    queries.filter(q => q.position <= 10 && q.impressions > 30 && q.ctr < avgCTR * 0.5).length,
-  }
+  /* The salon filters, we do not. Nothing is hidden unless something was
+   * typed into the box. */
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    return needle ? queries.filter(q => q.query.toLowerCase().includes(needle)) : queries
+  }, [queries, search])
 
-  const filtered = queries.filter(q => {
-    if (activeTab === 'top3')      return q.position <= 3
-    if (activeTab === 'quickwins') return q.position >= 4 && q.position <= 15
-    if (activeTab === 'needswork') return q.position > 20
-    if (activeTab === 'lowctr')    return q.position <= 10 && q.impressions > 30 && q.ctr < avgCTR * 0.5
-    return true
-  })
+  /* A phrase Google reported in only one of the two periods has no change to
+   * show — it is new, or it is gone. Either way it is not a movement of zero,
+   * so it sits at the bottom whichever way the column is turned. */
+  const sorted = useMemo(() => {
+    const dir = sort.dir === 'asc' ? 1 : -1
+    return [...filtered].sort((a, b) => {
+      if (sort.col === 'query')  return a.query.localeCompare(b.query, 'sv') * dir
+      if (sort.col === 'change') {
+        const ca = a.positionChange, cb = b.positionChange
+        if (ca === undefined && cb === undefined) return 0
+        if (ca === undefined) return 1
+        if (cb === undefined) return -1
+        return (ca - cb) * dir
+      }
+      const av = sort.col === 'clicks' ? a.clicks : sort.col === 'impressions' ? a.impressions : sort.col === 'ctr' ? a.ctr : a.position
+      const bv = sort.col === 'clicks' ? b.clicks : sort.col === 'impressions' ? b.impressions : sort.col === 'ctr' ? b.ctr : b.position
+      return (av - bv) * dir
+    })
+  }, [filtered, sort])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const safePage   = Math.min(page, totalPages)
+  const paginated  = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
-  function switchTab(tab: TableTab) {
-    onTabChange(tab)
+  /* Same column twice flips the direction; a new column opens at whichever end
+   * of it is normally read first. */
+  function toggleSort(col: SortCol) {
+    onSortChange(sort.col === col
+      ? { col, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+      : { col, dir: FIRST_DIR[col] })
     setPage(1)
   }
+
+  const cols = 'grid-cols-[1fr_80px_88px_60px_80px_76px]'
 
   return (
     <>
@@ -506,30 +391,20 @@ export function KeywordTableTest2({
           query={selected}
           display={flowByQuery.get(selected) ?? displayFlowFor(selected, 0, period, coverage)}
           period={period}
-          avgCTR={avgCTR}
           showDelta={showDelta}
           onClose={() => setSelected(null)}
         />
       )}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <div className="flex gap-1 bg-navy-900 p-1 rounded-lg w-fit flex-wrap">
-          {TAB_IDS.map(id => (
-            <button
-              key={id}
-              onClick={() => switchTab(id)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                activeTab === id
-                  ? 'bg-navy-700 text-white'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {t.tabs[id]}
-              <span className={`ml-1.5 ${activeTab === id ? 'text-slate-400' : 'text-slate-500'}`}>
-                {counts[id]}
-              </span>
-            </button>
-          ))}
+        <div className="flex items-center gap-3 flex-wrap">
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
+            placeholder={t.searchPlaceholder}
+            className="bg-navy-900 border border-navy-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 w-56 focus:outline-none focus:border-navy-600"
+          />
+          <span className="text-xs text-slate-600">{sorted.length} {t.keywordsWord}</span>
         </div>
         {/* Explains the missing change figures in the clicks column */}
         <CoverageNote coverage={coverage} period={period} />
@@ -537,38 +412,25 @@ export function KeywordTableTest2({
 
       <div className="bg-navy-800 rounded-xl border border-navy-700 overflow-hidden">
         <div className="overflow-x-auto">
-          <div className="min-w-[620px]">
+          <div className="min-w-[680px]">
             {/* Header */}
-            <div className="grid grid-cols-[1fr_72px_56px_76px_72px_88px] gap-3 px-4 py-2.5 border-b border-navy-700 text-xs text-slate-500 font-medium">
-              <Tooltip text={t.colKeywordTip}>
-                <span className="cursor-default">{t.colKeyword}</span>
-              </Tooltip>
-              <Tooltip text={t.colPositionTip}>
-                <span className="text-right cursor-default block">{t.colPosition}</span>
-              </Tooltip>
-              <Tooltip text={t.colClicksTip}>
-                <span className="text-right cursor-default block">{t.colClicks}</span>
-              </Tooltip>
-              <Tooltip text={t.colSeenTip}>
-                <span className="text-right cursor-default block">{t.colSeen}</span>
-              </Tooltip>
-              <Tooltip text={t.colCtrTip}>
-                <span className="text-right cursor-default block">{t.colCtr}</span>
-              </Tooltip>
-              <Tooltip text={t.colStatusTip}>
-                <span className="text-right cursor-default block">{t.colStatus}</span>
-              </Tooltip>
+            <div className={`grid ${cols} gap-3 px-4 py-2.5 border-b border-navy-700 text-xs text-slate-500 font-medium`}>
+              <ColHeader col="query"       label={t.colKeyword}  tip={t.colKeywordTip}  sort={sort} onSort={toggleSort} align="left" />
+              <ColHeader col="position"    label={t.colPosition} tip={t.colPositionTip} sort={sort} onSort={toggleSort} />
+              <ColHeader col="change"      label={t.colChange}   tip={t.colChangeTip}   sort={sort} onSort={toggleSort} />
+              <ColHeader col="clicks"      label={t.colClicks}   tip={t.colClicksTip}   sort={sort} onSort={toggleSort} />
+              <ColHeader col="impressions" label={t.colSeen}     tip={t.colSeenTip}     sort={sort} onSort={toggleSort} />
+              <ColHeader col="ctr"         label={t.colCtr}      tip={t.colCtrTip}      sort={sort} onSort={toggleSort} />
             </div>
 
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
               <div className="px-4 py-8 text-center text-slate-500 text-sm">
-                {t.emptyState}
+                {queries.length === 0 ? t.emptyState : t.emptySearch}
               </div>
             ) : (
               <div className="divide-y divide-navy-700">
                 {paginated.map((q, i) => {
                   const d      = flowByQuery.get(q) ?? displayFlowFor(q, i, period, coverage)
-                  const tag    = getTag(q, avgCTR)
                   const posDir =
                     q.positionChange !== undefined && q.positionChange !== 0
                       ? q.positionChange < 0 ? 'up' : 'down'
@@ -577,22 +439,26 @@ export function KeywordTableTest2({
                   return (
                     <div
                       key={i}
-                      className="grid grid-cols-[1fr_72px_56px_76px_72px_88px] gap-3 px-4 py-3 items-center hover:bg-navy-700/20 transition-colors cursor-pointer"
+                      className={`grid ${cols} gap-3 px-4 py-3 items-center hover:bg-navy-700/20 transition-colors cursor-pointer`}
                       onClick={() => setSelected(q)}
                     >
                       <span className="text-white text-sm truncate">{q.query}</span>
 
-                      {/* Position + page label + MoM change */}
+                      {/* Position as Google reports it, with the results page it lands on */}
                       <div className="text-right">
-                        <p className="text-xs leading-tight whitespace-nowrap">
-                          <span className="text-slate-300 font-mono">#{Math.round(q.position)}</span>
-                          {posDir && (
-                            <span className={`text-xs tabular-nums ${posDir === 'up' ? 'text-green-400' : 'text-red-400'}`}>
-                              {' '}{posDir === 'up' ? '↑' : '↓'}{Math.abs(q.positionChange!)}
-                            </span>
-                          )}
-                        </p>
+                        <p className="text-slate-300 text-xs font-mono leading-tight">{fmtPosition(q.position)}</p>
                         <p className="text-slate-500 text-xs leading-tight whitespace-nowrap">{pageLabel(q.position, lang)}</p>
+                      </div>
+
+                      {/* Position now vs the previous period */}
+                      <div className="text-right">
+                        {posDir ? (
+                          <span className={`text-xs tabular-nums ${posDir === 'up' ? 'text-green-400' : 'text-red-400'}`}>
+                            {posDir === 'up' ? '↑' : '↓'}{Math.abs(q.positionChange!)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-600 text-xs">{q.positionChange === 0 ? '0' : '–'}</span>
+                        )}
                       </div>
 
                       {/* Clicks + change vs previous period */}
@@ -606,17 +472,7 @@ export function KeywordTableTest2({
                       </div>
 
                       <span className="text-slate-300 text-xs text-right tabular-nums">{fmt(d.impressions)}</span>
-                      <span className="text-slate-300 text-xs text-right tabular-nums">{(q.ctr * 100).toFixed(1)}%</span>
-
-                      <div className="flex justify-end">
-                        {tag && (
-                          <Tooltip text={t.tagTips[tag.id]}>
-                            <span className={`text-xs border px-2 py-0.5 rounded-full whitespace-nowrap ${tag.color}`}>
-                              {t.tags[tag.id]}
-                            </span>
-                          </Tooltip>
-                        )}
-                      </div>
+                      <span className="text-slate-300 text-xs text-right tabular-nums">{fmtPct(q.ctr)}</span>
                     </div>
                   )
                 })}
@@ -630,7 +486,7 @@ export function KeywordTableTest2({
           <div className="flex items-center justify-between px-4 py-3 border-t border-navy-700">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
+              disabled={safePage === 1}
               className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white disabled:text-slate-700 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -639,11 +495,11 @@ export function KeywordTableTest2({
               {t.prev}
             </button>
             <span className="text-slate-500 text-xs tabular-nums">
-              {page} / {totalPages}
+              {safePage} / {totalPages}
             </span>
             <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
+              disabled={safePage === totalPages}
               className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white disabled:text-slate-700 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               {t.next}
@@ -654,6 +510,8 @@ export function KeywordTableTest2({
           </div>
         )}
       </div>
+
+      <p className="text-slate-600 text-xs mt-2 leading-relaxed">{t.footnote}</p>
     </>
   )
 }

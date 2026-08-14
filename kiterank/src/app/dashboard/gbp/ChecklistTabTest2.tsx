@@ -454,19 +454,19 @@ export function ChecklistTabTest2({ data, onTabChange }: { data: GBPData; onTabC
     }
   }
 
-  const groups   = buildAudit(data, lang)
-  const allItems = groups.flatMap(g => g.items)
+  /*
+   * Setup only. Posting and collecting reviews used to be counted here as
+   * "ongoing activity", which meant this list could never be finished — a
+   * quiet month reopened it. They are recurring work and now live in the
+   * attention list on the overview, so what is left here is the eight facts
+   * you fill in once.
+   */
+  const visibleGroups = buildAudit(data, lang).filter(g => g.id !== 'activity')
+  const allItems = visibleGroups.flatMap(g => g.items)
   const passed   = allItems.filter(i => i.passed).length
   const total    = allItems.length
   const missing  = allItems.filter(i => !i.passed)
   const complete = passed === total
-
-  // When the one-time setup is done, the checklist collapses to a complete-banner
-  // and only the recurring upkeep items stay visible — so this tab keeps having
-  // something new to say every month instead of going static.
-  const visibleGroups = complete
-    ? groups.filter(g => g.id === 'activity').map(g => ({ ...g, heading: t.monthlyUpkeep }))
-    : groups
 
   return (
     <div className="space-y-6">

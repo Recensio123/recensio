@@ -21,11 +21,11 @@ type Competitor = {
   inPack:          boolean  // in the local 3-pack for the main keyword
 }
 
-const YOU: Competitor = {
+export const YOU: Competitor = {
   name: 'You', distance: '', rating: 4.2, reviews: 47, newReviews: 3, prevNewReviews: 5, photos: 8, inPack: true,
 }
 
-const MOCK_COMPETITORS: Competitor[] = [
+export const MOCK_COMPETITORS: Competitor[] = [
   { name: 'Salong Nikita',      distance: '250 m', rating: 4.8, reviews: 214, newReviews: 12, prevNewReviews: 9,  photos: 86, inPack: true  },
   { name: 'Hår & Harmoni',      distance: '400 m', rating: 4.6, reviews: 128, newReviews: 6,  prevNewReviews: 7,  photos: 44, inPack: true  },
   { name: 'Studio Klippoteket', distance: '550 m', rating: 4.3, reviews: 89,  newReviews: 2,  prevNewReviews: 3,  photos: 31, inPack: false },
@@ -34,7 +34,7 @@ const MOCK_COMPETITORS: Competitor[] = [
 ]
 
 // The local 3-pack for the main keyword right now — one Maps search returns this
-const MOCK_PACK = {
+export const MOCK_PACK = {
   keyword: 'frisör södermalm',
   spots: [
     { pos: 1, name: 'Salong Nikita', isYou: false },

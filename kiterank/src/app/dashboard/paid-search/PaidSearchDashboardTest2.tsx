@@ -4,13 +4,17 @@ import { type AdsData, type EditCampaignData } from './types'
 import { CampaignsTabTest2 }         from './CampaignsTabTest2'
 import { KeywordsTabTest2 }          from './KeywordsTabTest2'
 import { AdsTabTest2 }               from './AdsTabTest2'
+import { OverviewTabGoogle }        from './OverviewTabGoogle'
+import { KeywordsTabGoogle }        from './KeywordsTabGoogle'
+import { AdsTabGoogle }             from './AdsTabGoogle'
+import { type ProfileForAd }        from './AdPreview'
 import { CampaignBuilderWizard }     from './CampaignBuilderWizard'
 import { CampaignEditPanel }         from './CampaignEditPanel'
 import { type SelectedKeyword }      from './KeywordGeneratorPanel'
 import { fmtMicros }                 from './helpers'
 import { Tooltip }                   from '@/components/Tooltip'
 import { PeriodSelector, type Period, PERIOD_LABEL } from '@/components/dashboard/PeriodSelector'
-import { usePlan }                   from '@/components/PlanProvider'
+import { usePlan, hasBooking }       from '@/components/PlanProvider'
 import { useLang }                   from '@/components/LanguageProvider'
 import { ActionPlanLink }            from '@/components/dashboard/ActionPlanLink'
 import { HelpButton }                 from '@/components/dashboard/HelpButton'
@@ -483,9 +487,11 @@ type Props = {
   companyIndustry?: string
   companyCity?:     string
   companyCountry?:  string
+  gbpConnected?:    boolean
+  profile:          ProfileForAd
 }
 
-export function PaidSearchDashboardTest2({ data }: Props) {
+export function PaidSearchDashboardTest2({ data, gbpConnected = false, profile }: Props) {
   const { plan } = usePlan()
   const { lang } = useLang()
   const sv = lang === 'sv'
@@ -579,25 +585,40 @@ export function PaidSearchDashboardTest2({ data }: Props) {
 
         {tab === 'overview' && (
           <>
-            <OverviewTabTest2
-              data={data}
-              period={period}
-              periodLabel={periodLabel}
-              onGoToKeywords={() => setTab('keywords')}
-              bookingMode={plan === 'testbok'}
-            />
+            {/* testbok2 is where the Google-only rebuild is being tried out —
+                the other two modes keep the existing overview so the change
+                can be looked at side by side rather than remembered. */}
+            {plan === 'testbok2' ? (
+              <OverviewTabGoogle
+                data={data}
+                period={period}
+                periodLabel={periodLabel}
+                onGoToKeywords={() => setTab('keywords')}
+              />
+            ) : (
+              <OverviewTabTest2
+                data={data}
+                period={period}
+                periodLabel={periodLabel}
+                onGoToKeywords={() => setTab('keywords')}
+                bookingMode={hasBooking(plan)}
+              />
+            )}
             <CampaignsTabTest2 data={campaignData} period={period} onGoToTab={t => setTab(t)} />
           </>
         )}
 
         {tab === 'keywords' && (
-          <KeywordsTabTest2
-            data={data}
-            onAddToCampaign={openBuilderWithKeywords}
-          />
+          plan === 'testbok2'
+            ? <KeywordsTabGoogle data={data} onAddToCampaign={openBuilderWithKeywords} />
+            : <KeywordsTabTest2  data={data} onAddToCampaign={openBuilderWithKeywords} />
         )}
 
-        {tab === 'ads' && <AdsTabTest2 data={data} />}
+        {tab === 'ads' && (
+          plan === 'testbok2'
+            ? <AdsTabGoogle data={data} gbpConnected={gbpConnected} profile={profile} />
+            : <AdsTabTest2  data={data} />
+        )}
 
         <ActionPlanLink context={sv ? 'Vill du få ut mer av din annonsbudget?' : 'Want more out of your ad budget?'} />
       </div>

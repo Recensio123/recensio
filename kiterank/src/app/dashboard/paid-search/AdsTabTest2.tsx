@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Tooltip } from '@/components/Tooltip'
 import { ExternalLink } from '@/components/ExternalLink'
 import { useLang } from '@/components/LanguageProvider'
-import { type AdsData, type AdsAd, type AdStrength, type AssetPerformance, type AdSitelink } from './types'
+import { type AdsData, type AdSnippet, type AdsAd, type AdStrength, type AssetPerformance, type AdSitelink } from './types'
 
 /* ── Shared helpers ────────────────────────────────────────────────────────── */
 
@@ -121,7 +121,7 @@ function SaveButton({ saving, saved, disabled, onClick, label }: SaveBtn) {
 /* ══ EXTENSION CARDS ════════════════════════════════════════════════════════ */
 
 /* ── Call ──────────────────────────────────────────────────────────────────── */
-function CallCard({ initialNumber }: { initialNumber: string }) {
+export function CallCard({ initialNumber }: { initialNumber: string }) {
   const { lang } = useLang()
   const sv = lang === 'sv'
   const [editing, setEditing] = useState(false)
@@ -172,7 +172,7 @@ function CallCard({ initialNumber }: { initialNumber: string }) {
 }
 
 /* ── Sitelinks ─────────────────────────────────────────────────────────────── */
-function SitelinksCard({ initialLinks }: { initialLinks: AdSitelink[] }) {
+export function SitelinksCard({ initialLinks }: { initialLinks: AdSitelink[] }) {
   const { lang } = useLang()
   const sv = lang === 'sv'
   const [editing,  setEditing]  = useState(false)
@@ -259,7 +259,7 @@ function SitelinksCard({ initialLinks }: { initialLinks: AdSitelink[] }) {
 }
 
 /* ── Callouts ──────────────────────────────────────────────────────────────── */
-function CalloutsCard({ initialActive }: { initialActive: boolean }) {
+export function CalloutsCard({ initialActive }: { initialActive: boolean }) {
   const { lang } = useLang()
   const sv = lang === 'sv'
   const [active,  setActive]  = useState(initialActive)
@@ -327,10 +327,16 @@ function CalloutsCard({ initialActive }: { initialActive: boolean }) {
 }
 
 /* ── Location ──────────────────────────────────────────────────────────────── */
-function LocationCard() {
+/* The green line used to claim a connected Google Business Profile without
+ * checking. On an account with no profile linked that is simply untrue, and
+ * the button below it would fail. Both now follow the real connection. */
+export function LocationCard({ initialActive = false, gbpConnected = true }: {
+  initialActive?: boolean
+  gbpConnected?:  boolean
+} = {}) {
   const { lang } = useLang()
   const sv = lang === 'sv'
-  const [enabled, setEnabled] = useState(false)
+  const [enabled, setEnabled] = useState(initialActive)
   const [open,    setOpen]    = useState(false)
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
@@ -358,14 +364,22 @@ function LocationCard() {
     <AssetRow title={sv ? 'Adress' : 'Location'} active={enabled} check={enabled}
       detail={enabled ? (sv ? 'Från din Google-företagsprofil' : 'From Google Business Profile') : undefined}
       isOpen={open} onToggle={() => setOpen(o => !o)}>
-      <div className="flex items-center gap-1.5 text-xs text-green-400/80 bg-green-500/5 border border-green-500/15 rounded-lg px-3 py-2">
-        <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-        </svg>
-        {sv
-          ? 'Din Google-företagsprofil är kopplad — din adress hämtas automatiskt.'
-          : 'Your Google Business Profile is connected — your address will be pulled automatically.'}
-      </div>
+      {gbpConnected ? (
+        <div className="flex items-center gap-1.5 text-xs text-green-400/80 bg-green-500/5 border border-green-500/15 rounded-lg px-3 py-2">
+          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          {sv
+            ? 'Din Google-företagsprofil är kopplad — din adress hämtas automatiskt.'
+            : 'Your Google Business Profile is connected — your address will be pulled automatically.'}
+        </div>
+      ) : (
+        <div className="text-xs text-slate-400 bg-navy-900 border border-navy-700 rounded-lg px-3 py-2">
+          {sv
+            ? 'Adressen hämtas från din Google-företagsprofil. Ingen profil är kopplad ännu, så det finns ingen adress att visa.'
+            : 'The address comes from your Google Business Profile. No profile is connected yet, so there is no address to show.'}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <button
           onClick={enable}
@@ -394,13 +408,18 @@ const SNIPPET_HEADERS_SV: Record<string, string> = {
   Types:        'Typer',
 }
 
-function SnippetsCard() {
+/* AdsData already carries the snippet Google holds — undefined means none is
+ * configured. Starting from a blank card regardless told every account it had
+ * none. */
+export function SnippetsCard({ initialSnippet }: { initialSnippet?: AdSnippet } = {}) {
   const { lang } = useLang()
   const sv = lang === 'sv'
-  const [active,  setActive]  = useState(false)
+  const [active,  setActive]  = useState(!!initialSnippet)
   const [open,    setOpen]    = useState(false)
-  const [header,  setHeader]  = useState('Services')
-  const [values,  setValues]  = useState(['', '', '', ''])
+  const [header,  setHeader]  = useState(initialSnippet?.header ?? 'Services')
+  const [values,  setValues]  = useState(
+    [...(initialSnippet?.values ?? []), '', '', '', ''].slice(0, 4),
+  )
   const [saving,  setSaving]  = useState(false)
   const [saved,   setSaved]   = useState(false)
   const [error,   setError]   = useState('')
@@ -493,7 +512,7 @@ function SnippetsCard() {
 }
 
 /* ── Asset row shell ──────────────────────────────────────────────────────── */
-function AssetRow({
+export function AssetRow({
   title, active, check, detail, isOpen, onToggle, children, optional,
 }: {
   title:     string
@@ -562,10 +581,20 @@ function AssetRow({
 
 /* ══ Main tab ════════════════════════════════════════════════════════════════ */
 
-export function AdsTabTest2({ data }: { data: AdsData }) {
+/*
+ * The running ads, shared by both modes.
+ *
+ * Every figure here is Google's: the ad strength, the per-asset rating on each
+ * headline, impressions, click rate, clicks and conversions. `attributeRating`
+ * only changes how the low-rating line is worded — see AdsTabGoogle.
+ */
+export function RunningAdsList({ ads, attributeRating = false }: {
+  ads: AdsAd[]
+  attributeRating?: boolean
+}) {
   const { lang } = useLang()
   const sv = lang === 'sv'
-  const sortedAds = [...data.ads].sort((a, b) => b.impressions - a.impressions)
+  const sortedAds = [...ads].sort((a, b) => b.impressions - a.impressions)
 
   const failedMsg = sv ? 'Kunde inte spara' : 'Save failed'
 
@@ -600,14 +629,9 @@ export function AdsTabTest2({ data }: { data: AdsData }) {
     }
   }
 
-  const callExt = data.adExtensions.find(e => e.type === 'Call')
-  const missingCount = data.adExtensions.filter(e => !e.active).length
-
   return (
-    <>
-      {/* ── Running ads ─────────────────────────────────────────────────── */}
-      <div>
-        <h2 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">{sv ? 'Aktiva annonser' : 'Running ads'}</h2>
+    <div>
+      <h2 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">{sv ? 'Aktiva annonser' : 'Running ads'}</h2>
         <div className="space-y-3">
           {sortedAds.map(ad => {
             const s        = STRENGTH[ad.adStrength]
@@ -622,10 +646,14 @@ export function AdsTabTest2({ data }: { data: AdsData }) {
                   <div>
                     <p className="text-slate-500 text-xs mb-1">{ad.campaign}</p>
                     {lowCount > 0 && (
-                      <p className="text-red-400 text-xs">
-                        {sv
-                          ? `${lowCount} rubrik${lowCount > 1 ? 'er' : ''} med lågt betyg — Google undviker ${lowCount > 1 ? 'dem' : 'den'}`
-                          : `${lowCount} headline${lowCount > 1 ? 's' : ''} rated Low — Google is avoiding ${lowCount > 1 ? 'them' : 'it'}`}
+                      <p className={attributeRating ? 'text-mustard text-xs' : 'text-red-400 text-xs'}>
+                        {attributeRating
+                          ? (sv
+                              ? `Google har gett ${lowCount} ${lowCount > 1 ? 'texter' : 'text'} betyget Låg`
+                              : `Google rates ${lowCount} ${lowCount > 1 ? 'assets' : 'asset'} Low`)
+                          : (sv
+                              ? `${lowCount} rubrik${lowCount > 1 ? 'er' : ''} med lågt betyg — Google undviker ${lowCount > 1 ? 'dem' : 'den'}`
+                              : `${lowCount} headline${lowCount > 1 ? 's' : ''} rated Low — Google is avoiding ${lowCount > 1 ? 'them' : 'it'}`)}
                       </p>
                     )}
                   </div>
@@ -761,8 +789,20 @@ export function AdsTabTest2({ data }: { data: AdsData }) {
               </div>
             )
           })}
-        </div>
       </div>
+    </div>
+  )
+}
+
+export function AdsTabTest2({ data }: { data: AdsData }) {
+  const { lang } = useLang()
+  const sv = lang === 'sv'
+  const callExt      = data.adExtensions.find(e => e.type === 'Call')
+  const missingCount = data.adExtensions.filter(e => !e.active).length
+
+  return (
+    <>
+      <RunningAdsList ads={data.ads} />
 
       {/* ── Ad assets ────────────────────────────────────────────────────── */}
       <div>

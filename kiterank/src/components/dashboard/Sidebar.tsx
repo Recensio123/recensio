@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useTooltips } from '@/components/TooltipProvider'
 import { useDataDepth, type DepthPreset } from '@/components/DataCoverageProvider'
-import { usePlan } from '@/components/PlanProvider'
+import { usePlan, hasBooking } from '@/components/PlanProvider'
 import { useLang, type Lang } from '@/components/LanguageProvider'
 
 /*
@@ -257,7 +257,13 @@ function DepthToggle() {
   )
 }
 
-export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disconnected' }: { companyName: string; reviewBadge?: number; connectionStatus?: ConnectionStatus }) {
+export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disconnected', role = 'admin' }: {
+  companyName: string
+  reviewBadge?: number
+  connectionStatus?: ConnectionStatus
+  /** An account the salon created reaches the calendar and nothing else. */
+  role?: 'admin' | 'schema' | 'staff'
+}) {
   const pathname = usePathname()
   const { plan, setPlan } = usePlan()
   const { lang } = useLang()
@@ -271,11 +277,20 @@ export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disc
   const L      = LABELS[lang]
   const status = STATUS_CONFIG[lang][connectionStatus]
 
+  /* A stylist or a receptionist was given a calendar, not a marketing suite.
+   * The gate below is a courtesy — the routes behind each page refuse them
+   * on their own, so a typed URL gets nowhere either. */
+  const calendarOnly = role !== 'admin'
+
   const visibleNav = nav.filter(item => {
     // Tools dissolved; Action Plan merged into Home in the simplified plans
     if ((item.id === 'tools' || item.id === 'actionplan')) return false
     // The booking system and its SMS sendouts belong to the testbok track only
-    if ((item.id === 'sms' || item.id === 'bokningar') && plan !== 'testbok') return false
+    /* The plan switch is the owner's toy. A calendar account keeps its one
+     * page whichever mode the switch happens to be left in — otherwise the
+     * salon could strand its own staff on an empty menu. */
+    if ((item.id === 'sms' || item.id === 'bokningar') && !hasBooking(plan) && !calendarOnly) return false
+    if (calendarOnly && item.id !== 'bokningar') return false
     return true
   })
 
@@ -292,29 +307,31 @@ export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disc
           <LangToggle />
         </div>
         <p className="text-slate-400 text-xs mt-0.5 truncate">{companyName}</p>
+        {/* Build-time preview switch. Testbok2 is the working copy of the
+            booking track — the marketing side is being simplified against
+            it, and having both means a change can be looked at beside what
+            it replaced instead of remembered. */}
+        {!calendarOnly && (
         <div className="flex gap-1.5 mt-3">
-          <button
-            onClick={() => setPlan('test')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-              plan === 'test'
-                ? 'bg-blue-500/15 border-blue-500/40 text-blue-400'
-                : 'bg-transparent border-navy-700 text-slate-500 hover:text-slate-400 hover:border-navy-600'
-            }`}
-          >
-            Test
-          </button>
-          <button
-            onClick={() => setPlan('testbok')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-              plan === 'testbok'
-                ? 'bg-purple-500/15 border-purple-500/40 text-purple-400'
-                : 'bg-transparent border-navy-700 text-slate-500 hover:text-slate-400 hover:border-navy-600'
-            }`}
-          >
-            Testbok
-          </button>
+          {([
+            { id: 'test',     label: 'Test',      on: 'bg-blue-500/15 border-blue-500/40 text-blue-400'       },
+            { id: 'testbok',  label: 'Testbok',   on: 'bg-purple-500/15 border-purple-500/40 text-purple-400' },
+            { id: 'testbok2', label: 'Testbok2',  on: 'bg-teal-500/15 border-teal-500/40 text-teal-300'       },
+          ] as const).map(({ id, label, on }) => (
+            <button
+              key={id}
+              onClick={() => setPlan(id)}
+              className={`flex-1 py-1.5 text-[11px] font-semibold rounded-lg border transition-all ${
+                plan === id ? on
+                  : 'bg-transparent border-navy-700 text-slate-500 hover:text-slate-400 hover:border-navy-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <DepthToggle />
+        )}
+        {!calendarOnly && <DepthToggle />}
       </div>
 
       <nav className="px-3 py-4 space-y-0.5 flex-1">

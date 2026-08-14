@@ -2,28 +2,73 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Anthropic from '@anthropic-ai/sdk'
+import { bookingServices } from '@/lib/trades'
+import { measureKeywords, type Measured } from '@/lib/keywordVolume'
 
-const MOCK_SUGGESTIONS = [
-  { keyword: 'frisör nära mig',              rationale: 'High intent — the most common way people find a new salon', volume: 'High',   difficulty: 'Medium' },
-  { keyword: 'balayage södermalm',           rationale: 'High-value colour treatment with strong booking intent', volume: 'Medium', difficulty: 'Low' },
-  { keyword: 'drop in frisör stockholm',     rationale: 'Same-day availability searches convert exceptionally well', volume: 'Medium', difficulty: 'Low' },
-  { keyword: 'keratinbehandling stockholm',  rationale: 'Premium treatment keyword — high price point per booking', volume: 'Medium', difficulty: 'Medium' },
-  { keyword: 'barnklippning södermalm',      rationale: 'Family bookings bring repeat visits across the whole household', volume: 'Medium', difficulty: 'Low' },
+/*
+ * Suggestions are proposed, then measured, then compared to what the salon
+ * already has.
+ *
+ * Two things were wrong before. The model handed back a volume and difficulty
+ * of its own invention, which the panel printed as though counted. And the
+ * advice was to target a phrase with the town stapled on — "hårfärgning
+ * södermalm" — which is not how a local business wins that search. Google
+ * already knows where the salon is, from its address, its Google profile and
+ * its own pages. What it does not know is that they do colour work, because
+ * there are two lines about it on the site.
+ *
+ * So the suggestion is the treatment, the number comes from Keyword Planner,
+ * and the advice is to write about the treatment.
+ */
+export type Suggestion = {
+  /** The treatment term to own. No place name — see the note above. */
+  keyword:   string
+  rationale: string
+  /** Monthly searches nationally. Absent when we could not measure. */
+  avgVolume?:   number
+  competition?: 'LOW' | 'MEDIUM' | 'HIGH'
+  /** What the salon already gets for this term, from Search Console. */
+  seenPerMonth?: number
+  position?:     number
+}
+
+const MOCK_SUGGESTIONS: Suggestion[] = [
+  { keyword: 'balayage',          rationale: 'Värdefull färgbehandling med stark bokningsvilja' },
+  { keyword: 'hårfärgning',       rationale: 'Bred efterfrågan och återkommande kunder — färg växer ut' },
+  { keyword: 'keratinbehandling', rationale: 'Premiumbehandling med högt pris per bokning' },
+  { keyword: 'drop in frisör',    rationale: 'Sökningar på tid samma dag leder ofta direkt till bokning' },
+  { keyword: 'barnklippning',     rationale: 'Familjebokningar ger återkommande besök från hela hushållet' },
 ]
 
-const MOCK_SEASONAL = {
-  Jan: { focus: 'Emergency heating',  intensity: 3, keywords: ['emergency boiler', 'heating repair'] },
-  Feb: { focus: 'Winter maintenance', intensity: 2, keywords: ['boiler service', 'pipe insulation'] },
-  Mar: { focus: 'Spring check',       intensity: 2, keywords: ['spring plumbing', 'annual service'] },
-  Apr: { focus: 'Renovation season',  intensity: 3, keywords: ['bathroom renovation', 'new installation'] },
-  May: { focus: 'Outdoor plumbing',   intensity: 3, keywords: ['outdoor taps', 'garden plumbing'] },
-  Jun: { focus: 'Summer projects',    intensity: 2, keywords: ['kitchen renovation', 'new bathroom'] },
-  Jul: { focus: 'Holiday coverage',   intensity: 1, keywords: ['emergency plumber', '24h service'] },
-  Aug: { focus: 'Autumn prep',        intensity: 2, keywords: ['heating check', 'boiler ready'] },
-  Sep: { focus: 'Heating season',     intensity: 3, keywords: ['boiler service', 'heating install'] },
-  Oct: { focus: 'Pre-winter',         intensity: 3, keywords: ['boiler installation', 'pipe freeze'] },
-  Nov: { focus: 'Winter emergency',   intensity: 3, keywords: ['emergency heating', 'pipe burst'] },
-  Dec: { focus: 'Holiday emergency',  intensity: 2, keywords: ['emergency plumber', 'holiday service'] },
+type SCRow = { query: string; impressions: number; position: number }
+
+/**
+ * Attach the two things that turn a phrase into advice: what Google says the
+ * demand is, and what the salon already gets for it.
+ *
+ * Presence is matched loosely — a salon ranking for "hårfärgning stockholm"
+ * plainly has content about hårfärgning, and telling them to write some would
+ * be wrong. Anything unmeasured arrives without figures so the panel can say
+ * so instead of printing a guess.
+ */
+async function enrich(companyId: string, list: Suggestion[], sc: SCRow[]): Promise<Suggestion[]> {
+  const measured = await measureKeywords(companyId, list.map(s => s.keyword), { fallbackToMock: true })
+
+  return list.map(s => {
+    const term    = s.keyword.toLowerCase()
+    const related = sc.filter(r => r.query.toLowerCase().includes(term))
+    const seen    = related.reduce((sum, r) => sum + (r.impressions ?? 0), 0)
+    const best    = related.length
+      ? Math.min(...related.map(r => r.position ?? 99))
+      : undefined
+
+    const m: Measured | undefined = measured?.get(s.keyword)
+    return {
+      ...s,
+      ...(m ? { avgVolume: m.avgVolume, competition: m.competition } : {}),
+      ...(related.length ? { seenPerMonth: seen, position: best } : {}),
+    }
+  })
 }
 
 export async function POST() {
@@ -34,7 +79,7 @@ export async function POST() {
   const admin = createAdminClient()
   const { data: company } = await admin
     .from('companies')
-    .select('id, name, country, city, postal_code')
+    .select('id, name, country, city, postal_code, industry')
     .eq('user_id', user.id)
     .single()
 
@@ -49,12 +94,20 @@ export async function POST() {
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey || apiKey === 'your_anthropic_api_key') {
-    return NextResponse.json({ suggestions: MOCK_SUGGESTIONS, seasonal: MOCK_SEASONAL })
+    return NextResponse.json({ suggestions: await enrich(company.id, MOCK_SUGGESTIONS, (queries ?? []) as SCRow[]) })
   }
 
   const topKeywords = (queries ?? [])
     .map(q => `${q.query} (pos #${Math.round(q.position)}, ${q.impressions} impr/mo)`)
     .join('\n') || 'No Search Console data yet'
+
+  /* The trade's own price list, so a salon that signed up yesterday still
+   * gets suggestions about the treatments it actually sells. Search Console
+   * history says what people already find them for; this says what they do. */
+  const tradeServices = bookingServices(company.industry)
+    .map(s => s.name)
+    .slice(0, 20)
+    .join(', ')
 
   // Detect market from stored country first, then SC site URL + keywords as fallback
   const { data: conn } = await admin
@@ -128,32 +181,20 @@ export async function POST() {
 Their current Search Console keywords:
 ${topKeywords}
 
+The treatments they actually sell:
+${tradeServices || 'Unknown'}
+
 Based on this data and your expertise in the ${marketDesc}:
-1. Suggest 5 new keywords they are NOT currently targeting but should be. Each must be a realistic opportunity based on their existing keyword profile.${locationStr ? ` Where relevant, use the precise location (${locationStr}) in keyword suggestions — for example, a hairdresser in Hägersten should target "klippning hägersten" not just "klippning stockholm", since district-level keywords have less competition and higher conversion.` : ''}
-2. Generate a 12-month seasonal calendar showing when to focus on which keyword themes, tailored to the ${marketDesc} and this specific business type.
+1. Suggest 5 treatments or services they should be winning searches for but are not yet. Ground them in the treatments listed above — a keyword for a service they do not offer is worthless however popular it is.
+
+Return the plain treatment term the way people actually search it nationally ("hårfärgning", "balayage", "keratinbehandling"). Do NOT append the town or district. Their location is already established for Google by their address, their Google Business Profile and their own pages; what is missing is depth about the treatment itself. A phrase with the town stapled on is not what wins these searches and reads badly on the page.
 
 Respond ONLY with valid JSON in this exact format, no markdown, no explanation:
 {
   "suggestions": [
-    { "keyword": "string", "rationale": "string (1 sentence)", "volume": "Low|Medium|High", "difficulty": "Low|Medium|High" }
-  ],
-  "seasonal": {
-    "Jan": { "focus": "string (max 3 words)", "intensity": 1, "keywords": ["string", "string"] },
-    "Feb": { "focus": "string (max 3 words)", "intensity": 2, "keywords": ["string", "string"] },
-    "Mar": { "focus": "string (max 3 words)", "intensity": 1, "keywords": ["string", "string"] },
-    "Apr": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
-    "May": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
-    "Jun": { "focus": "string (max 3 words)", "intensity": 2, "keywords": ["string", "string"] },
-    "Jul": { "focus": "string (max 3 words)", "intensity": 1, "keywords": ["string", "string"] },
-    "Aug": { "focus": "string (max 3 words)", "intensity": 2, "keywords": ["string", "string"] },
-    "Sep": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
-    "Oct": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
-    "Nov": { "focus": "string (max 3 words)", "intensity": 3, "keywords": ["string", "string"] },
-    "Dec": { "focus": "string (max 3 words)", "intensity": 2, "keywords": ["string", "string"] }
-  }
-}
-
-Intensity: 1=quiet/low demand, 2=active/medium, 3=peak season (should prioritise this month).`,
+    { "keyword": "string", "rationale": "string (1 sentence, in the market’s language, saying why this treatment is worth the effort)" }
+  ]
+}`,
       }],
     })
 
@@ -163,10 +204,11 @@ Intensity: 1=quiet/low demand, 2=active/medium, 3=peak season (should prioritise
     const jsonMatch = content.text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('No JSON in response')
 
-    const parsed = JSON.parse(jsonMatch[0])
-    return NextResponse.json(parsed)
+    const parsed = JSON.parse(jsonMatch[0]) as { suggestions?: Suggestion[] }
+    const list = (parsed.suggestions ?? []).filter(x => x?.keyword)
+    return NextResponse.json({ suggestions: await enrich(company.id, list, (queries ?? []) as SCRow[]) })
   } catch {
     // Fall back to mock if AI fails
-    return NextResponse.json({ suggestions: MOCK_SUGGESTIONS, seasonal: MOCK_SEASONAL })
+    return NextResponse.json({ suggestions: await enrich(company.id, MOCK_SUGGESTIONS, (queries ?? []) as SCRow[]) })
   }
 }

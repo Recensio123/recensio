@@ -20,6 +20,11 @@ export type KeywordIdea = {
   yoyGrowth:     number          // % change: last 3 months vs same 3 months prior year
   competition:   'LOW' | 'MEDIUM' | 'HIGH'
   competitionIndex: number       // 0–100
+  /* Google's own estimate of what advertisers pay to sit at the top of the
+     page for this phrase — keywordIdeaMetrics.highTopOfPageBidMicros. Without
+     it a suggestion has no price, and a salon cannot tell a 6 kr click from a
+     60 kr one. */
+  topOfPageBidMicros: number
 }
 
 const FORCE_MOCK = true
@@ -110,6 +115,7 @@ export async function GET() {
           yoyGrowth,
           competition:      metrics.competition ?? 'MEDIUM',
           competitionIndex: Number(metrics.competitionIndex ?? 50),
+          topOfPageBidMicros: Number(metrics.highTopOfPageBidMicros ?? 0),
         }
       })
       .sort((a, b) => b.avgVolume - a.avgVolume)
@@ -127,62 +133,62 @@ export async function GET() {
 const MOCK_IDEAS: KeywordIdea[] = [
   {
     keyword: 'frisör stockholm',
-    avgVolume: 1900, yoyGrowth: 24, competition: 'HIGH', competitionIndex: 78,
+    avgVolume: 1900, yoyGrowth: 24, competition: 'HIGH', competitionIndex: 78, topOfPageBidMicros: 28_000_000,
     monthlyVolume: [1300,1250,1400,1600,1700,1800,1850,1900,2000,2100,2200,1900],
   },
   {
     keyword: 'klippning pris',
-    avgVolume: 1200, yoyGrowth: 31, competition: 'LOW', competitionIndex: 22,
+    avgVolume: 1200, yoyGrowth: 31, competition: 'LOW', competitionIndex: 22, topOfPageBidMicros: 12_000_000,
     monthlyVolume: [700,750,800,900,950,1000,1100,1150,1200,1300,1350,1200],
   },
   {
     keyword: 'balayage stockholm',
-    avgVolume: 3400, yoyGrowth: 18, competition: 'MEDIUM', competitionIndex: 51,
+    avgVolume: 3400, yoyGrowth: 18, competition: 'MEDIUM', competitionIndex: 51, topOfPageBidMicros: 20_000_000,
     monthlyVolume: [2000,2100,2800,3200,3600,3800,3900,3700,3400,3100,2900,3400],
   },
   {
     keyword: 'drop in frisör stockholm',
-    avgVolume: 880, yoyGrowth: 42, competition: 'LOW', competitionIndex: 18,
+    avgVolume: 880, yoyGrowth: 42, competition: 'LOW', competitionIndex: 18, topOfPageBidMicros: 11_000_000,
     monthlyVolume: [400,420,450,500,550,600,700,750,800,880,920,880],
   },
   {
     keyword: 'hårfärgning pris',
-    avgVolume: 2200, yoyGrowth: 8, competition: 'MEDIUM', competitionIndex: 44,
+    avgVolume: 2200, yoyGrowth: 8, competition: 'MEDIUM', competitionIndex: 44, topOfPageBidMicros: 18_000_000,
     monthlyVolume: [1800,1900,2000,2200,2300,2100,2000,2100,2200,2300,2400,2200],
   },
   {
     keyword: 'lash lift stockholm',
-    avgVolume: 590, yoyGrowth: 67, competition: 'LOW', competitionIndex: 11,
+    avgVolume: 590, yoyGrowth: 67, competition: 'LOW', competitionIndex: 11, topOfPageBidMicros: 9_000_000,
     monthlyVolume: [200,220,260,310,360,410,460,500,530,560,580,590],
   },
   {
     keyword: 'keratinbehandling',
-    avgVolume: 1400, yoyGrowth: 15, competition: 'MEDIUM', competitionIndex: 48,
+    avgVolume: 1400, yoyGrowth: 15, competition: 'MEDIUM', competitionIndex: 48, topOfPageBidMicros: 19_000_000,
     monthlyVolume: [1000,1050,1100,1200,1300,1350,1400,1420,1430,1440,1450,1400],
   },
   {
     keyword: 'barberare södermalm',
-    avgVolume: 760, yoyGrowth: 22, competition: 'LOW', competitionIndex: 29,
+    avgVolume: 760, yoyGrowth: 22, competition: 'LOW', competitionIndex: 29, topOfPageBidMicros: 14_000_000,
     monthlyVolume: [480,500,540,580,640,680,700,720,740,760,770,760],
   },
   {
     keyword: 'permanent hår pris',
-    avgVolume: 1100, yoyGrowth: -4, competition: 'LOW', competitionIndex: 15,
+    avgVolume: 1100, yoyGrowth: -4, competition: 'LOW', competitionIndex: 15, topOfPageBidMicros: 10_000_000,
     monthlyVolume: [1200,1150,1100,1050,1000,980,970,1000,1050,1100,1150,1100],
   },
   {
     keyword: 'nagelförlängning stockholm',
-    avgVolume: 2800, yoyGrowth: 12, competition: 'HIGH', competitionIndex: 71,
+    avgVolume: 2800, yoyGrowth: 12, competition: 'HIGH', competitionIndex: 71, topOfPageBidMicros: 26_000_000,
     monthlyVolume: [2200,2300,2500,2700,2800,2900,2950,2900,2850,2800,2750,2800],
   },
   {
     keyword: 'fransförlängning pris',
-    avgVolume: 680, yoyGrowth: 9, competition: 'LOW', competitionIndex: 20,
+    avgVolume: 680, yoyGrowth: 9, competition: 'LOW', competitionIndex: 20, topOfPageBidMicros: 12_000_000,
     monthlyVolume: [560,570,590,620,650,660,670,680,690,700,710,680],
   },
   {
     keyword: 'brudhår stockholm',
-    avgVolume: 1650, yoyGrowth: 38, competition: 'MEDIUM', competitionIndex: 55,
+    avgVolume: 1650, yoyGrowth: 38, competition: 'MEDIUM', competitionIndex: 55, topOfPageBidMicros: 21_000_000,
     monthlyVolume: [900,950,1050,1200,1350,1450,1550,1600,1620,1640,1650,1650],
   },
 ]
