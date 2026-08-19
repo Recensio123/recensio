@@ -3,9 +3,13 @@ import { z } from 'zod'
 import { createSupabaseServerClient, createSupabaseAdminClient } from '@/lib/supabase'
 
 const UpdateSchema = z.object({
-  custom_message:    z.string().optional().nullable(),
-  scheduled_for:     z.string().optional().nullable(),
-  custom_campaign_id: z.string().uuid().optional().nullable(),
+  custom_message:      z.string().optional().nullable(),
+  scheduled_for:       z.string().optional().nullable(),
+  custom_campaign_id:  z.string().uuid().optional().nullable(),
+  owner_response:      z.string().optional().nullable(),
+  owner_responded_at:  z.string().optional().nullable(),
+  followup_message:    z.string().optional().nullable(),
+  followup_cancelled:  z.boolean().optional(),
 })
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -51,9 +55,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { data: userData } = await admin.from('users').select('company_id').eq('id', user.id).single()
   if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
+  const updateData: Record<string, unknown> = { ...parsed.data }
+  if ('owner_response' in parsed.data) {
+    updateData.owner_responded_at = parsed.data.owner_response ? new Date().toISOString() : null
+  }
+
   const { data, error } = await admin
     .from('customers')
-    .update(parsed.data)
+    .update(updateData)
     .eq('id', id)
     .eq('company_id', userData.company_id)
     .select()

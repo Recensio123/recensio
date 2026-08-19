@@ -75,23 +75,39 @@ export async function GET(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Hämta kampanj-SMS per kund (type = campaign)
+  // Hämta kampanj-SMS per kund (type = campaign) → campaign_sent_name
   const { data: campLogs } = await admin
     .from('sms_log')
     .select('customer_id, campaigns(name)')
     .eq('company_id', userData.company_id)
     .eq('type', 'campaign')
 
-  // Bygg en map: customer_id → kampanjnamn
   const campMap: Record<string, string> = {}
   for (const log of campLogs ?? []) {
     const name = (log.campaigns as { name: string } | null)?.name ?? 'Kampanj'
     campMap[log.customer_id] = name
   }
 
+  // Hämta kampanjnamn för schemalagda followups via followup_campaign_id
+  const followupCampIds = [...new Set((data ?? []).map(c => c.followup_campaign_id).filter(Boolean))]
+  const followupCampMap: Record<string, string> = {}
+  const followupCampTemplateMap: Record<string, string> = {}
+  if (followupCampIds.length > 0) {
+    const { data: camps } = await admin
+      .from('campaigns')
+      .select('id, name, template')
+      .in('id', followupCampIds)
+    for (const camp of camps ?? []) {
+      followupCampMap[camp.id] = camp.name
+      followupCampTemplateMap[camp.id] = camp.template
+    }
+  }
+
   const enriched = (data ?? []).map(c => ({
     ...c,
     campaign_sent_name: campMap[c.id] ?? null,
+    followup_campaign_name: c.followup_campaign_id ? (followupCampMap[c.followup_campaign_id] ?? null) : null,
+    followup_campaign_template: c.followup_campaign_id ? (followupCampTemplateMap[c.followup_campaign_id] ?? null) : null,
   }))
 
   return NextResponse.json(enriched)

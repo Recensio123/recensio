@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient, createSupabaseAdminClient } from '@/lib/supabase'
 import { sendSms, renderTemplate } from '@/lib/elks'
 import { decrypt } from '@/lib/crypto'
+import { fetchDiscountCode } from '@/app/api/integrations/discount/route'
 import crypto from 'crypto'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -42,7 +43,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const token = crypto.randomBytes(16).toString('hex')
   const reviewUrl = `${process.env.NEXT_PUBLIC_URL}/r/${token}`
 
-  const message = renderTemplate(template, customer, company, token) +
+  // Hämta rabattkod om mallen innehåller {rabattkod} och integration är kopplad
+  let discountCode: string | null = null
+  if (template.includes('{rabattkod}')) {
+    discountCode = await fetchDiscountCode(companyId)
+  }
+
+  const rendered = renderTemplate(template, customer, company, token)
+  const message = (discountCode !== null
+    ? rendered.replace(/\{rabattkod\}/g, discountCode)
+    : rendered) +
     `\n\n${reviewUrl}\n\nSvara STOPP för att avregistrera dig.`
 
   const username = company.elks_username

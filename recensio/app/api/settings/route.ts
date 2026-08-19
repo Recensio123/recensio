@@ -8,6 +8,8 @@ const SettingsSchema = z.object({
   google_place_id: z.string().optional(),
   reco_url: z.string().url().optional().or(z.literal('')),
   hitta_url: z.string().url().optional().or(z.literal('')),
+  facebook_url: z.string().url().optional().or(z.literal('')),
+  tripadvisor_url: z.string().url().optional().or(z.literal('')),
   sms_template: z.string().optional(),
   sms_timing_hours: z.number().int().min(0).max(720).optional(),
 })

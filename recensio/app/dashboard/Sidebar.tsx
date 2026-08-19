@@ -4,7 +4,9 @@ import { usePathname } from 'next/navigation'
 
 const links = [
   { href: '/dashboard', label: 'Kommande', icon: '🕐' },
+  { href: '/dashboard/pagaende', label: 'Pågående', icon: '⏳' },
   { href: '/dashboard/historik', label: 'Kundhistorik', icon: '👥' },
+  { href: '/dashboard/recensioner', label: 'Recensionsamling', icon: '⭐' },
   { href: '/dashboard/kampanjer', label: 'Utskick & Kampanjer', icon: '✉️' },
   { href: '/dashboard/kopplingar', label: 'Kopplingar', icon: '🔗' },
   { href: '/dashboard/installningar', label: 'Inställningar', icon: '⚙️' },

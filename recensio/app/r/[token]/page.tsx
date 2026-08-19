@@ -1,15 +1,28 @@
-
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 
 export default function ReviewPage() {
   const { token } = useParams<{ token: string }>()
   const [stars, setStars] = useState(0)
   const [hovered, setHovered] = useState(0)
-  const [stage, setStage] = useState<'stars' | 'feedback' | 'done'>('stars')
+  const [stage, setStage] = useState<'loading' | 'stars' | 'feedback' | 'done'>('loading')
   const [feedback, setFeedback] = useState('')
   const [loading, setLoading] = useState(false)
+  const [companyName, setCompanyName] = useState('')
+  const [firstName, setFirstName] = useState('')
+
+  useEffect(() => {
+    fetch(`/api/review/${token}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setStage('done'); return }
+        setCompanyName(d.companyName ?? '')
+        setFirstName(d.firstName ?? '')
+        setStage('stars')
+      })
+      .catch(() => setStage('stars'))
+  }, [token])
 
   async function submitStars(s: number) {
     setLoading(true)
@@ -48,10 +61,20 @@ export default function ReviewPage() {
           Recens<span style={{ color: '#4d8c68' }}>io</span>
         </div>
 
+        {stage === 'loading' && (
+          <p style={{ fontSize: 14, color: '#9c9285' }}>Laddar...</p>
+        )}
+
         {stage === 'stars' && (
           <>
-            <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.5rem', marginBottom: '.5rem' }}>Hur gick jobbet?</h1>
-            <p style={{ fontSize: 14, color: '#9c9285', marginBottom: '2rem' }}>Det tar bara 30 sekunder.</p>
+            <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.5rem', marginBottom: '.5rem' }}>
+              {firstName ? `Hej ${firstName}!` : 'Hej!'}
+            </h1>
+            <p style={{ fontSize: 14, color: '#9c9285', marginBottom: '2rem' }}>
+              {companyName
+                ? `Hur gick jobbet hos ${companyName}? Det tar bara 30 sekunder.`
+                : 'Det tar bara 30 sekunder.'}
+            </p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: '1.5rem' }}>
               {[1, 2, 3, 4, 5].map(s => (
                 <button
@@ -73,7 +96,7 @@ export default function ReviewPage() {
         {stage === 'feedback' && (
           <>
             <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.5rem', marginBottom: '.5rem' }}>Vad hände?</h1>
-            <p style={{ fontSize: 14, color: '#9c9285', marginBottom: '1.5rem' }}>Din feedback går direkt till företaget — publiceras aldrig offentligt.</p>
+            <p style={{ fontSize: 14, color: '#9c9285', marginBottom: '1.5rem' }}>Din feedback går direkt till {companyName || 'företaget'} — publiceras aldrig offentligt.</p>
             <textarea
               value={feedback}
               onChange={e => setFeedback(e.target.value)}

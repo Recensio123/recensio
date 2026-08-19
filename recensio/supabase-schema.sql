@@ -11,6 +11,8 @@ CREATE TABLE companies (
   google_place_id TEXT,
   reco_url TEXT,
   hitta_url TEXT,
+  facebook_url TEXT,
+  tripadvisor_url TEXT,
   sms_sender TEXT DEFAULT 'Recensio',
   sms_timing_hours INTEGER DEFAULT 1,
   sms_template TEXT DEFAULT 'Hej {förnamn}! Tack för att du anlitade {företag}. Nöjd med jobbet? 30 sek 🙏',
@@ -48,6 +50,8 @@ CREATE TABLE customers (
   campaign_sent_id UUID,
   campaign_message TEXT,
   outbound_sms TEXT,
+  owner_response TEXT,
+  owner_responded_at TIMESTAMPTZ,
   source TEXT DEFAULT 'manual',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(company_id, phone)

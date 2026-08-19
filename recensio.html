@@ -459,13 +459,13 @@ footer{background:var(--night);padding:2.5rem 0;border-top:1px solid rgba(255,25
         <div onclick="toggleBilling()" style="width:44px;height:24px;background:var(--forest);border-radius:12px;position:relative;cursor:pointer;flex-shrink:0;transition:background .2s" id="bill-tog">
           <div id="bill-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div>
         </div>
-        <span id="lbl-year" style="font-size:14px;color:var(--fog)">Årsvis <span id="year-save" style="font-size:11px;font-weight:600;background:var(--mist);color:var(--moss);padding:2px 8px;border-radius:999px;margin-left:4px">Spara 2 månader</span></span>
+        <span id="lbl-year" style="font-size:14px;color:var(--fog)">Årsvis <span id="year-save" style="font-size:11px;font-weight:600;background:var(--mist);color:var(--moss);padding:2px 8px;border-radius:999px;margin-left:4px">Spara 20%</span></span>
       </div>
 
       <div class="pricing">
         <div class="pc">
           <div class="pc-tier">Starter</div>
-          <div class="pc-price" id="price-starter">349</div><div class="pc-per">kr / månad</div>
+          <div class="pc-price" id="price-starter">349</div><div class="pc-per" id="per-starter">kr / månad</div>
           <div class="pc-desc" id="desc-starter">För dig som precis börjat.</div>
           <ul class="pc-list"><li>Upp till 50 kunder/mån</li><li>Automatiska SMS + e-post</li><li>Google-recensioner</li><li>Manuell kundläggning</li></ul>
           <button class="pc-btn" onclick="openModal()">Boka demo</button>
@@ -474,7 +474,7 @@ footer{background:var(--night);padding:2.5rem 0;border-top:1px solid rgba(255,25
         <div class="pc feat-pc">
           <div class="pc-badge">Mest populär</div>
           <div class="pc-tier">Pro</div>
-          <div class="pc-price" id="price-pro">599</div><div class="pc-per">kr / månad</div>
+          <div class="pc-price" id="price-pro">599</div><div class="pc-per" id="per-pro">kr / månad</div>
           <div class="pc-desc" id="desc-pro">För etablerade serviceföretag.</div>
           <ul class="pc-list"><li>Upp till 500 kunder/mån</li><li>Google + Reco.se + Hittaproffs</li><li>Koppla affärssystem/kalender</li><li>Kampanjhantering</li><li>Referral-program</li><li>Hemsidewidget</li></ul>
           <button class="pc-btn" onclick="openModal()">Boka demo</button>
@@ -482,7 +482,7 @@ footer{background:var(--night);padding:2.5rem 0;border-top:1px solid rgba(255,25
         </div>
         <div class="pc">
           <div class="pc-tier">Growth</div>
-          <div class="pc-price" id="price-growth">999</div><div class="pc-per">kr / månad</div>
+          <div class="pc-price" id="price-growth">999</div><div class="pc-per" id="per-growth">kr / månad</div>
           <div class="pc-desc" id="desc-growth">För hög volym och flera team.</div>
           <ul class="pc-list"><li>Obegränsat antal kunder</li><li>Allt i Pro</li><li>Flera teammedlemmar</li><li>Prioriterad support</li></ul>
           <button class="pc-btn" onclick="openModal()">Boka demo</button>
@@ -938,7 +938,7 @@ function connInt(btn){btn.textContent='Ansluten';btn.style.color='var(--moss)';b
 // Billing toggle
 let isYearly=false;
 const PRICES_M={starter:349,pro:599,growth:999};
-const PRICES_Y={starter:290,pro:499,growth:832};
+const PRICES_Y={starter:279,pro:479,growth:799};
 function toggleBilling(){
   isYearly=!isYearly;
   document.getElementById('bill-knob').style.transform=isYearly?'translateX(20px)':'translateX(0)';
@@ -948,6 +948,10 @@ function toggleBilling(){
   document.getElementById('price-starter').textContent=p.starter;
   document.getElementById('price-pro').textContent=p.pro;
   document.getElementById('price-growth').textContent=p.growth;
+  const perTxt=isYearly?'kr / mån (faktureras årsvis)':'kr / månad';
+  document.getElementById('per-starter').textContent=perTxt;
+  document.getElementById('per-pro').textContent=perTxt;
+  document.getElementById('per-growth').textContent=perTxt;
 }
 function faqT(btn){const a=btn.nextElementSibling,ico=btn.querySelector('.faq-ico'),open=a.classList.contains('open');document.querySelectorAll('.faq-a').forEach(x=>x.classList.remove('open'));document.querySelectorAll('.faq-ico').forEach(x=>x.classList.remove('open'));if(!open){a.classList.add('open');ico.classList.add('open')}}
 let toastTimer;
