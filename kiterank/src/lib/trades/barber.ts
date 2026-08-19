@@ -133,4 +133,6 @@ export const BARBER: TradePack = {
       ],
     },
   ],
+
+  schemaType: 'HairSalon',
 }

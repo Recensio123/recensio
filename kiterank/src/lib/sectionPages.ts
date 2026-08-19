@@ -19,7 +19,7 @@ import { siteLabel, type LabelKey } from './siteLabels'
 /* Only the sections whose content is written material get a page of their own.
    Photos and reviews are shown, not read — a visitor scrolls past them on the
    start page and is done, so a separate page for them earns nothing. */
-export type SectionPageId = 'pricelist' | 'about' | 'blog'
+export type SectionPageId = 'pricelist' | 'about' | 'blog' | 'contact'
 
 export type SectionPage = {
   /** Own page on/off. Unset falls back to the section's default. */
@@ -48,7 +48,16 @@ export const FEATURES_DEFAULT: Record<string, boolean> = {
   booking: true, pricelist: true, gallery: true, contact: true, blog: false, reviews: true, about: true,
 }
 
-export const SECTION_PAGE_IDS: SectionPageId[] = ['pricelist', 'about', 'blog']
+/*
+ * Menyns ordning, och därmed panelens och sidfotens.
+ *
+ * Prislistan först: det är vad de flesta besökare kom för. Artiklarna före Om
+ * oss, eftersom de är sidorna som svarar på det någon sökte — och en länk högre
+ * upp i menyn räknas tyngre internt än en längre ner. Om oss är en
+ * förtroendesida man söker upp, inte en man söker efter. Kontakt sist, där folk
+ * är van att leta efter den.
+ */
+export const SECTION_PAGE_IDS: SectionPageId[] = ['pricelist', 'blog', 'about', 'contact']
 
 /* The start page is the taster — a few photos, the top of the price list, the
    short version of who you are — and each own page is the whole thing. That is
@@ -60,6 +69,11 @@ export const SECTION_PAGES: Record<SectionPageId, { path: string; labelKey: Labe
   pricelist: { path: 'tjanster',    labelKey: 'navServices',    defaultEnabled: true },
   about:     { path: 'om-oss',      labelKey: 'aboutPageTitle', defaultEnabled: true },
   blog:      { path: 'artiklar',    labelKey: 'navArticles',    defaultEnabled: true },
+  /* Kontaktuppgifterna står kvar på startsidan även när sidan finns — de är det
+     besökaren letar efter mest, och att kräva ett klick för ett telefonnummer
+     är att lägga ett steg mellan kunden och samtalet. Den egna sidan ger kartan
+     och den längre texten plats. */
+  contact:   { path: 'kontakt',     labelKey: 'contactTitle',   defaultEnabled: true },
 }
 
 export function sectionPageOf(content: ContentSlice, id: SectionPageId): SectionPage {
@@ -84,6 +98,13 @@ export function sectionHasMaterial(content: ContentSlice, id: SectionPageId): bo
 export function sectionPageEnabled(content: ContentSlice, id: SectionPageId): boolean {
   if (!sectionIsOn(content, id)) return false
   if (!sectionHasMaterial(content, id)) return false
+
+  /* Ett namn kunden själv tömt betyder att sidan ska bort. Panelen slår om
+     reglaget samtidigt, men regeln står här också: en sida utan namn får ingen
+     knapp att klicka på och ingen rubrik att öppna med, hur reglaget än råkar
+     stå i en rad som sparats innan den kopplingen fanns. */
+  if (sectionPageOf(content, id).title === '') return false
+
   return sectionPageOf(content, id).enabled ?? SECTION_PAGES[id].defaultEnabled
 }
 
@@ -194,8 +215,22 @@ type NavSlice = ContentSlice & { pricelistMode?: 'site' | 'booking'; bookingUrl?
  *  nothing published yet stays out of the menu. */
 export function sitePageLinks(content: NavSlice, siteRoot: string): { id: SectionPageId; label: string; href: string }[] {
   const external = content.pricelistMode === 'booking' && !!content.bookingUrl?.trim()
-  return sectionPageNavItems(content, siteRoot)
+  const items = sectionPageNavItems(content, siteRoot)
     .map(p => p.id === 'pricelist' && external ? { ...p, href: content.bookingUrl!.trim() } : p)
+
+  /* Kontakt står alltid i menyn, även utan egen sida — sidfoten ÄR
+     kontaktavsnittet, så knappen har alltid någonstans att ta vägen. Utan egen
+     sida skrollar den dit i stället, precis som reglaget lovar.
+     Läggs den till här och inte hos anroparna kan den inte hamna dubbelt. */
+  if (!items.some(p => p.id === 'contact')) {
+    items.push({
+      id:    'contact',
+      label: sectionPageTitle(content, 'contact'),
+      href:  `${siteRoot}#kontakt`,
+    })
+  }
+
+  return items
 }
 
 /** Which section a free-text menu word points at — so "Om oss" in the menu

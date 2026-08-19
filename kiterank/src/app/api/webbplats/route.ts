@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteDraft } from '@/lib/siteTemplates'
+import { clearSiteCache, clearSiteAddress } from '@/app/s/[slug]/site-data'
+import { isClosed } from '@/lib/accountStatus'
 
 export async function PATCH(req: Request) {
   const supabase = await createClient()
@@ -17,6 +19,13 @@ export async function PATCH(req: Request) {
     .single()
 
   if (!company) return NextResponse.json({ error: 'No company' }, { status: 404 })
+
+  /* Avslutat avtal skriver ingenting. Den här routen hämtar företaget på egen
+     hand i stället för genom currentAccess, så grinden måste stå här också —
+     annars kan en kvarglömd session spara i en panel som inte går att öppna. */
+  if (await isClosed(admin, company.id)) {
+    return NextResponse.json({ error: 'Avtalet är avslutat' }, { status: 403 })
+  }
 
   const body = await req.json()
   const { content, template, slug, about, industry } = body
@@ -105,6 +114,16 @@ export async function PATCH(req: Request) {
     .eq('company_id', company.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  /*
+   * Sajten är cachad. Utan det här anropet ligger den gamla versionen kvar
+   * tills dygnsskyddet löper ut, och kunden ser sin sparning först nästa dag.
+   *
+   * Ett anrop räcker för alla deras adresser — /s/<slug>, deras egen domän och
+   * varje undersida bär samma etikett. Bytte de adress rensas den gamla också,
+   * annars svarar den kvar med sajten i stället för att skicka vidare. */
+  clearSiteCache(company.id)
+  if (newSlug) clearSiteAddress(newSlug)
 
   return NextResponse.json({ ok: true, ...(newSlug ? { slug: newSlug } : {}) })
 }

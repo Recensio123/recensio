@@ -1,9 +1,19 @@
-import type { PublishedSite } from '../site-data'
-import { sitePageLinks } from '@/lib/sectionPages'
+import { siteRootOf, type PublishedSite } from '../site-data'
+import { SiteNav, Footer } from '@/components/site/PreviewSite'
+import { BACKDROPS, backdropSrc, backdropStyle } from '@/lib/siteBackdrop'
+import { SiteStyles } from '@/components/SiteStyles'
+import { siteFontVars, SiteFontFace } from '@/components/SiteFont'
+import type { CSSProperties } from 'react'
 
-/* The frame both article pages sit in — the same bar as the rest of the site,
-   so an article reads as a page of the salon's site rather than a blog bolted
-   onto the side of it. */
+/*
+ * The frame every page other than the start page sits in.
+ *
+ * A site is one site. The start page used to be the only page that got the
+ * design's own menu, the design's typography, the surface it stands on, the
+ * mobile rules and the footer — everything below it was a plain white room
+ * with a different bar on top. This frame hands all of it to every page, from
+ * the same source the start page uses, so nothing can drift apart again.
+ */
 
 export const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
 
@@ -14,31 +24,72 @@ export function isDark(hex: string) {
   return (r * 299 + g * 587 + b * 114) / 1000 < 128
 }
 
-export function ArticleNav({ site }: { site: PublishedSite }) {
-  const c = site.template.colors
-  const { content } = site
-  const base    = `/s/${site.slug}`
-  const fgSub   = isDark(c.bg) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
-  const divider = isDark(c.bg) ? 'rgba(255,255,255,0.1)'  : 'rgba(0,0,0,0.08)'
-  // One button per own page the customer switched on, in the customer's words
-  const pages = sitePageLinks(content, base)
+/** Which page is being shown, as the address the menu links to. */
+const currentHref = (base: string, page?: 'pricelist' | 'about' | 'blog' | 'kontakt') =>
+  page === 'pricelist' ? `${base}/tjanster`
+  : page === 'about'   ? `${base}/om-oss`
+  : page === 'blog'    ? `${base}/artiklar`
+  : page === 'kontakt' ? `${base}/kontakt`
+  : undefined
 
+/* The four designs that stand on a surface rather than on a colour. Away from
+   the hero the surface is dimmed further — a page of text has to stay
+   readable on it, which the hero's own headline does not have to worry
+   about. */
+const SURFACE: Record<string, string> = {
+  workshop:  BACKDROPS.tra.src,
+  sign:      BACKDROPS.tegel.src,
+  foyer:     BACKDROPS.linne.src,
+  chemistry: BACKDROPS.betong.src,
+}
+
+function pageSurface(site: PublishedSite): CSSProperties {
+  const fallback = SURFACE[site.template.layout]
+  if (!fallback) return { background: site.template.colors.bg }
+  return { ...backdropStyle(backdropSrc(site.content, fallback), 0.82), backgroundAttachment: 'scroll' }
+}
+
+export function ArticleNav({ site, current }: {
+  site: PublishedSite
+  /** Which page the visitor is on, so the menu can say so. */
+  current?: 'pricelist' | 'about' | 'blog' | 'kontakt'
+}) {
+  const base = siteRootOf(site)
   return (
-    <nav style={{ background: c.nav, padding: '0 8%', borderBottom: `1px solid ${divider}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', height: 68, gap: 32, flexWrap: 'wrap' }}>
-        <a href={base} style={{ color: c.h, fontWeight: 800, fontSize: 16, textDecoration: 'none' }}>
-          {content.businessName}
-        </a>
-        {pages.map(p => (
-          <a key={p.id} href={p.href} style={{ color: fgSub, fontSize: 14, textDecoration: 'none' }}>{p.label}</a>
-        ))}
-        <a
-          href={content.bookingUrl || base}
-          style={{ marginLeft: 'auto', background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '9px 22px', borderRadius: 6, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}
-        >
-          {content.ctaText || 'Boka tid'}
-        </a>
-      </div>
-    </nav>
+    <SiteNav
+      layout={site.template.layout}
+      c={site.template.colors}
+      content={site.content}
+      th={`${base}/tjanster`}
+      base={base}
+      current={currentHref(base, current)}
+    />
+  )
+}
+
+/** The whole page: surface, typography, menu, content, footer. */
+export function SitePage({ site, current, children }: {
+  site:      PublishedSite
+  current?:  'pricelist' | 'about' | 'blog' | 'kontakt'
+  children:  React.ReactNode
+}) {
+  const base = siteRootOf(site)
+  return (
+    <div
+      className="kr-site"
+      lang={site.content.siteLang || 'sv'}
+      style={{
+        minHeight: '100vh',
+        fontFamily: F,
+        ...pageSurface(site),
+        ...siteFontVars(site.content, site.template.font),
+      }}
+    >
+      <SiteStyles />
+      <SiteFontFace content={site.content} />
+      <ArticleNav site={site} current={current} />
+      {children}
+      <Footer c={site.template.colors} content={site.content} base={base} />
+    </div>
   )
 }

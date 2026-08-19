@@ -1,9 +1,9 @@
 import { notFound, permanentRedirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { getPublishedSite, sectionHasPage, sectionPageExtra } from '../site-data'
-import { ArticleNav, F, isDark } from './chrome'
+import { sitePath } from '@/lib/siteHost'
+import { getPublishedSite, sectionHasPage, sectionPageExtra, redirectToOwnDomain, sitePathOf } from '../site-data'
+import { SitePage, isDark } from './chrome'
 import { siteLabel } from '@/lib/siteLabels'
-import { siteFontVars, SiteFontFace } from '@/components/SiteFont'
 import { BlocksBody } from '@/components/ArticleBody'
 import { SectionPageBody } from '@/components/SectionPageBody'
 
@@ -25,16 +25,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${custom || siteLabel(site.content.labels, 'articlesPageTitle')} — ${site.content.businessName}`,
     description: `Nyheter, tips och inspiration från ${site.content.businessName}${where}.`,
-    alternates: { canonical: `/s/${site.slug}/artiklar` },
+    alternates: { canonical: sitePathOf(site, '/artiklar') },
   }
 }
+
+/*
+ * Inga adresser är kända när vi bygger — kunderna tillkommer efteråt. Den
+ * tomma listan säger just det, och gör samtidigt sidan cachebar: första
+ * besökaren på en adress renderar den, alla efter får den färdig. Utan den
+ * här raden renderas sidan om vid varje besök, för varje kund, för alltid.
+ *
+ * Vad som rensar cachen står i site-data: clearSiteCache vid sparning.
+ */
+export async function generateStaticParams() { return [] }
 
 export default async function ArticleListPage({ params }: Props) {
   const { slug } = await params
   const site = await getPublishedSite(slug)
-  if (site && site.slug !== slug && sectionHasPage(site, 'blog')) permanentRedirect(`/s/${site.slug}/artiklar`)
+  if (site && site.matchedBy === 'slug' && site.slug !== slug && sectionHasPage(site, 'blog')) permanentRedirect(`/s/${site.slug}/artiklar`)
   // Own page switched off — the articles show only on the start page
   if (!site || !sectionHasPage(site, 'blog')) notFound()
+  redirectToOwnDomain(site, slug, '/artiklar')
 
   const extra = sectionPageExtra(site, 'blog')
   const c     = site.template.colors
@@ -42,9 +53,7 @@ export default async function ArticleListPage({ params }: Props) {
   const fgSub = isDark(c.bg) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
 
   return (
-    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F, ...siteFontVars(site.content) }}>
-      <SiteFontFace content={site.content} />
-      <ArticleNav site={site} />
+    <SitePage site={site} current="blog">
 
       <main style={{ maxWidth: 1000, margin: '0 auto', padding: '72px 24px 96px' }}>
         <h1 style={{ fontSize: 40, fontWeight: 800, color: c.h, letterSpacing: -1, marginBottom: 12 }}>
@@ -64,6 +73,6 @@ export default async function ArticleListPage({ params }: Props) {
         {/* The articles themselves — same component the editor previews with */}
         <SectionPageBody id="blog" c={c} content={site.content} siteRoot={base} industry={site.industry} />
       </main>
-    </div>
+    </SitePage>
   )
 }

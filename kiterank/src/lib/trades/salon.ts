@@ -142,4 +142,6 @@ export const SALON: TradePack = {
       ],
     },
   ],
+
+  schemaType: 'HairSalon',
 }

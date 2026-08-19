@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getValidToken, fetchReviews, fetchPerformance, fetchSCSites, fetchSCQueries, fetchAdsCustomers, fetchAdsCampaigns, fetchAdsKeywords, fetchGA4Properties, fetchGA4Report } from '@/lib/google'
+import { getValidToken, fetchReviews, fetchLocationCategory, fetchPerformance, fetchSCSites, fetchSCQueries, fetchAdsCustomers, fetchAdsCampaigns, fetchAdsKeywords, fetchGA4Properties, fetchGA4Stream, väljGA4Property, fetchGA4Report, type GA4Window } from '@/lib/google'
 import { categoriseSource } from '@/lib/categorise-source'
 
 const starMap: Record<string, number> = { FIVE: 5, FOUR: 4, THREE: 3, TWO: 2, ONE: 1 }
@@ -73,6 +73,19 @@ export async function syncReviews(companyId: string) {
         { onConflict: 'company_id,review_id' }
       )
     }
+
+    /* The category rides along with the review sync rather than getting its
+       own schedule — it changes about as often as the business name, and one
+       call a day is plenty. A failure here must not lose the reviews. */
+    try {
+      const category = await fetchLocationCategory(token, conn.gbp_location_id)
+      if (category) {
+        await admin.from('google_connections').update({
+          gbp_primary_category_id:    category.id,
+          gbp_primary_category_label: category.label,
+        }).eq('company_id', companyId)
+      }
+    } catch { /* category is a nice-to-have; reviews are the point */ }
 
     return { reviewCount, reviewsResponded, rating }
   } catch {
@@ -237,6 +250,33 @@ export async function syncAds(companyId: string): Promise<boolean> {
 }
 
 // Syncs Google Analytics 4 data for a company.
+/**
+ * Adresserna salongens sajt faktiskt svarar på.
+ *
+ * Både den egna domänen och vår tillfälliga, eftersom en property kan ha
+ * skapats när sajten låg hos oss och sedan behållits efter domänbytet.
+ */
+async function sajtensAdresser(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string,
+): Promise<string[]> {
+  const adresser: string[] = []
+  try {
+    const { data: company } = await admin
+      .from('companies').select('slug').eq('id', companyId).maybeSingle()
+    if (company?.slug) adresser.push(`kiterank.se/s/${company.slug}`)
+  } catch { /* saknad rad är inget fel här */ }
+  try {
+    const { data: doms } = await admin
+      .from('custom_domains')
+      .select('domain')
+      .eq('company_id', companyId)
+      .not('verified_at', 'is', null)
+    for (const d of doms ?? []) adresser.push(d.domain as string)
+  } catch { /* custom_domains inte migrerad */ }
+  return adresser
+}
+
 export async function syncGA4(companyId: string): Promise<boolean> {
   const admin = createAdminClient()
 
@@ -251,48 +291,98 @@ export async function syncGA4(companyId: string): Promise<boolean> {
   const token = await getValidToken(companyId)
   if (!token) return false
 
-  // Auto-detect property ID if not stored
+  /*
+   * Vilken property, och vilken mätström.
+   *
+   * Frågan ställs varje synk och inte bara första gången. Tre skäl, och alla
+   * tre ger fel som inte syns någonstans förrän någon undrar varför graferna
+   * är platta:
+   *
+   *   En salong kopplar Google innan propertyn har någon webbström — ofta
+   *   innan propertyn finns. Frågade vi bara den gången fick sajten aldrig
+   *   någon tagg, och ingenting sa till.
+   *
+   *   Strömmar byts ut. Ett sparat id kan peka på en ström som inte längre tar
+   *   emot. Sidan laddar, taggen kör, datan når ingen.
+   *
+   *   Och den första propertyn i listan är inte nödvändigtvis salongens. En
+   *   som haft en byrå har ofta flera liggande. Adressen får avgöra i stället
+   *   för ordningen — se väljGA4Property.
+   *
+   * Kostnaden är ett par API-anrop per kund och dygn.
+   */
   let propertyId = conn.ga4_property_id
-  if (!propertyId) {
-    try {
-      const properties = await fetchGA4Properties(token)
-      if (!properties.length) return false
-      propertyId = properties[0]
-      await admin
-        .from('google_connections')
-        .update({ ga4_property_id: propertyId })
-        .eq('company_id', companyId)
-    } catch {
-      return false
+  try {
+    const properties = await fetchGA4Properties(token)
+    if (properties.length) {
+      const strömmar = await Promise.all(properties.map(p => fetchGA4Stream(token, p)))
+      const vald     = väljGA4Property(strömmar, await sajtensAdresser(admin, companyId), propertyId)
+
+      if (vald) {
+        propertyId = vald.propertyId
+        const patch: Record<string, string> = { ga4_property_id: vald.propertyId }
+        if (vald.measurementId) patch.ga4_measurement_id = vald.measurementId
+        try {
+          await admin.from('google_connections').update(patch).eq('company_id', companyId)
+        } catch {
+          /* ga4_measurement_id inte migrerad ännu — propertyn ska sparas ändå. */
+          await admin
+            .from('google_connections')
+            .update({ ga4_property_id: vald.propertyId })
+            .eq('company_id', companyId)
+        }
+      }
     }
-  }
+  } catch { /* Adminanropet kan fela; en redan sparad property duger då. */ }
+
+  if (!propertyId) return false
 
   try {
-    const report = await fetchGA4Report(token, propertyId)
+    /* One row per window. The dashboard's selector switches between them, so a
+       week has to be a week Google measured rather than a month divided by 4.3
+       in the browser. Three reports, fetched together. */
+    const windows: GA4Window[] = ['Weekly', 'Monthly', 'Yearly']
+    const reports = await Promise.all(
+      windows.map(w => fetchGA4Report(token, propertyId, w)),
+    )
 
-    // Apply our domain-based sub-classifier on top of GA4's channel group.
-    // GA4 handles all non-referral traffic accurately. We only enrich Referral
-    // entries with richer labels (Review Site, Community, Directory etc.).
-    const incomingSources = report.incomingSources.map(s => ({
-      source:   s.source,
-      medium:   s.medium,
-      category: categoriseSource(s.source, s.channelGroup),
-      sessions: s.sessions,
-    }))
+    await admin.from('ga4_snapshots').insert(
+      reports.map((report, i) => ({
+        company_id:           companyId,
+        period:               windows[i],
+        sessions:             report.sessions,
+        users:                report.users,
+        new_users:            report.newUsers,
+        engagement_rate:      report.engagementRate,
+        avg_session_duration: report.avgSessionDuration,
+        conversions:          report.conversions,
+        traffic_sources:      report.sources,
+        // Our domain-based sub-classifier on top of GA4's channel group. GA4
+        // handles all non-referral traffic accurately; we only enrich Referral
+        // entries with richer labels (Review Site, Community, Directory etc.).
+        incoming_sources:     report.incomingSources.map(s => ({
+          source:   s.source,
+          medium:   s.medium,
+          category: categoriseSource(s.source, s.channelGroup),
+          sessions: s.sessions,
+        })),
+        geo_sources:          report.geoSources,
+        top_pages:            report.topPages,
 
-    await admin.from('ga4_snapshots').insert({
-      company_id:           companyId,
-      sessions:             report.sessions,
-      users:                report.users,
-      new_users:            report.newUsers,
-      engagement_rate:      report.engagementRate,
-      avg_session_duration: report.avgSessionDuration,
-      conversions:          report.conversions,
-      traffic_sources:      report.sources,
-      incoming_sources:     incomingSources,
-      geo_sources:          report.geoSources,
-      top_pages:            report.topPages,
-    })
+        /* The five the tabs read and the sync never filled. Age and gender come
+           back empty whenever Google's sample is too small, which is the normal
+           case for a neighbourhood salon — the panel says so rather than
+           drawing a bar out of three people. */
+        device_mobile:        report.devices.mobile,
+        device_desktop:       report.devices.desktop,
+        device_tablet:        report.devices.tablet,
+        demo_age:             report.ageBrackets,
+        demo_gender:          report.genders,
+        traffic_by_hour:      report.byHour,
+        traffic_by_day:       report.byDay,
+        pages:                report.pages,
+      })),
+    )
 
     return true
   } catch {

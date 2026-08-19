@@ -122,6 +122,54 @@ export async function fetchLocations(token: string, accountName: string): Promis
   return data.locations ?? []
 }
 
+/**
+ * The primary category on a single Business Profile location.
+ *
+ * It is what decides which category searches the business can surface for in
+ * Maps, and it is the one field about the profile we never stored. Returned as
+ * Google's stable id plus the label they showed, so a display rename on their
+ * side cannot quietly change what we compare against.
+ */
+export async function fetchLocationCategory(
+  token: string,
+  locationName: string,
+): Promise<{ id: string; label: string } | null> {
+  const res = await fetch(
+    `https://mybusinessbusinessinformation.googleapis.com/v1/${locationName}?readMask=categories`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!res.ok) return null
+  const data = await res.json()
+  const c = data.categories?.primaryCategory
+  return c?.name ? { id: c.name, label: c.displayName ?? c.name } : null
+}
+
+/**
+ * Google's own category list for a market.
+ *
+ * Fetched rather than hardcoded: the list is Google's, it differs per country
+ * and language, and a category id we cannot find in it is one we must not act
+ * on. Callers pass what they are looking for so the reply stays small.
+ */
+export async function fetchGoogleCategories(
+  token: string,
+  { regionCode = 'SE', languageCode = 'sv', filter }: { regionCode?: string; languageCode?: string; filter?: string } = {},
+): Promise<{ id: string; label: string }[]> {
+  const params = new URLSearchParams({
+    regionCode, languageCode, view: 'BASIC', pageSize: '100',
+    ...(filter ? { filter: `displayName=${filter}` } : {}),
+  })
+  const res = await fetch(
+    `https://mybusinessbusinessinformation.googleapis.com/v1/categories?${params}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.categories ?? [])
+    .filter((c: { name?: string }) => c.name)
+    .map((c: { name: string; displayName?: string }) => ({ id: c.name, label: c.displayName ?? c.name }))
+}
+
 export async function fetchReviews(token: string, locationName: string): Promise<any[]> {
   const res = await fetch(
     `https://mybusiness.googleapis.com/v4/${locationName}/reviews?pageSize=50`,
@@ -444,6 +492,103 @@ export async function fetchSCQueries(token: string, siteUrl: string, days = 28):
 
 // ── Google Analytics 4 API ───────────────────────────────────────────────────
 
+/**
+ * En GA4-property och den webbström som mäter en sajt i den.
+ *
+ * `url` är strömmens egen uppgift om vilken adress den mäter. Det är den som
+ * gör det möjligt att välja rätt property åt en salong som har flera — utan
+ * den finns bara ordningen i listan att gå på, och den betyder ingenting.
+ */
+export type GA4Ström = {
+  propertyId:    string
+  measurementId: string | null
+  url:           string | null
+}
+
+/**
+ * Mätströmmens id — det som börjar med G- och som taggen på sajten behöver —
+ * tillsammans med adressen strömmen säger sig mäta.
+ *
+ * Property-id:t räcker för att läsa rapporter men inte för att mäta. Strömmens
+ * id står i propertyns dataStreams, och hämtas härifrån så ingen salong ska
+ * behöva leta rätt på det i Googles gränssnitt. En property kan ha flera
+ * strömmar — appar, flera sajter — så webbströmmen plockas ut uttryckligen.
+ *
+ * Null när något inte går: en sajt utan tagg är sämre än en med, men ett kast
+ * här skulle stoppa hela synkningen av data som redan fungerar.
+ */
+export async function fetchGA4Stream(
+  token: string,
+  propertyId: string,
+): Promise<GA4Ström> {
+  const tom: GA4Ström = { propertyId, measurementId: null, url: null }
+  try {
+    const res = await fetch(
+      `https://analyticsadmin.googleapis.com/v1beta/properties/${propertyId}/dataStreams`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!res.ok) return tom
+    const data = await res.json()
+    for (const stream of data.dataStreams ?? []) {
+      const web = stream?.webStreamData
+      const id  = web?.measurementId
+      if (typeof id === 'string' && id.startsWith('G-')) {
+        return {
+          propertyId,
+          measurementId: id,
+          url: typeof web?.defaultUri === 'string' ? web.defaultUri : null,
+        }
+      }
+    }
+    return tom
+  } catch {
+    return tom
+  }
+}
+
+/** Bar värdnamn, gemener, utan www — den form två adresser går att jämföra i. */
+function värd(adress: string): string {
+  return adress
+    .trim().toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/[/?#].*$/, '')
+    .replace(/\.$/, '')
+}
+
+/**
+ * Vilken property som mäter den här salongens sajt.
+ *
+ * Tidigare togs helt enkelt den första i listan. Det fungerar för den som har
+ * exakt en, och det är fel för alla andra — en salong som haft en byrå har ofta
+ * flera properties liggande, och den första kan lika gärna mäta byråns egen
+ * sajt eller en tidigare kunds. Då läser vi någon annans siffror och salongen
+ * fattar beslut på dem, utan att något ser trasigt ut.
+ *
+ * Så adressen får avgöra. Matchar ingen ström någon av salongens adresser
+ * väljs ingenting alls, om det inte bara finns en enda att välja på. Att inte
+ * mäta är ett synligt problem; att mäta fel är ett osynligt.
+ */
+export function väljGA4Property(
+  strömmar: GA4Ström[],
+  domäner:  string[],
+  nuvarande: string | null,
+): GA4Ström | null {
+  if (!strömmar.length) return null
+
+  const mina = new Set(domäner.map(värd).filter(Boolean))
+  const träff = strömmar.find(s => s.url && mina.has(värd(s.url)))
+  if (träff) return träff
+
+  /* Ingen adressträff. Då är den redan valda bättre än ett nytt gissat val —
+     byter vi property mellan synkningar hoppar all historik i graferna. */
+  const kvar = strömmar.find(s => s.propertyId === nuvarande)
+  if (kvar) return kvar
+
+  /* Finns bara en går det inte att välja fel. */
+  return strömmar.length === 1 ? strömmar[0] : null
+}
+
 export async function fetchGA4Properties(token: string): Promise<string[]> {
   const res = await fetch(
     'https://analyticsadmin.googleapis.com/v1beta/accountSummaries',
@@ -484,13 +629,57 @@ export type GA4Report = {
   incomingSources: { source: string; medium: string; channelGroup: string; sessions: number }[]
   geoSources: { country: string; sessions: number }[]
   topPages: { path: string; sessions: number; engagementRate: number }[]
+
+  /* Everything below was mock-only until now. The tabs read these fields and
+     the sync never filled them, so a live account was shown example figures
+     for device, age, gender, times of day and the page list. All are measured
+     over the same window as the rest of the report. */
+  devices:     { mobile: number; desktop: number; tablet: number }   // share, 0–100
+  ageBrackets: { label: string; sessions: number }[]
+  genders:     { label: string; sessions: number }[]
+  byHour:      number[]   // 24 values, index = hour
+  byDay:       number[]   // 7 values, index 0 = Sunday
+  pages: {
+    path:           string
+    sessions:       number
+    engagementRate: number
+    avgDuration:    number
+  }[]
 }
 
-export async function fetchGA4Report(token: string, propertyId: string): Promise<GA4Report> {
-  const [summaryData, sourcesData, incomingData, geoData, pagesData] = await Promise.all([
+/*
+ * The three windows the dashboard's period selector switches between.
+ *
+ * Rolling rather than calendar: a salon owner who opens the page on a Monday
+ * morning would otherwise see one day of data under "this week" and think the
+ * bottom had fallen out. Seven rolling days are always comparable with the
+ * seven before them.
+ *
+ * Every window ends yesterday. Analytics keeps collecting through the current
+ * day, so including today makes every figure quietly too low and every
+ * comparison against it wrong.
+ */
+export const GA4_WINDOWS = {
+  Weekly:  { startDate: '7daysAgo',   endDate: 'yesterday' },
+  Monthly: { startDate: '30daysAgo',  endDate: 'yesterday' },
+  Yearly:  { startDate: '365daysAgo', endDate: 'yesterday' },
+} as const
+
+export type GA4Window = keyof typeof GA4_WINDOWS
+
+export async function fetchGA4Report(
+  token: string,
+  propertyId: string,
+  window: GA4Window = 'Monthly',
+): Promise<GA4Report> {
+  const range = GA4_WINDOWS[window]
+  const [
+    summaryData, sourcesData, incomingData, geoData, pagesData,
+    deviceData, ageData, genderData, hourData, dayData, pageListData,
+  ] = await Promise.all([
     // Overall summary metrics
     runGA4Report(token, propertyId, {
-      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dateRanges: [range],
       metrics: [
         { name: 'sessions' },
         { name: 'totalUsers' },
@@ -502,7 +691,7 @@ export async function fetchGA4Report(token: string, propertyId: string): Promise
     }),
     // Marketing channels (uses GA4's own sessionDefaultChannelGroup)
     runGA4Report(token, propertyId, {
-      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dateRanges: [range],
       dimensions: [{ name: 'sessionDefaultChannelGroup' }],
       metrics: [{ name: 'sessions' }],
       orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
@@ -511,7 +700,7 @@ export async function fetchGA4Report(token: string, propertyId: string): Promise
     // We use sessionDefaultChannelGroup here so our categoriser can trust GA4's
     // classification and only sub-classify Referral traffic via domain lookup.
     runGA4Report(token, propertyId, {
-      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dateRanges: [range],
       dimensions: [
         { name: 'sessionSource' },
         { name: 'sessionMedium' },
@@ -523,7 +712,7 @@ export async function fetchGA4Report(token: string, propertyId: string): Promise
     }),
     // Geographic distribution
     runGA4Report(token, propertyId, {
-      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dateRanges: [range],
       dimensions: [{ name: 'country' }],
       metrics: [{ name: 'sessions' }],
       orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
@@ -531,11 +720,54 @@ export async function fetchGA4Report(token: string, propertyId: string): Promise
     }),
     // Top pages
     runGA4Report(token, propertyId, {
-      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dateRanges: [range],
       dimensions: [{ name: 'pagePath' }],
       metrics: [{ name: 'sessions' }, { name: 'engagementRate' }],
       orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
       limit: 10,
+    }),
+    // What they browse on
+    runGA4Report(token, propertyId, {
+      dateRanges: [range],
+      dimensions: [{ name: 'deviceCategory' }],
+      metrics: [{ name: 'sessions' }],
+    }),
+    /* Age and gender come from Google Signals and cover signed-in visitors
+       only. For a neighbourhood salon that is a thin slice, and Google
+       withholds the split entirely when the sample is too small — an empty
+       answer is normal here, and the panel says so rather than inventing one. */
+    runGA4Report(token, propertyId, {
+      dateRanges: [range],
+      dimensions: [{ name: 'userAgeBracket' }],
+      metrics: [{ name: 'sessions' }],
+    }).catch(() => ({ rows: [] })),
+    runGA4Report(token, propertyId, {
+      dateRanges: [range],
+      dimensions: [{ name: 'userGender' }],
+      metrics: [{ name: 'sessions' }],
+    }).catch(() => ({ rows: [] })),
+    // When the visits arrive
+    runGA4Report(token, propertyId, {
+      dateRanges: [range],
+      dimensions: [{ name: 'hour' }],
+      metrics: [{ name: 'sessions' }],
+    }),
+    runGA4Report(token, propertyId, {
+      dateRanges: [range],
+      dimensions: [{ name: 'dayOfWeek' }],
+      metrics: [{ name: 'sessions' }],
+    }),
+    // The page list behind "Dina sidor" — deeper than topPages above
+    runGA4Report(token, propertyId, {
+      dateRanges: [range],
+      dimensions: [{ name: 'pagePath' }],
+      metrics: [
+        { name: 'sessions' },
+        { name: 'engagementRate' },
+        { name: 'averageSessionDuration' },
+      ],
+      orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+      limit: 50,
     }),
   ])
 
@@ -567,5 +799,63 @@ export async function fetchGA4Report(token: string, propertyId: string): Promise
       sessions:       Number(r.metricValues?.[0]?.value ?? 0),
       engagementRate: Number(r.metricValues?.[1]?.value ?? 0),
     })),
+
+    devices:     deviceShares(deviceData),
+    ageBrackets: buckets(ageData),
+    genders:     buckets(genderData),
+    /* Google indexes the hour 0–23 and the weekday 0–6 with Sunday first, the
+       same order the card draws them in. A slot with no visits is missing from
+       the answer rather than zero, so the series is built from a zeroed array
+       instead of the rows' order. */
+    byHour: slots(hourData, 24),
+    byDay:  slots(dayData, 7),
+    pages: ((pageListData.rows ?? []) as GA4Row[]).map(r => ({
+      path:           dim(r) || '/',
+      sessions:       num(r, 0),
+      engagementRate: num(r, 1),
+      avgDuration:    Math.round(Number(r.metricValues?.[2]?.value ?? 0)),
+    })),
   }
+}
+
+/* The shape every runReport answer comes back in. Typed once so the helpers
+   below do not each reach into an untyped blob. */
+type GA4Row      = { dimensionValues?: { value?: string }[]; metricValues?: { value?: string }[] }
+type GA4Response = { rows?: GA4Row[] }
+
+const dim = (r: GA4Row, i = 0) => r.dimensionValues?.[i]?.value ?? ''
+const num = (r: GA4Row, i = 0) => Number(r.metricValues?.[i]?.value ?? 0)
+
+/** Device split as whole percentages that add to 100. */
+function deviceShares(data: GA4Response): { mobile: number; desktop: number; tablet: number } {
+  const rows = data?.rows ?? []
+  const get  = (name: string) => {
+    const row = rows.find(r => dim(r) === name)
+    return row ? num(row) : 0
+  }
+  const mobile = get('mobile'), desktop = get('desktop'), tablet = get('tablet')
+  const total  = mobile + desktop + tablet
+  if (!total) return { mobile: 0, desktop: 0, tablet: 0 }
+  return {
+    mobile:  Math.round((mobile  / total) * 100),
+    desktop: Math.round((desktop / total) * 100),
+    tablet:  Math.round((tablet  / total) * 100),
+  }
+}
+
+/** A labelled distribution, dropping the buckets Google returns as unknown. */
+function buckets(data: GA4Response): { label: string; sessions: number }[] {
+  return (data?.rows ?? [])
+    .map(r => ({ label: dim(r), sessions: num(r) }))
+    .filter(b => b.label && b.label.toLowerCase() !== 'unknown' && b.sessions > 0)
+}
+
+/** A fixed-length series indexed by the dimension's own number. */
+function slots(data: GA4Response, length: number): number[] {
+  const out = new Array<number>(length).fill(0)
+  for (const r of (data?.rows ?? [])) {
+    const i = Number(dim(r))
+    if (Number.isInteger(i) && i >= 0 && i < length) out[i] = num(r)
+  }
+  return out
 }

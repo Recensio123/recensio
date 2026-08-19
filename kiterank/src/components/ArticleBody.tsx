@@ -1,5 +1,5 @@
 'use client'
-import type { TemplateColors } from '@/app/onboarding/templates'
+import type { TemplateColors } from '@/lib/templates'
 import { formatArticleDate, type Article, type ArticleBlock } from '@/lib/articles'
 
 /*

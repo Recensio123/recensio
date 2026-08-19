@@ -1,7 +1,7 @@
 'use client'
-import type { TemplateColors } from '@/app/onboarding/templates'
-import type { SiteContent } from '@/app/preview/[templateId]/PreviewSite'
-import { PricelistSection } from '@/app/preview/[templateId]/PreviewSite'
+import type { TemplateColors } from '@/lib/templates'
+import type { SiteContent } from '@/components/site/PreviewSite'
+import { PricelistSection } from '@/components/site/PreviewSite'
 import { publishedArticles, articleSummary, formatArticleDate } from '@/lib/articles'
 import { siteLabel } from '@/lib/siteLabels'
 import type { SectionPageId } from '@/lib/sectionPages'
@@ -37,7 +37,12 @@ export function SectionPageBody({ id, c, content, siteRoot, industry }: {
   const divider = isDark(c.bg) ? 'rgba(255,255,255,0.1)'  : 'rgba(0,0,0,0.08)'
 
   if (id === 'about') {
-    const team = content.teamEnabled === false ? [] : (content.team ?? []).filter(m => m.name?.trim())
+    /* Listan är svaret på om teamet ska visas: en rad utan namn är ingen
+       person, och står det ingen person där ritas ingen sektion. Ett reglage
+       ovanpå det gällde bara den här sidan och inte mallen som visar teamet på
+       startsidan — samma salong kunde ha personerna avstängda här och synliga
+       där. Ett tomt fält kan inte gälla på ett ställe och inte på ett annat. */
+    const team = (content.team ?? []).filter(m => m.name?.trim())
     return (
       <>
         <h2 style={{ fontSize: 32, fontWeight: 800, color: c.h, letterSpacing: -0.8, lineHeight: 1.2, marginBottom: 24, fontFamily: F }}>

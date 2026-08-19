@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { type KeywordSuggestion } from '@/app/dashboard/paid-search/types'
+import { type KeywordSuggestion } from '@/app/(kiterank)/dashboard/paid-search/types'
 
 // ── Mock fallback (Stockholm plumber) ─────────────────────────────────────────
 // Realistic mock that demonstrates the tool's value — used when no API key is

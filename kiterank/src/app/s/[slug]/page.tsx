@@ -1,7 +1,8 @@
 import { notFound, permanentRedirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { PreviewSite } from '@/app/preview/[templateId]/PreviewSite'
-import { getPublishedSite } from './site-data'
+import { sitePath, siteAbsUrl } from '@/lib/siteHost'
+import { PreviewSite } from '@/components/site/PreviewSite'
+import { getPublishedSite, redirectToOwnDomain, sitePathOf, siteAbsUrlOf, siteRootOf } from './site-data'
 
 /*
  * The customer's live website. /s/<slug> is the temporary address every site
@@ -39,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
-    alternates: { canonical: `/s/${site.slug}` },
+    alternates: { canonical: sitePathOf(site) },
     openGraph: {
       title,
       description,
@@ -50,19 +51,32 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
+/*
+ * Inga adresser är kända när vi bygger — kunderna tillkommer efteråt. Den
+ * tomma listan säger just det, och gör samtidigt sidan cachebar: första
+ * besökaren på en adress renderar den, alla efter får den färdig. Utan den
+ * här raden renderas sidan om vid varje besök, för varje kund, för alltid.
+ *
+ * Vad som rensar cachen står i site-data: clearSiteCache vid sparning.
+ */
+export async function generateStaticParams() { return [] }
+
 export default async function PublishedSitePage({ params }: Props) {
   const { slug } = await params
   const site = await getPublishedSite(slug)
   if (!site) notFound()
+  redirectToOwnDomain(site, slug, '')
   // Old address after a rename — send Google and visitors to the current one
-  if (site.slug !== slug) permanentRedirect(`/s/${site.slug}`)
+  if (site.matchedBy === 'slug' && site.slug !== slug) permanentRedirect(`/s/${site.slug}`)
 
   return (
     <PreviewSite
       template={site.template}
       industry={site.industry}
       contentOverride={site.content}
-      tjansterBase={`/s/${site.slug}`}
+      tjansterBase={siteRootOf(site)}
+      care={site.care}
+      siteBase={siteAbsUrlOf(site)}
     />
   )
 }

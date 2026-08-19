@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isClosed, avtalAvslutat } from '@/lib/accountStatus'
 
 /*
  * Who is asking, and what may they touch.
@@ -43,6 +44,20 @@ export async function currentAccess(): Promise<Access | null> {
     .maybeSingle()
 
   if (owned) {
+    /*
+     * Avslutat avtal ger ingen behörighet alls.
+     *
+     * Grinden sitter här och inte i varje sida, för det här är frågan alla
+     * ställer: både panelen och varje skrivande route går genom currentAccess.
+     * Svaret "ingen" är den säkra riktningen — en ny route som glömmer att
+     * fråga om avtalet är ändå skyddad, eftersom den inte får någon behörighet
+     * att arbeta med.
+     *
+     * Inloggningssidan kan inte skilja "ingen session" från "avslutat avtal",
+     * och skulle skicka dem runt i en slinga. Därför finns accountClosure()
+     * nedan, som panelen använder för att kunna säga vad som hänt i stället.
+     */
+    if (await isClosed(admin, owned.id)) return null
     return {
       companyId: owned.id, role: 'admin', staffId: null, isOwner: true,
       userId: user.id, email: user.email ?? null,
@@ -59,6 +74,9 @@ export async function currentAccess(): Promise<Access | null> {
       .limit(1)
       .maybeSingle()
     if (error || !member) return null
+    /* Salongens egna konton följer salongens avtal — en stylist ska inte kunna
+       arbeta vidare i en panel vars ägare sagt upp sig. */
+    if (await isClosed(admin, member.company_id)) return null
     return {
       companyId: member.company_id,
       role:      (member.role ?? 'staff') as Role,
@@ -70,6 +88,58 @@ export async function currentAccess(): Promise<Access | null> {
   } catch {
     return null
   }
+}
+
+/**
+ * Sessionen finns, men avtalet är avslutat.
+ *
+ * `currentAccess` svarar "ingen" för ett avslutat avtal, vilket är rätt för
+ * varje route som skriver — men fel som besked till en människa som just
+ * skrivit sitt lösenord. Den här svarar på "varför kom jag inte in", så panelen
+ * kan säga det rakt ut i stället för att skicka dem tillbaka till en tom
+ * inloggningsruta de kommer att fylla i igen.
+ *
+ * Anropas bara när behörigheten redan uteblivit, så den kostar ingenting i
+ * normal drift.
+ */
+export async function accountClosure(): Promise<{ name: string | null; closedAt: string } | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const admin = createAdminClient()
+
+  /* Både ägarens konto och salongens egna konton ska få samma besked. */
+  const { data: owned } = await admin
+    .from('companies')
+    .select('id, name, closed_at')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  let rad = owned as { id: string; name: string | null; closed_at: string | null } | null
+  if (!rad) {
+    try {
+      const { data: member } = await admin
+        .from('company_members')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle()
+      if (member?.company_id) {
+        const { data } = await admin
+          .from('companies')
+          .select('id, name, closed_at')
+          .eq('id', member.company_id)
+          .maybeSingle()
+        rad = data as typeof rad
+      }
+    } catch { /* company_members inte migrerad */ }
+  }
+
+  if (!rad?.closed_at || !avtalAvslutat(rad.closed_at)) return null
+  return { name: rad.name, closedAt: rad.closed_at }
 }
 
 /** Settings, staff and accounts are the salon's own. */

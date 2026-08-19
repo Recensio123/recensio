@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isClosed } from '@/lib/accountStatus'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { bookingSeedsFrom, bookingServices } from '@/lib/trades'
 import { fetchStaff } from '@/lib/staffQuery'
 import { fetchPolicy } from '@/lib/bookingPolicy'
+import { sendBookingConfirmation, sendConfirmationFor, TYSTA } from '@/lib/bookingEmail'
+import { templateSettings } from '@/lib/messageTemplates'
 import {
   addMinutes, assignStaff, staffFree, timeToMins, defaultAvailability,
   autoConfirmFor, leadFor, leadRuleFor, salonNow, tooSoon,
@@ -27,6 +30,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .single()
 
   if (error || !company) {
+    return NextResponse.json({ error: 'Company not found' }, { status: 404 })
+  }
+  /* Uppsagt avtal: inga nya bokningar. En salong som slutat hos oss ska inte
+     ta emot tider ingen bevakar — det är sämre för kunden som bokar än att
+     sidan är borta. Avbokning ligger i en egen route och påverkas inte, så
+     den som redan har en tid inte blir strandsatt. */
+  if (await isClosed(admin, company.id)) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
 
@@ -95,13 +105,22 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  /* Namnet följer med: det står som avsändare på bekräftelsen, så kunden ser
+     salongen i inkorgen och inte oss. */
   const { data: company, error: companyErr } = await admin
     .from('companies')
-    .select('id')
+    .select('id, name')
     .eq('slug', slug)
     .single()
 
   if (companyErr || !company) {
+    return NextResponse.json({ error: 'Company not found' }, { status: 404 })
+  }
+  /* Uppsagt avtal: inga nya bokningar. En salong som slutat hos oss ska inte
+     ta emot tider ingen bevakar — det är sämre för kunden som bokar än att
+     sidan är borta. Avbokning ligger i en egen route och påverkas inte, så
+     den som redan har en tid inte blir strandsatt. */
+  if (await isClosed(admin, company.id)) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
 
@@ -266,6 +285,9 @@ export async function POST(req: NextRequest, { params }: Params) {
    * pre-migration database rejects the unknown columns and gets the row it
    * still understands. */
   let cancelToken: string | null = null
+  /* Radens id, så bekräftelsen kan hämta bokningen och stämpla den. Null i en
+     databas som svarade utan det — mailet går ändå, bara utan stämpel. */
+  let bookingId:   string | null = null
   if (hasStaffTables) {
     const withStaff = {
       ...base,
@@ -278,16 +300,60 @@ export async function POST(req: NextRequest, { params }: Params) {
     let row = await admin
       .from('bookings')
       .insert({ ...withStaff, staff_requested: Boolean(staff_id) })
-      .select('cancel_token')
+      .select('id, cancel_token')
       .single()
     if (row.error) {
-      row = await admin.from('bookings').insert(withStaff).select('cancel_token').single()
+      row = await admin.from('bookings').insert(withStaff).select('id, cancel_token').single()
     }
     if (row.error) return NextResponse.json({ error: row.error.message }, { status: 500 })
     cancelToken = row.data?.cancel_token ?? null
+    bookingId   = row.data?.id ?? null
   } else {
-    const { error: err } = await admin.from('bookings').insert(base)
+    const { data: plain, error: err } = await admin
+      .from('bookings').insert(base).select('id').single()
     if (err) return NextResponse.json({ error: err.message }, { status: 500 })
+    bookingId = plain?.id ?? null
+  }
+
+  const cancelPath = cancelToken ? `/book/${slug}/avboka/${cancelToken}` : null
+
+  /* Mailet till kunden. Bokningen är redan skriven, så ett mail som inte går
+     fram får inte göra svaret till ett fel — kunden har sin tid oavsett.
+     Utfallet loggas i stället, så ett tyst borttappat mail går att hitta.
+
+     Vilket mail beror på salongens inställning för godkännande, men bara här:
+     godkänns tiden direkt är det bekräftelsen, och den stämplas så att ett
+     senare tryck på bekräfta inte skickar en andra. Väntar tiden på godkännande
+     får kunden veta det, och bekräftelsen kommer när salongen godkänt. */
+  const mail = base.status === 'confirmed' && bookingId
+    ? await sendConfirmationFor(admin, bookingId)
+    : await sendBookingConfirmation(admin, {
+        companyId:        company.id,
+        companyName:      company.name || 'Din salong',
+        customerName:     customer_name,
+        customerEmail:    customer_email || null,
+        serviceName:      serviceName,
+        bookingDate:      booking_date,
+        startTime:        start_time,
+        staffName:        assigned?.name ?? null,
+        reference,
+        cancelPath,
+        status:           base.status as 'confirmed' | 'pending',
+        confirmationText: policy.confirmation_text ?? null,
+        /* Beskedet om en väntande tid går på samma kanal som bekräftelsen — det
+           är samma sorts meddelande i kundens ögon. Samtycket kommer ur
+           kryssrutan de just fyllde i, inte ur kundregistret: raden kan ha
+           skapats i samma anrop. */
+        customerPhone:    customer_phone || null,
+        smsOptIn:         sms_opt_in ?? true,
+        channel:          (await templateSettings(admin, company.id, 'confirmation')).channel,
+      })
+
+  /* Tystade skäl är inte fel: kunden lämnade ingen adress, eller utskicken är
+     inte påslagna ännu. Att logga dem vid varje bokning hade dränkt de
+     verkliga felen under bygget. */
+  if (!mail.sent && mail.reason && !TYSTA.includes(mail.reason)) {
+    console.error(`[bokning ${reference}] bekräftelsen gick inte fram: ${mail.reason}`)
   }
 
   return NextResponse.json({
@@ -295,6 +361,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     reference,
     staff_name: assigned?.name ?? null,
     status:     base.status,
-    cancel_url: cancelToken ? `/book/${slug}/avboka/${cancelToken}` : null,
+    cancel_url: cancelPath,
   })
 }

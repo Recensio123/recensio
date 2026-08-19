@@ -132,4 +132,6 @@ export const BEAUTY: TradePack = {
       ],
     },
   ],
+
+  schemaType: 'BeautySalon',
 }

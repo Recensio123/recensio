@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { currentAccess, seesWholeCalendar, canEditAnyChair } from '@/lib/access'
 import { addMinutes } from '@/lib/bookingSlots'
+import { sendConfirmationFor, TYSTA } from '@/lib/bookingEmail'
+import { sendCancellationFor } from '@/lib/cancellationEmail'
 
 /* The dashboard's own writes: the manual booking a salon takes over the
  * phone, and the status changes on existing rows. The public flow never
@@ -103,6 +105,16 @@ export async function POST(req: NextRequest) {
     inserted = await admin.from('bookings').insert(base).select('id').single()
   }
   if (inserted.error) return NextResponse.json({ error: inserted.error.message }, { status: 500 })
+
+  /* Samma regel som överallt: en godkänd tid ger kunden en bekräftelse. En
+     bokning salongen tagit över telefon har oftast bara ett telefonnummer, och
+     då sker ingenting — men den dagen formuläret får ett mailfält fungerar det
+     utan att någon behöver komma ihåg det här stället. */
+  const mail = await sendConfirmationFor(admin, inserted.data.id as string)
+  if (!mail.sent && mail.reason && !TYSTA.includes(mail.reason)) {
+    console.error(`[bokning ${inserted.data.id}] bekräftelsen gick inte fram: ${mail.reason}`)
+  }
+
   return NextResponse.json({ ok: true, id: inserted.data.id })
 }
 
@@ -161,5 +173,36 @@ export async function PATCH(req: NextRequest) {
     .eq('id', id)
     .eq('company_id', companyId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  /* Tiden är godkänd — nu får kunden sin bekräftelse. Vid automatiskt
+     godkännande gick den redan ut när kunden bokade, och stämpeln på bokningen
+     ser till att ingen andra skickas. Utskicket behöver därför inte veta vilken
+     inställning salongen har.
+
+     Ett mail som inte går fram får inte fälla godkännandet: tiden är godkänd i
+     kalendern, och salongen väntar på ett svar. */
+  if (fields.status === 'confirmed') {
+    const mail = await sendConfirmationFor(admin, id as string)
+    if (!mail.sent && mail.reason && !TYSTA.includes(mail.reason)) {
+      console.error(`[bokning ${id}] bekräftelsen gick inte fram: ${mail.reason}`)
+    }
+  }
+
+  /* Salongen avbokar. Kunden får beskedet, men ingen avisering går tillbaka till
+     salongen — de vet redan, och ett mail om sin egen åtgärd är brus.
+
+     `message` är salongens omskrivning för just den här kunden. En inställd dag
+     har ett skäl, och "din tid är avbokad" utan skälet läser illa när det var
+     salongen som ställde in. Texten sparas inte som ny mall. */
+  if (fields.status === 'cancelled' && body.notify !== false) {
+    const mail = await sendCancellationFor(admin, id as string, {
+      by:   'salon',
+      body: typeof body.message === 'string' ? body.message : null,
+    })
+    if (!mail.sent && mail.reason && !TYSTA.includes(mail.reason)) {
+      console.error(`[avbokning ${id}] beskedet gick inte fram: ${mail.reason}`)
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }

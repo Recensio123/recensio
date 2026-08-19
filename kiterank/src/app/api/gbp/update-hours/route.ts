@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient }      from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getValidToken }     from '@/lib/google'
-import { type GBPHoursPeriod } from '@/app/dashboard/gbp/types'
+import { type GBPHoursPeriod } from '@/app/(kiterank)/dashboard/gbp/types'
 
 // PATCH /api/gbp/update-hours
 // Body: { periods: GBPHoursPeriod[] }

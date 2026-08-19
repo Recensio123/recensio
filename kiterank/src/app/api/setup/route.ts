@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteDraft } from '@/lib/siteTemplates'
 import { bookingServices } from '@/lib/trades'
+import { ledigAdress } from '@/lib/siteAddress'
+import { sparaOnboarding, type Vilja } from '@/lib/onboarding'
 
 // Trades outside the salon packs still keep a hand-written service list
 const DEFAULT_SERVICES: Record<string, { name: string; description: string; duration_minutes: number; price_sek: number }[]> = {
@@ -61,10 +63,18 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { industry, template, features, language, bizName, slug, about } = await req.json()
+  const { industry, template, features, language, bizName, about, care,
+          vill, harSajt, epost, telefon } = await req.json()
 
-  if (!bizName?.trim() || !slug?.trim()) {
-    return NextResponse.json({ error: 'Missing bizName or slug' }, { status: 400 })
+  if (!bizName?.trim()) {
+    return NextResponse.json({ error: 'Missing bizName' }, { status: 400 })
+  }
+
+  /* Vad kunden valt, i den form servern sedan läser. Förvalet är hemsida och
+     bokning, så en anropare som inte skickar något beter sig som förut. */
+  const valt: Vilja = {
+    sajt:    vill?.sajt    !== false,
+    bokning: vill?.bokning !== false,
   }
 
   /* Six answers in, a whole site out: headline, about text, process, FAQ,
@@ -72,12 +82,22 @@ export async function POST(req: NextRequest) {
    * through. See lib/siteTemplates. */
   const seeded: Record<string, unknown> = {
     ...buildSiteDraft(about, industry, bizName),
+    /* Kontaktuppgifterna från registreringen hamnar direkt på sidan. Att fråga
+       en gång och sedan låta kunden fylla i samma sak igen i panelen är att
+       ställa frågan två gånger. */
+    ...(epost?.trim()   ? { email: epost.trim() }   : {}),
+    ...(telefon?.trim() ? { phone: telefon.trim() } : {}),
     // Everything on from the start — trimming down happens in the editor,
     // with the real site in front of the customer
-    siteFeatures: { booking: true, pricelist: true, gallery: true, contact: true, blog: true, reviews: true, about: true },
+    siteFeatures: { booking: valt.bokning, pricelist: true, gallery: true, contact: true, blog: true, reviews: true, about: true },
   }
 
   const admin = createAdminClient()
+  /* Adressen bestäms här, inte av det som skickas in. Servern är det enda
+     stället som kan avgöra vad som är ledigt, och den enda som kan göra
+     det utan att två samtidiga registreringar tar samma. Regeln står i
+     lib/siteAddress. */
+  const slug = await ledigAdress(admin, bizName, about?.area)
 
   // Check if user already has a company (retry after partial failure)
   const { data: existingCompany } = await admin
@@ -90,16 +110,9 @@ export async function POST(req: NextRequest) {
   let company: { id: string } | null = existingCompany
 
   if (!existingCompany) {
-    // Check slug uniqueness only when creating a new company
-    const { data: slugTaken } = await admin
-      .from('companies')
-      .select('id')
-      .eq('slug', slug)
-      .maybeSingle()
-
-    if (slugTaken) {
-      return NextResponse.json({ error: 'Adressen är redan tagen. Välj en annan.' }, { status: 409 })
-    }
+    /* Ingen kollisionskontroll här längre — ledigAdress har redan valt en
+       ledig adress. En andra kontroll som säger nej hade bara kunnat säga nej
+       till något den första just godkänt. */
 
     const { data: newCompany, error: companyErr } = await admin
       .from('companies')
@@ -118,6 +131,25 @@ export async function POST(req: NextRequest) {
   }
 
   if (!company) return NextResponse.json({ error: 'Kunde inte skapa företag.' }, { status: 500 })
+
+  /* Registreringen är avklarad i och med det här anropet. Skrivs innan sajten
+     byggs: går något fel längre ner ska kunden inte kastas tillbaka till
+     början av guiden med allt ifyllt en gång till. */
+  await sparaOnboarding(admin, company.id, {
+    steg:    'klar',
+    klartAt: new Date().toISOString(),
+    vill:    valt,
+    mall:    valt.sajt ? (template ?? null) : null,
+    harSajt: !!harSajt,
+    kontakt: { epost: epost?.trim() ?? '', telefon: telefon?.trim() ?? '' },
+  })
+
+  /* Ingen sajt åt den som sagt att de behåller sin egen. En tom sida i
+     panelen som de aldrig bett om är inte hjälpsam, den är i vägen — och den
+     skulle dessutom räknas som deras när vi mäter. */
+  if (!valt.sajt) {
+    return NextResponse.json({ ok: true, companyId: company.id, slug, sajt: false })
+  }
 
   // Upsert site_config (safe to retry if previous attempt partially failed)
   const { error: configErr } = await admin

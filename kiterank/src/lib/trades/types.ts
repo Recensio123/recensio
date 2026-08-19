@@ -1,4 +1,4 @@
-import type { ServiceCategory } from '@/app/preview/[templateId]/tjanster/services-data'
+import type { ServiceCategory } from '@/lib/services-data'
 
 /*
  * One content pack per salon trade.
@@ -59,4 +59,22 @@ export type TradePack = {
   reviews: { author: string; rating: number; text: string }[]
   /** Six articles, written for this trade. */
   articles: TradeArticle[]
+
+  /*
+   * How the trade is described in the markup on the published site.
+   *
+   * `schemaType` is the most specific schema.org type that actually exists for
+   * the trade — NailSalon, HairSalon, DaySpa. Left out when the vocabulary has
+   * none, and the sector parent is used instead. Schema.org has no type for
+   * massage, foot care or skin care, so there the parent is not a compromise;
+   * it is the whole of what the vocabulary offers.
+   *
+   * `askCare` marks the trades that straddle the line between wellness and
+   * treatment. A massage salon belongs under HealthAndBeautyBusiness when it
+   * is relaxation and under MedicalBusiness when it is injuries, and the word
+   * "massage" cannot tell you which. So the customer answers once during
+   * setup and their answer decides. Nothing is inferred from the trade name.
+   */
+  schemaType?: string
+  askCare?:    boolean
 }

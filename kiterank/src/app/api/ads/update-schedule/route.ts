@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient }      from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getValidToken }     from '@/lib/google'
-import { type AdScheduleBlock } from '@/app/dashboard/paid-search/types'
+import { type AdScheduleBlock } from '@/app/(kiterank)/dashboard/paid-search/types'
 
 const ADS_BASE = 'https://googleads.googleapis.com/v19'
 

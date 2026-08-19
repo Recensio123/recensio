@@ -135,4 +135,6 @@ export const LASHES: TradePack = {
       ],
     },
   ],
+
+  schemaType: 'BeautySalon',
 }

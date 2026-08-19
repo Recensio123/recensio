@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendCancellationFor } from '@/lib/cancellationEmail'
+import { TYSTA } from '@/lib/bookingEmail'
 
 type Params = { params: Promise<{ slug: string }> }
 
@@ -86,6 +88,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('id', booking.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  /* Kvittensen till kunden, och aviseringen till salongen om att timmen är
+     ledig igen — den senare kan de agera på samma dag. Ett mail som inte går
+     fram får inte fälla avbokningen: tiden är redan släppt, och att svara med
+     ett fel skulle få kunden att avboka igen. */
+  const mail = await sendCancellationFor(admin, booking.id as string, { by: 'customer' })
+  if (!mail.sent && mail.reason && !TYSTA.includes(mail.reason)) {
+    console.error(`[avbokning ${booking.id}] beskedet gick inte fram: ${mail.reason}`)
+  }
+
   return NextResponse.json({ ok: true })
 }
 

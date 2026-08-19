@@ -1,8 +1,14 @@
+import { cache } from 'react'
+import { unstable_cache, revalidateTag } from 'next/cache'
+import { permanentRedirect } from 'next/navigation'
+import { viaOwnDomain, siteOrigin } from '@/lib/siteHost'
+import { isClosed } from '@/lib/accountStatus'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getTemplatesForIndustry, resolveTemplate, type Template } from '@/app/onboarding/templates'
-import { CONTENT, type SiteContent } from '@/app/preview/[templateId]/PreviewSite'
+import { getTemplatesForIndustry, resolveTemplate, type Template } from '@/lib/templates'
+import { type SiteContent } from '@/components/site/PreviewSite'
+import { CONTENT } from '@/lib/siteExampleContent'
 import { baseIndustry } from '@/lib/industries'
-import { SERVICES, slugifyService } from '@/app/preview/[templateId]/tjanster/services-data'
+import { SERVICES, slugifyService } from '@/lib/services-data'
 import {
   publishedArticles, articleSummary, articleImages, formatArticleDate, type Article,
 } from '@/lib/articles'
@@ -22,16 +28,208 @@ export type PublishedSite = {
   industry: string
   template: Template
   content:  SiteContent
+  /** Wellness or treatment — decides which schema.org parent the markup uses
+   *  for trades that straddle the two. Null when the question never applied. */
+  care:     'wellness' | 'care' | null
+  /** How the request found this site. A visitor on the salon's own domain
+   *  arrived by domain, and must not be redirected to our address — that is
+   *  what the rename-redirect below would otherwise do to every one of them. */
+  matchedBy: 'slug' | 'domain'
+  /**
+   * Adressen begäran faktiskt kom in på — vår slug eller salongens domän.
+   *
+   * Varje intern länk, varje kanonisk adress och menyns bas byggs ur den här,
+   * inte ur `slug`. Skillnaden syns bara för en salong med egen domän: på
+   * salongen.se heter prissidan /tjanster, hos oss /s/salongen/tjanster.
+   * Byggs länken av `slug` pekar menyn på vår adress mitt inne på deras sajt,
+   * och proxyn hittar ingenting där.
+   */
+  key: string
+  /** The salon's verified own domain, when they have connected one. This is
+   *  what flips the site from a temporary address to a real one: /s/<slug>
+   *  starts 301-redirecting here, and indexing switches on. Null until a
+   *  domain is verified — nothing a visitor typed can set it. */
+  ownDomain: string | null
+  /** Mätströmmens id för salongens egen GA4-property, när Google är kopplat.
+   *  Null betyder att sajten inte mäter något — inte att den mäter fel. */
+  mätId: string | null
 }
 
-export async function getPublishedSite(slug: string): Promise<PublishedSite | null> {
+/*
+ * Cachen, i två steg.
+ *
+ * Steg ett översätter adressen till ett företag. Steg två läser företagets
+ * sajt. Uppdelningen finns för att de två har olika livslängd: adressen ändras
+ * när en domän kopplas, innehållet varje gång kunden sparar.
+ *
+ * Etiketten på steg två är företagets id, inte adressen. Det är hela poängen:
+ * en salong med egen domän nås på två adresser — /s/salongen och
+ * /s/salongen.se — och får därmed två cacheposter. Båda bär samma etikett, så
+ * ett enda anrop vid sparning rensar dem allihop. Regeln blir densamma för
+ * kunder med egen domän som för kunder utan, för domänen ingår inte i den.
+ *
+ * Livslängden är ett dygn som skyddsnät. Den ska aldrig behövas — rensningen
+ * sker vid sparning — men om ett anrop någon gång missas ska en sajt inte
+ * kunna visa gammalt innehåll för alltid.
+ */
+const DYGN = 86_400
+
+/** Adressen → företaget. Egen etikett: en domän som just verifierats måste
+ *  kunna slå sönder ett cachat "den här adressen finns inte". */
+const companyForKey = (key: string) => unstable_cache(
+  async () => resolveCompany(key),
+  ['site-key', key],
+  { tags: [`site-key:${key}`], revalidate: DYGN },
+)()
+
+/** Företaget → sajten. Etiketten är id:t, så den täcker alla adresser. */
+const siteForCompany = (id: string) => unstable_cache(
+  async () => loadSite(id),
+  ['site', id],
+  { tags: [`site:${id}`], revalidate: DYGN },
+)()
+
+/* Wrapped in cache(): within one request the layout and the page must share
+   one lookup. Utanför begäran tar unstable_cache över. */
+export const getPublishedSite = cache(async (key: string): Promise<PublishedSite | null> => {
+  const träff = await companyForKey(key)
+  if (!träff) return null
+  const site = await siteForCompany(träff.id)
+  return site ? { ...site, matchedBy: träff.matchedBy, key } : null
+})
+
+/**
+ * Sajtens rot sett från adressen den serveras på.
+ *
+ * Tom sträng på salongens egen domän — där ÄR sajten roten. `/s/<slug>` hos
+ * oss. Allt som bygger en intern länk går genom den här, så de två aldrig
+ * blandas ihop.
+ */
+export function siteRootOf(site: PublishedSite): string {
+  return viaOwnDomain(site.key) ? '' : `/s/${site.slug}`
+}
+
+/** En intern sökväg på sajten. */
+export function sitePathOf(site: PublishedSite, path = ''): string {
+  return siteRootOf(site) + path || '/'
+}
+
+/** Samma, absolut — för kanoniska adresser, sitemap och strukturerad data. */
+export function siteAbsUrlOf(site: PublishedSite, path = ''): string {
+  return `${siteOrigin(site.key)}${sitePathOf(site, path)}`
+}
+
+/**
+ * /s/<slug> är en tillfällig adress. Har salongen kopplat sin egen domän ska
+ * varje begäran hit sluta där i stället — 301, så att både besökare och det
+ * Google redan hunnit lära sig följer med.
+ *
+ * Låg tidigare i layouten, som läste sökvägen ur en request-header. Just det
+ * anropet gjorde varenda kundsida omöjlig att cacha. Sidan vet sin egen väg,
+ * så den skickar in den och ingen behöver fråga.
+ */
+export function redirectToOwnDomain(site: PublishedSite | null, slug: string, path = '') {
+  if (!site?.ownDomain) return
+  if (viaOwnDomain(slug)) return   // redan framme
+  permanentRedirect(`https://${site.ownDomain}${path || '/'}`)
+}
+
+/**
+ * Rensa cachen för en salong. Anropas när kunden sparar i panelen.
+ *
+ * Ett anrop räcker för alla deras adresser: /s/<slug>, /s/<domän> och varje
+ * undersida bär samma etikett.
+ */
+export function clearSiteCache(companyId: string) {
+  /* expire: 0, inte "max". Skillnaden syns för kunden: "max" serverar den
+     gamla sidan medan den nya hämtas i bakgrunden, så den som sparar och
+     direkt öppnar sin sajt ser sin gamla text och tror att det inte funkade.
+     Här ska nästa besökare vänta in det nya i stället. */
+  revalidateTag(`site:${companyId}`, { expire: 0 })
+}
+
+/**
+ * Rensa en adress. Behövs när en domän kopplas eller kopplas bort.
+ *
+ * Utan den ligger ett cachat "den här adressen finns inte" kvar, och sajten
+ * är död på sin nya domän tills dygnsskyddet löper ut.
+ */
+export function clearSiteAddress(key: string) {
+  revalidateTag(`site-key:${key.toLowerCase()}`, { expire: 0 })
+}
+
+/**
+ * Rensa varje adress salongen någonsin nåtts på.
+ *
+ * `clearSiteCache` räcker för innehåll: alla sidor bär företagets etikett. Men
+ * frågan "vilket företag hör den här adressen till" är cachad per adress, och
+ * det är den som ändrar svar när ett konto sägs upp. Då måste varje adress
+ * rensas var för sig — nuvarande, gamla och alla kopplade domäner.
+ *
+ * Missas en av dem svarar just den adressen kvar med sajten i upp till ett
+ * dygn, vilket är precis det uppsägningen ska stoppa.
+ */
+export async function clearSiteEverywhere(companyId: string) {
+  clearSiteCache(companyId)
   const admin = createAdminClient()
 
-  let { data: company } = await admin
-    .from('companies')
-    .select('id, name, industry, slug')
-    .eq('slug', slug)
-    .single()
+  const { data: co } = await admin
+    .from('companies').select('slug').eq('id', companyId).maybeSingle()
+  if (co?.slug) clearSiteAddress(co.slug)
+
+  try {
+    const { data } = await admin
+      .from('companies').select('old_slugs').eq('id', companyId).maybeSingle()
+    for (const s of (data?.old_slugs ?? []) as string[]) clearSiteAddress(s)
+  } catch { /* old_slugs inte migrerad */ }
+
+  try {
+    const { data } = await admin
+      .from('custom_domains').select('domain').eq('company_id', companyId)
+    for (const d of data ?? []) clearSiteAddress(d.domain)
+  } catch { /* custom_domains inte migrerad */ }
+}
+
+type Träff = { id: string; matchedBy: 'slug' | 'domain' }
+
+async function resolveCompany(key: string): Promise<Träff | null> {
+  const admin = createAdminClient()
+
+  /* The segment carries either the address we gave the salon or the domain
+     they bought. A dot tells them apart: our slugs never contain one. */
+  const looksLikeDomain = key.includes('.')
+  let matchedBy: 'slug' | 'domain' = 'slug'
+
+  let company: { id: string; name: string | null; industry: string | null; slug: string } | null = null
+
+  if (looksLikeDomain) {
+    try {
+      const { data: row } = await admin
+        .from('custom_domains')
+        .select('company_id, verified_at')
+        .eq('domain', key.toLowerCase())
+        .maybeSingle()
+      /* An unverified domain is not served. Anyone can point DNS at us; only a
+         checked record proves the salon owns the name. */
+      if (row?.verified_at) {
+        const { data: byDomain } = await admin
+          .from('companies')
+          .select('id, name, industry, slug')
+          .eq('id', row.company_id)
+          .maybeSingle()
+        if (byDomain) { company = byDomain; matchedBy = 'domain' }
+      }
+    } catch { /* custom_domains not migrated yet — own domains simply 404 */ }
+  }
+
+  if (!company) {
+    const { data: bySlug } = await admin
+      .from('companies')
+      .select('id, name, industry, slug')
+      .eq('slug', key)
+      .maybeSingle()
+    company = bySlug
+  }
 
   /* A renamed site answers on its old addresses too — the page compares the
    * requested slug against site.slug and 308-redirects to the current one,
@@ -41,7 +239,7 @@ export async function getPublishedSite(slug: string): Promise<PublishedSite | nu
       const { data: renamed } = await admin
         .from('companies')
         .select('id, name, industry, slug')
-        .contains('old_slugs', [slug])
+        .contains('old_slugs', [key])
         .limit(1)
         .maybeSingle()
       company = renamed
@@ -49,6 +247,50 @@ export async function getPublishedSite(slug: string): Promise<PublishedSite | nu
   }
 
   if (!company) return null
+
+  /*
+   * Uppsagt avtal: sajten finns inte längre, på någon adress.
+   *
+   * Grinden sitter här och inte i sidorna, för här går alla vägar in — vår
+   * adress, salongens domän och deras gamla adresser. En sida som slutar
+   * hittas 404:ar av sig själv, och omdirigeringen till den egna domänen
+   * upphör i samma stund. Det senare är hela poängen: en permanent
+   * omdirigering till en domän vi inte äger ska inte överleva relationen.
+   * Går domänen ut och köps av någon annan skickar vi annars besökare dit i
+   * åratal, utan att veta vad som ligger där.
+   *
+   * Läses för sig och tillåts misslyckas, som de andra kolumnerna som kommit
+   * till efterhand. Saknas fältet är kontot aktivt — en sajt får aldrig slockna
+   * för att en migration inte hunnit köras.
+   */
+  if (await isClosed(admin, company.id)) return null
+
+  return { id: company.id, matchedBy }
+}
+
+async function loadSite(companyId: string): Promise<Omit<PublishedSite, 'matchedBy' | 'key'> | null> {
+  const admin = createAdminClient()
+
+  const { data: company } = await admin
+    .from('companies')
+    .select('id, name, industry, slug')
+    .eq('id', companyId)
+    .maybeSingle()
+  if (!company) return null
+
+  /* Read on its own, and allowed to fail. A published customer site must not
+   * 404 because a migration has not run yet — the same reason the old_slugs
+   * lookup above is wrapped. Without the column the answer is simply null and
+   * the markup falls back to the sector parent. */
+  let care: 'wellness' | 'care' | null = null
+  try {
+    const { data: row } = await admin
+      .from('companies')
+      .select('schema_care')
+      .eq('id', company.id)
+      .maybeSingle()
+    care = (row?.schema_care as 'wellness' | 'care' | null) ?? null
+  } catch { /* schema_care not migrated yet */ }
 
   const { data: config } = await admin
     .from('site_config')
@@ -89,7 +331,37 @@ export async function getPublishedSite(slug: string): Promise<PublishedSite | nu
     content.bookingUrl = `/book/${company.slug}`
   }
 
-  return { slug: company.slug, industry, template, content }
+  /* The verified own domain, when one exists. Only verified rows count — an
+   * unverified one must never trigger the redirect, or anyone could point a
+   * domain at us and hijack a salon's traffic. Allowed to fail like every
+   * other pending-migration read. */
+  let ownDomain: string | null = null
+  try {
+    const { data: doms } = await admin
+      .from('custom_domains')
+      .select('domain, is_primary')
+      .eq('company_id', company.id)
+      .not('verified_at', 'is', null)
+    if (doms?.length) {
+      ownDomain = (doms.find(d => d.is_primary) ?? doms[0]).domain
+    }
+  } catch { /* custom_domains not migrated yet */ }
+
+  /* Mät-id:t för salongens egen GA4-property. Läses här och inte i layouten,
+     så det följer med samma cachade uppslag som allt annat — och rensas av
+     samma etikett den dag kopplingen ändras. Allowed to fail, som varje annan
+     läsning av en kolumn som kan sakna migrering. */
+  let mätId: string | null = null
+  try {
+    const { data: conn } = await admin
+      .from('google_connections')
+      .select('ga4_measurement_id')
+      .eq('company_id', company.id)
+      .maybeSingle()
+    mätId = (conn?.ga4_measurement_id as string | null) ?? null
+  } catch { /* ga4_measurement_id not migrated yet */ }
+
+  return { slug: company.slug, industry, template, content, care, ownDomain, mätId }
 }
 
 /* ── Service pages ──────────────────────────────────────────────────────────

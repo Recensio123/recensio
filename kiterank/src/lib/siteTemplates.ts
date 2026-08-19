@@ -1,7 +1,7 @@
 import { tradePack, type TradePack, type TradeArticle } from './trades'
 import { EXAMPLE_IMAGES, exampleTeam } from './exampleContent'
 import type { Article, ArticleBlock } from './articles'
-import type { ServiceCategory } from '@/app/preview/[templateId]/tjanster/services-data'
+import type { ServiceCategory } from '@/lib/services-data'
 
 /*
  * Six answers in, a whole website out.

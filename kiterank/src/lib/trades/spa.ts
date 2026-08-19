@@ -135,4 +135,6 @@ export const SPA: TradePack = {
       ],
     },
   ],
+
+  schemaType: 'DaySpa',
 }

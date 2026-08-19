@@ -134,4 +134,6 @@ export const NAILS: TradePack = {
       ],
     },
   ],
+
+  schemaType: 'NailSalon',
 }

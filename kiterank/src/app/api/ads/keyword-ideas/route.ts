@@ -2,6 +2,7 @@ import { NextResponse }       from 'next/server'
 import { createClient }       from '@/lib/supabase/server'
 import { createAdminClient }  from '@/lib/supabase/admin'
 import { getValidToken }      from '@/lib/google'
+import { VISA_EXEMPEL } from '@/lib/datalage'
 
 const ADS_BASE = 'https://googleads.googleapis.com/v19'
 
@@ -26,11 +27,8 @@ export type KeywordIdea = {
      60 kr one. */
   topOfPageBidMicros: number
 }
-
-const FORCE_MOCK = true
-
 export async function GET() {
-  if (FORCE_MOCK) return NextResponse.json({ ideas: MOCK_IDEAS, source: 'mock' })
+  if (VISA_EXEMPEL) return NextResponse.json({ ideas: MOCK_IDEAS, source: 'mock' })
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

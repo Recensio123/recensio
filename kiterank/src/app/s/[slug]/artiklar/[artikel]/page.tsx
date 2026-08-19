@@ -1,13 +1,14 @@
 import { notFound, permanentRedirect } from 'next/navigation'
 import type { Metadata } from 'next'
+import { sitePath } from '@/lib/siteHost'
+import { BookButton } from '@/components/site/PreviewSite'
 import {
   getPublishedSite, articlesOf, articleSummary, articleImages, formatArticleDate,
-  type PublishedSite, type Article,
+  redirectToOwnDomain, sitePathOf, type PublishedSite, type Article,
 } from '../../site-data'
-import { ArticleNav, F, isDark } from '../chrome'
+import { SitePage, isDark } from '../chrome'
 import { ArticleBody } from '@/components/ArticleBody'
 import { siteLabel } from '@/lib/siteLabels'
-import { siteFontVars, SiteFontFace } from '@/components/SiteFont'
 
 /*
  * One article. Text and photo groups in the order the salon arranged them,
@@ -37,7 +38,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${article.title} — ${site.content.businessName}`,
     description,
-    alternates: { canonical: `/s/${site.slug}/artiklar/${article.slug}` },
+    alternates: { canonical: sitePathOf(site, `/artiklar/${article.slug}`) },
     openGraph: {
       title: article.title,
       description,
@@ -49,10 +50,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
+/*
+ * Inga adresser är kända när vi bygger — kunderna tillkommer efteråt. Den
+ * tomma listan säger just det, och gör samtidigt sidan cachebar: första
+ * besökaren på en adress renderar den, alla efter får den färdig. Utan den
+ * här raden renderas sidan om vid varje besök, för varje kund, för alltid.
+ *
+ * Vad som rensar cachen står i site-data: clearSiteCache vid sparning.
+ */
+export async function generateStaticParams() { return [] }
+
 export default async function ArticlePage({ params }: Props) {
   const p = await params
   const r = await resolve(p)
   if (!r) notFound()
+  redirectToOwnDomain(r.site, p.slug, `/artiklar/${p.artikel}`)
   // Old address after a rename — send Google and visitors to the current one
   if (r.site.slug !== p.slug) permanentRedirect(`/s/${r.site.slug}/artiklar/${p.artikel}`)
 
@@ -75,10 +87,8 @@ export default async function ArticlePage({ params }: Props) {
   }
 
   return (
-    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F, ...siteFontVars(content) }}>
-      <SiteFontFace content={content} />
+    <SitePage site={site} current="blog">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
-      <ArticleNav site={site} />
 
       <main style={{ maxWidth: 760, margin: '0 auto', padding: '64px 24px 96px' }}>
         <a href={`${base}/artiklar`} style={{ fontSize: 13, color: c.a, textDecoration: 'none' }}>{siteLabel(content.labels, 'articlesBack')}</a>
@@ -87,12 +97,7 @@ export default async function ArticlePage({ params }: Props) {
           <ArticleBody article={article} c={c} />
         </div>
 
-        <a
-          href={content.bookingUrl || base}
-          style={{ display: 'inline-block', background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '14px 36px', borderRadius: 8, fontSize: 15, fontWeight: 700, textDecoration: 'none', margin: '24px 0 64px' }}
-        >
-          {content.ctaText || 'Boka tid'}
-        </a>
+        <BookButton content={content} style={{ display: 'inline-block', background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '14px 36px', borderRadius: 8, fontSize: 15, fontWeight: 700, textDecoration: 'none', margin: '24px 0 64px' }} />
 
         {others.length > 0 && (
           <section style={{ borderTop: `1px solid ${divider}`, paddingTop: 32 }}>
@@ -114,6 +119,6 @@ export default async function ArticlePage({ params }: Props) {
           </section>
         )}
       </main>
-    </div>
+    </SitePage>
   )
 }

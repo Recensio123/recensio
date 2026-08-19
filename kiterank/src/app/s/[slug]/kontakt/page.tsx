@@ -1,9 +1,15 @@
 import { notFound, permanentRedirect } from 'next/navigation'
+import { sectionPageTitle } from '@/lib/sectionPages'
 import type { Metadata } from 'next'
-import { getPublishedSite } from '../site-data'
-import { ArticleNav, F, isDark } from '../artiklar/chrome'
+import { sitePath, siteAbsUrl } from '@/lib/siteHost'
+import { BookButton } from '@/components/site/PreviewSite'
+import { getPublishedSite, redirectToOwnDomain, sitePathOf, siteAbsUrlOf } from '../site-data'
+import { SitePage, isDark } from '../artiklar/chrome'
 import { siteLabel } from '@/lib/siteLabels'
-import { siteFontVars, SiteFontFace } from '@/components/SiteFont'
+import { pageNode } from '@/lib/siteSchema'
+import { socialLinks } from '@/lib/siteSocial'
+import { mapLinkUrl } from '@/lib/siteMap'
+import { SiteMapFrame } from '@/components/SiteMapFrame'
 
 /*
  * The contact page — where "öppettider {salongen}" and "{salongen} telefon"
@@ -14,6 +20,7 @@ import { siteFontVars, SiteFontFace } from '@/components/SiteFont'
 
 type Props = { params: Promise<{ slug: string }> }
 
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const site = await getPublishedSite(slug)
@@ -22,43 +29,48 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { content } = site
   const where = content.address ? ` i ${content.address}` : ''
   return {
-    title: `${siteLabel(content.labels, 'contactTitle')} — ${content.businessName}${content.address ? ` | ${content.address}` : ''}`,
+    title: `${sectionPageTitle(content, 'contact')} — ${content.businessName}${content.address ? ` | ${content.address}` : ''}`,
     description: `Kontaktuppgifter, öppettider och vägbeskrivning till ${content.businessName}${where}. ${content.phone}.`,
-    alternates: { canonical: `/s/${site.slug}/kontakt` },
+    alternates: { canonical: sitePathOf(site, '/kontakt') },
   }
 }
+
+/*
+ * Inga adresser är kända när vi bygger — kunderna tillkommer efteråt. Den
+ * tomma listan säger just det, och gör samtidigt sidan cachebar: första
+ * besökaren på en adress renderar den, alla efter får den färdig. Utan den
+ * här raden renderas sidan om vid varje besök, för varje kund, för alltid.
+ *
+ * Vad som rensar cachen står i site-data: clearSiteCache vid sparning.
+ */
+export async function generateStaticParams() { return [] }
 
 export default async function ContactPage({ params }: Props) {
   const { slug } = await params
   const site = await getPublishedSite(slug)
   if (!site) notFound()
+  redirectToOwnDomain(site, slug, '/kontakt')
   // Old address after a rename — send Google and visitors to the current one
-  if (site.slug !== slug) permanentRedirect(`/s/${site.slug}/kontakt`)
+  if (site.matchedBy === 'slug' && site.slug !== slug) permanentRedirect(`/s/${site.slug}/kontakt`)
 
   const c = site.template.colors
   const { content } = site
   const fgSub   = isDark(c.bg) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
   const divider = isDark(c.bg) ? 'rgba(255,255,255,0.1)'  : 'rgba(0,0,0,0.08)'
   const mapsHref = content.address?.trim()
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${content.businessName} ${content.address}`)}`
+    ? mapLinkUrl(content.businessName, content.address)
     : undefined
-  const socials = ([['instagram', 'Instagram'], ['facebook', 'Facebook'], ['tiktok', 'TikTok']] as const)
-    .map(([key, name]) => ({ name, href: content.social?.[key]?.trim() }))
-    .filter(s => s.href)
+  const socials = socialLinks(content.social)
 
-  const schema = {
-    '@context': 'https://schema.org',
-    '@type':    'ContactPage',
-    name:        `${siteLabel(content.labels, 'contactTitle')} — ${content.businessName}`,
-    mainEntity: {
-      '@type':      'LocalBusiness',
-      name:          content.businessName,
-      telephone:     content.phone,
-      openingHours:  content.hours,
-      address:     { '@type': 'PostalAddress', streetAddress: content.address, addressCountry: 'SE' },
-      ...(socials.length ? { sameAs: socials.map(s => s.href) } : {}),
-    },
-  }
+  /* The social profiles belong to the business itself, so they attach to that
+     node by id rather than to a second copy of the company. */
+  const schema = pageNode({
+    type:   'ContactPage',
+    name:   `${sectionPageTitle(content, 'contact')} — ${content.businessName}`,
+    slug:   site.slug,
+    sameAs: socials.map(s => s.href),
+    base:   siteAbsUrlOf(site),
+  })
 
   const row = (label: string, body: React.ReactNode) => (
     <div style={{ padding: '20px 0', borderBottom: `1px solid ${divider}` }}>
@@ -68,18 +80,25 @@ export default async function ContactPage({ params }: Props) {
   )
 
   return (
-    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F, ...siteFontVars(content) }}>
-      <SiteFontFace content={content} />
+    <SitePage site={site} current="kontakt">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
-      <ArticleNav site={site} />
 
       <main style={{ maxWidth: 640, margin: '0 auto', padding: '72px 24px 96px' }}>
         <h1 style={{ fontSize: 40, fontWeight: 800, color: c.h, letterSpacing: -1, marginBottom: 8 }}>
-          {siteLabel(content.labels, 'contactTitle')}
+          {sectionPageTitle(content, 'contact')}
         </h1>
         <p style={{ fontSize: 16, color: fgSub, marginBottom: 32 }}>{content.businessName}</p>
 
-        {row(siteLabel(content.labels, 'contactTitle'), (
+        {/* The page's own opening line, stored as its own wording. The Om oss
+            page has a "Hitta hit" paragraph of its own; the two are separate
+            texts on separate pages, so editing one leaves the other alone. */}
+        {!!siteLabel(content.labels, 'contactIntro') && (
+          <p style={{ fontSize: 17, color: c.h, lineHeight: 1.7, marginBottom: 8 }}>
+            {siteLabel(content.labels, 'contactIntro')}
+          </p>
+        )}
+
+        {row(sectionPageTitle(content, 'contact'), (
           <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ fontSize: 22, fontWeight: 800, color: c.h, textDecoration: 'none' }}>
             {content.phone}
           </a>
@@ -110,13 +129,27 @@ export default async function ContactPage({ params }: Props) {
           </div>
         ))}
 
-        <a
-          href={content.bookingUrl || `/s/${site.slug}`}
-          style={{ display: 'inline-block', background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '14px 36px', borderRadius: 8, fontSize: 15, fontWeight: 700, textDecoration: 'none', marginTop: 32 }}
-        >
-          {content.ctaText || 'Boka tid'}
-        </a>
+        {/* What the salon does, in their own words and prices — a visitor who
+            reached the contact page is choosing, not browsing, and the four
+            things they might book belong within reach of the phone number. */}
+        {(content.services ?? []).length > 0 && row('Det vi gör', (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(content.services ?? []).slice(0, 4).map((s, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                <span style={{ fontSize: 15, color: c.h }}>{s.name}</span>
+                {!!s.price?.trim() && <span style={{ fontSize: 15, color: fgSub, whiteSpace: 'nowrap' }}>{s.price}</span>}
+              </div>
+            ))}
+            <a href={`/s/${site.slug}/tjanster`} style={{ fontSize: 14, color: c.a, textDecoration: 'underline', marginTop: 4 }}>
+              {siteLabel(content.labels, 'pricePage')} →
+            </a>
+          </div>
+        ))}
+
+        <SiteMapFrame businessName={content.businessName} address={content.address} borderColor={divider} />
+
+        <BookButton content={content} style={{ display: 'inline-block', background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '14px 36px', borderRadius: 8, fontSize: 15, fontWeight: 700, textDecoration: 'none', marginTop: 32 }} />
       </main>
-    </div>
+    </SitePage>
   )
 }

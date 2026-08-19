@@ -1,8 +1,11 @@
 import { notFound, redirect, permanentRedirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { getPublishedSite, servicesOf, pricelistIsExternal, sectionHasPage, type PublishedSite, type ServiceOnSite } from '../../site-data'
+import { sitePath, siteAbsUrl } from '@/lib/siteHost'
+import { BookButton } from '@/components/site/PreviewSite'
+import { getPublishedSite, servicesOf, pricelistIsExternal, sectionHasPage, type PublishedSite, type ServiceOnSite, redirectToOwnDomain, sitePathOf, siteAbsUrlOf } from '../../site-data'
 import { siteLabel } from '@/lib/siteLabels'
-import { siteFontVars, SiteFontFace } from '@/components/SiteFont'
+import { SitePage } from '../../artiklar/chrome'
+import { serviceNode } from '@/lib/siteSchema'
 
 /*
  * One page per service — the keyword landing pages. When someone searches
@@ -37,11 +40,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     // "Balayage i Södermalm, Stockholm — Studio Söder" — the search phrase is the title
     title: `${service.name}${where} — ${site.content.businessName}`,
     description: `${service.desc}. ${service.price}${service.duration ? ` · ${service.duration}` : ''}. Boka online hos ${site.content.businessName}.`,
-    alternates: { canonical: `/s/${site.slug}/tjanster/${service.slug}` },
+    alternates: { canonical: sitePathOf(site, `/tjanster/${service.slug}`) },
   }
 }
-
-const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
 const isDark = (hex: string) => {
   const h = hex.replace('#', '')
   if (h.length < 6) return false
@@ -49,10 +50,21 @@ const isDark = (hex: string) => {
   return (r * 299 + g * 587 + b * 114) / 1000 < 128
 }
 
+/*
+ * Inga adresser är kända när vi bygger — kunderna tillkommer efteråt. Den
+ * tomma listan säger just det, och gör samtidigt sidan cachebar: första
+ * besökaren på en adress renderar den, alla efter får den färdig. Utan den
+ * här raden renderas sidan om vid varje besök, för varje kund, för alltid.
+ *
+ * Vad som rensar cachen står i site-data: clearSiteCache vid sparning.
+ */
+export async function generateStaticParams() { return [] }
+
 export default async function ServiceKeywordPage({ params }: Props) {
   const p = await params
   const r = await resolve(p)
   if (!r) notFound()
+  redirectToOwnDomain(r.site, p.slug, `/tjanster/${p.tjanst}`)
   // Old address after a rename — send Google and visitors to the current one
   if (r.site.slug !== p.slug) permanentRedirect(`/s/${r.site.slug}/tjanster/${p.tjanst}`)
 
@@ -66,34 +78,14 @@ export default async function ServiceKeywordPage({ params }: Props) {
   const fgSub = isDark(c.bg) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
   const divider = isDark(c.bg) ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
 
-  const serviceSchema = {
-    '@context': 'https://schema.org',
-    '@type':    'Service',
-    name:        service.name,
-    description: service.desc,
-    provider: { '@type': 'LocalBusiness', name: content.businessName, telephone: content.phone },
-    areaServed:  content.address,
-  }
+  /* The business is described once, on the home page. This page states the
+     treatment and refers to the company by id, instead of repeating a thinner
+     copy of it that Google could read as a second business. */
+  const serviceSchema = serviceNode({ service, content, slug: site.slug, base: siteAbsUrlOf(site) })
 
   return (
-    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F, ...siteFontVars(content) }}>
-      <SiteFontFace content={content} />
+    <SitePage site={site} current="pricelist">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceSchema) }} />
-
-      {/* Nav — same bar as the rest of the site, so this reads as a page of
-          it rather than a landing page bolted on */}
-      <nav style={{ background: c.nav, padding: '0 8%', borderBottom: `1px solid ${divider}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', height: 68, gap: 32 }}>
-          <a href={base} style={{ color: c.h, fontWeight: 800, fontSize: 16, textDecoration: 'none' }}>{content.businessName}</a>
-          <a href={`${base}/tjanster`} style={{ color: fgSub, fontSize: 14, textDecoration: 'none' }}>{siteLabel(content.labels, 'navServices')}</a>
-          <a
-            href={content.bookingUrl || base}
-            style={{ marginLeft: 'auto', background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '9px 22px', borderRadius: 6, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}
-          >
-            {content.ctaText || 'Boka tid'}
-          </a>
-        </div>
-      </nav>
 
       <main style={{ maxWidth: 720, margin: '0 auto', padding: '72px 24px 96px' }}>
         <p style={{ fontSize: 12, color: c.a, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 16 }}>
@@ -121,12 +113,11 @@ export default async function ServiceKeywordPage({ params }: Props) {
           )}
         </div>
 
-        <a
-          href={content.bookingUrl || base}
+        <BookButton
+          content={content}
+          label={`Boka ${service.name.toLowerCase()}`}
           style={{ display: 'inline-block', background: c.a, color: isDark(c.a) ? '#fff' : '#0a0a0a', padding: '14px 36px', borderRadius: 8, fontSize: 15, fontWeight: 700, textDecoration: 'none', marginBottom: 64 }}
-        >
-          Boka {service.name.toLowerCase()}
-        </a>
+        />
 
         {/* Internal links between the service pages — this is what makes them
             rank as a family instead of orphans */}
@@ -150,6 +141,6 @@ export default async function ServiceKeywordPage({ params }: Props) {
           </section>
         )}
       </main>
-    </div>
+    </SitePage>
   )
 }

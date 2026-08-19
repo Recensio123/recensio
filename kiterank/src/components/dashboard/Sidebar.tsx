@@ -16,7 +16,7 @@ import { useLang, type Lang } from '@/components/LanguageProvider'
 
 type NavId =
   | 'actionplan' | 'home' | 'gbp' | 'seo' | 'ads' | 'tools' | 'website'
-  | 'bokningar' | 'sms' | 'ai' | 'citations' | 'webbplats' | 'connections' | 'settings' | 'support' | 'setup'
+  | 'bokningar' | 'social' | 'sms' | 'ai' | 'citations' | 'webbplats' | 'connections' | 'settings' | 'support' | 'setup'
 
 type NavDef = { id: NavId; href: string; icon: string }
 
@@ -28,6 +28,9 @@ const nav: NavDef[] = [
   { id: 'ads',        href: '/dashboard/paid-search',  icon: '◈' },
   { id: 'tools',      href: '/dashboard/tools',        icon: '⊕' },
   { id: 'website',    href: '/dashboard/analytics',    icon: '↗' },
+  /* Sociala medier is parked until the platform connections are approved —
+     see the note in the page itself. Put the entry back here when it returns:
+     { id: 'social', href: '/dashboard/social', icon: '❐' }, */
   { id: 'bokningar',  href: '/dashboard/bokningar',    icon: '◻' },
   { id: 'sms',        href: '/dashboard/sms',          icon: '✉' },
   { id: 'ai',         href: '/dashboard/ai-visibility', icon: '✺' },
@@ -57,6 +60,7 @@ const LABELS: Record<Lang, Record<NavId, { label: string; tooltip: string }>> = 
     tools:       { label: 'Verktyg',             tooltip: 'ROI-kalkylator och länkbyggare för kampanjspårning.' },
     website:     { label: 'Hemsida',             tooltip: 'Hur många som besöker din hemsida, varifrån de kommer och vad de gör där.' },
     bokningar:   { label: 'Bokningar',           tooltip: 'Ditt bokningssystem — dagens bokningar, kommande besök och veckans bokade värde.' },
+    social:      { label: 'Sociala medier',      tooltip: 'Koppla Instagram, TikTok och Pinterest — hur ofta du postar och vad inläggen ger, samlat på ett ställe.' },
     sms:         { label: 'SMS',                 tooltip: 'Bokningspåminnelser och recensionsförfrågningar via SMS — automatiskt eller per kund, med dina egna mallar.' },
     ai:          { label: 'AI-synlighet',        tooltip: 'Rekommenderas din salong när folk frågar ChatGPT eller Gemini om en salong i ditt område?' },
     citations:   { label: 'Katalogkoll',         tooltip: 'Kollar att namn, adress och telefonnummer stämmer i de stora katalogerna. Fel där sänker din lokala ranking.' },
@@ -75,6 +79,7 @@ const LABELS: Record<Lang, Record<NavId, { label: string; tooltip: string }>> = 
     tools:       { label: 'Tools',               tooltip: 'ROI calculator and UTM link builder for campaign tracking.' },
     website:     { label: 'Website',             tooltip: 'How many people visit your website, where they come from, and what they do there.' },
     bokningar:   { label: 'Bookings',            tooltip: 'Your booking system — today\'s appointments, upcoming visits, and this week\'s booked value.' },
+    social:      { label: 'Social media',        tooltip: 'Connect Instagram, TikTok and Pinterest — how often you post and what the posts bring, in one place.' },
     sms:         { label: 'SMS',                 tooltip: 'Booking reminders and review requests by SMS — automatic or per customer, with your own templates.' },
     ai:          { label: 'AI visibility',       tooltip: 'Does your salon get recommended when people ask ChatGPT or Gemini for a salon in your area?' },
     citations:   { label: 'Citation health',     tooltip: 'Checks that your name, address, and phone number are consistent across the major directories.' },
@@ -257,12 +262,15 @@ function DepthToggle() {
   )
 }
 
-export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disconnected', role = 'admin' }: {
+export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disconnected', role = 'admin', isPlatformAdmin = false }: {
   companyName: string
   reviewBadge?: number
   connectionStatus?: ConnectionStatus
   /** An account the salon created reaches the calendar and nothing else. */
   role?: 'admin' | 'schema' | 'staff'
+  /** Den som driver plattformen, inte salongen. Avgörs på servern — det här
+   *  är bara om länken ska ritas, aldrig om adressen släpper in. */
+  isPlatformAdmin?: boolean
 }) {
   const pathname = usePathname()
   const { plan, setPlan } = usePlan()
@@ -290,6 +298,10 @@ export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disc
      * page whichever mode the switch happens to be left in — otherwise the
      * salon could strand its own staff on an empty menu. */
     if ((item.id === 'sms' || item.id === 'bokningar') && !hasBooking(plan) && !calendarOnly) return false
+    /* testbok2 trims the menu. AI visibility is not part of the simplified
+     * track, and the SMS sendouts already have their own tab inside Bokningar —
+     * two doors into the same room is one too many. */
+    if (plan === 'testbok2' && (item.id === 'ai' || item.id === 'sms')) return false
     if (calendarOnly && item.id !== 'bokningar') return false
     return true
   })
@@ -307,16 +319,14 @@ export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disc
           <LangToggle />
         </div>
         <p className="text-slate-400 text-xs mt-0.5 truncate">{companyName}</p>
-        {/* Build-time preview switch. Testbok2 is the working copy of the
-            booking track — the marketing side is being simplified against
-            it, and having both means a change can be looked at beside what
-            it replaced instead of remembered. */}
+        {/* Växeln mellan de två uppläggen, under bygget. Namnen säger vad de
+            är — vilket ord verksamheten mäts i — och inte vilket testkonto de
+            en gång hette. */}
         {!calendarOnly && (
         <div className="flex gap-1.5 mt-3">
           {([
-            { id: 'test',     label: 'Test',      on: 'bg-blue-500/15 border-blue-500/40 text-blue-400'       },
-            { id: 'testbok',  label: 'Testbok',   on: 'bg-purple-500/15 border-purple-500/40 text-purple-400' },
-            { id: 'testbok2', label: 'Testbok2',  on: 'bg-teal-500/15 border-teal-500/40 text-teal-300'       },
+            { id: 'testbok2', label: 'Bokning',   on: 'bg-teal-500/15 border-teal-500/40 text-teal-300'  },
+            { id: 'test',     label: 'Lead',      on: 'bg-blue-500/15 border-blue-500/40 text-blue-400'  },
           ] as const).map(({ id, label, on }) => (
             <button
               key={id}
@@ -401,12 +411,19 @@ export function Sidebar({ companyName, reviewBadge = 0, connectionStatus = 'disc
         </Link>
       </div>
 
-      <div className="px-5 pt-1 pb-5">
+      <div className="px-5 pt-1 pb-5 flex items-center gap-4">
         <form action="/auth/signout" method="post">
           <button className="text-xs text-slate-400 hover:text-slate-200 transition-colors">
             {lang === 'sv' ? 'Logga ut' : 'Sign out'}
           </button>
         </form>
+        {/* Bara för den som driver plattformen. Ingen kund ser länken, och
+            adressen är stängd även för den som gissar sig till den. */}
+        {isPlatformAdmin && (
+          <a href="/admin" className="text-xs text-amber-500/80 hover:text-amber-400 transition-colors">
+            Admin
+          </a>
+        )}
       </div>
     </>
   )
