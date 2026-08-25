@@ -147,13 +147,25 @@ export function ArticleWorkspace({ article, template, onChange, onClose, onDelet
               </span>
             </button>
             {article.cover && (
-              <input
-                value={article.coverAlt}
-                onChange={e => onChange({ ...article, coverAlt: e.target.value })}
-                placeholder="Beskriv huvudbilden (för Google)"
-                maxLength={100}
-                style={{ ...inputStyle, marginTop: 10, fontSize: 12, padding: '7px 10px' }}
-              />
+              <label style={{ display: 'block', marginTop: 10 }}>
+                {/* Utan etiketten läste fältet som en bildtext — exempeltexten
+                    såg ut att hamna under bilden på sidan. Det gör den aldrig:
+                    det här är bildens beskrivning för Google och skärmläsare,
+                    samma sak som Bilder-fliken redan förklarar med samma ord. */}
+                <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontFamily: F, fontWeight: 600, marginBottom: 4 }}>
+                  Vad bilden föreställer
+                </span>
+                <input
+                  value={article.coverAlt}
+                  onChange={e => onChange({ ...article, coverAlt: e.target.value })}
+                  placeholder="T.ex. Balayage i varma toner på långt hår"
+                  maxLength={100}
+                  style={{ ...inputStyle, fontSize: 12, padding: '7px 10px' }}
+                />
+                <span style={{ display: 'block', fontSize: 11, color: '#64748b', fontFamily: F, marginTop: 4, lineHeight: 1.55 }}>
+                  Berättar för Google och skärmläsare vad bilden visar. Syns aldrig på den publicerade sidan.
+                </span>
+              </label>
             )}
           </div>
 

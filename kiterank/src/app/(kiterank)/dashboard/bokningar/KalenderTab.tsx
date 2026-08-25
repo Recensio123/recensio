@@ -201,14 +201,18 @@ export function KalenderTab({ bookings, staff, absences, salonHours, editableSta
           </Tooltip>
         </div>
 
-        <button
-          onClick={() => setDate(today)}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
-            onToday ? 'bg-mustard/15 border-mustard/40 text-mustard' : 'bg-navy-900 border-navy-700 text-slate-300 hover:text-white'
-          }`}
-        >
-          {L.today}
-        </button>
+        {/* Vägen tillbaka till dagens vecka — och bara då den behövs.
+            Står man redan där gör knappen ingenting, och en knapp som inte
+            gör något läser som en etikett som inte säger något. Vilken dag
+            det är syns ändå: dagens datum är markerat i rutnätet. */}
+        {!onToday && (
+          <button
+            onClick={() => setDate(today)}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border bg-navy-900 border-navy-700 text-slate-300 hover:text-white"
+          >
+            {L.today}
+          </button>
+        )}
 
         <span className="text-white font-semibold text-lg">{heading()}</span>
 

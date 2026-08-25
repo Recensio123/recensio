@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { Geist, Geist_Mono } from 'next/font/google'
 import '../globals.css'
 import { platformAdmin, adminAvstängt } from '@/lib/admin'
+import { AdminNav } from './AdminNav'
 
 /*
  * Plattformens eget område.
@@ -52,7 +53,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             Till panelen →
           </a>
         </header>
-        <main style={{ padding: '24px' }}>{children}</main>
+        {/* Menyn till vänster, innehållet till höger. Området växer — det
+            började som en enda sida, och nästa sida hamnade i kundens meny
+            för att det inte fanns någon annanstans att lägga den. */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 16 }}>
+          <AdminNav />
+          <main style={{ flex: 1, minWidth: 0, padding: '8px 8px 40px' }}>{children}</main>
+        </div>
       </body>
     </html>
   )

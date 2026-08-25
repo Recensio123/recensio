@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient }      from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { currentCompany } from '@/lib/companyScope'
 import { getValidToken, fetchGoogleCategories } from '@/lib/google'
 
 /*
@@ -18,18 +17,16 @@ import { getValidToken, fetchGoogleCategories } from '@/lib/google'
  * before the next sync comes round.
  */
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { categoryId, confirm } = await req.json() as { categoryId?: string; confirm?: boolean }
   if (!confirm && !categoryId?.startsWith('gcid:')) {
     return NextResponse.json({ error: 'categoryId or confirm is required' }, { status: 400 })
   }
 
-  const admin = createAdminClient()
+  const admin = c.admin
   const { data: company } = await admin
-    .from('companies').select('id, country').eq('user_id', user.id).single()
+    .from('companies').select('id, country').eq('id', c.id).single()
   if (!company) return NextResponse.json({ error: 'No company' }, { status: 400 })
 
   const { data: conn } = await admin

@@ -5,7 +5,7 @@ export type Layout =
   | 'centered' | 'split' | 'editorial' | 'heritage' | 'luxury'
   | 'showcase' | 'direct' | 'team'
   | 'pole' | 'grid'
-  | 'workshop' | 'sign' | 'foyer' | 'chemistry'
+  | 'workshop' | 'sign' | 'foyer'
 
 export type TemplateColors = {
   bg:  string   // page background
@@ -375,42 +375,6 @@ function Foyer({ c, active }: TP) {
   )
 }
 
-function Chemistry({ c, active }: TP) {
-  return (
-    <svg viewBox="0 0 180 116" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-      <rect width="180" height="116" fill={c.bg}/>
-      {/* washed image behind the top two thirds */}
-      <rect width="180" height="80" fill={c.a} fillOpacity="0.5"/>
-      <g opacity="0.25">
-        {Array.from({ length: 5 }, (_, i) => (
-          <ellipse key={i} cx={30 + i * 32} cy={26 + (i % 2) * 22} rx="34" ry="20" fill={c.h}/>
-        ))}
-      </g>
-      {/* centred thin wordmark, burger right */}
-      <rect x="70" y="8" width="40" height="4" rx="0" fill="#fff" fillOpacity="0.9"/>
-      <g fill="#fff" fillOpacity="0.8">
-        <rect x="154" y="7" width="14" height="1.4"/>
-        <rect x="154" y="10" width="14" height="1.4"/>
-        <rect x="154" y="13" width="14" height="1.4"/>
-      </g>
-      {/* serif headline: upright then italic (skewed) */}
-      <rect x="20" y="32" width="88" height="7" fill="#fff" fillOpacity="0.95"/>
-      <g transform="skewX(-12)">
-        <rect x="126" y="32" width="42" height="7" fill="#fff" fillOpacity="0.95"/>
-      </g>
-      <rect x="20" y="45" width="60" height="7" fill="#fff" fillOpacity="0.95"/>
-      <rect x="34" y="60" width="112" height="2.5" fill="#fff" fillOpacity="0.6"/>
-      {/* translucent band with an underlined link */}
-      <rect y="80" width="180" height="18" fill="#fff" fillOpacity="0.18"/>
-      <rect x="64" y="86" width="52" height="4" fill="#fff" fillOpacity="0.95"/>
-      <rect x="64" y="92" width="52" height="1" fill="#fff" fillOpacity="0.9"/>
-      <rect x="26" y="106" width="30" height="3" fill={c.h} fillOpacity="0.7"/>
-      <rect x="76" y="106" width="30" height="3" fill={c.h} fillOpacity="0.7"/>
-      <rect x="126" y="106" width="30" height="3" fill={c.h} fillOpacity="0.7"/>
-      {active && <rect width="180" height="116" stroke="#f59e0b" strokeWidth="3" fill="none"/>}
-    </svg>
-  )
-}
 
 /** Rough luminance test, so a tile's text reads on its own accent colour. */
 function isLight(hex: string): boolean {
@@ -436,7 +400,6 @@ export function TemplateThumbnail({ template, active }: { template: Template; ac
     case 'workshop':  return <Workshop  {...props}/>
     case 'sign':      return <Sign      {...props}/>
     case 'foyer':     return <Foyer     {...props}/>
-    case 'chemistry': return <Chemistry {...props}/>
   }
 }
 
@@ -482,8 +445,6 @@ const surfaces: Template[] = [
     colors:{ bg:'#14100e', nav:'#0d0b0a', h:'#f7f2ec', a:'#c98a5e', s:'#9c8f85', b:'#1e1815' } },
   { id:'yt-salongen', name:'Salongen',  tagline:'Rummet talar, raden följer med', layout:'foyer',  backdrop:'linne',
     colors:{ bg:'#faf7f2', nav:'#faf7f2', h:'#241f1a', a:'#8a7355', s:'#6d635a', b:'#f0eae0' } },
-  { id:'yt-kemi',     name:'Kemi',      tagline:'Satt i antikva',              layout:'chemistry', backdrop:'betong', font:'playfair',
-    colors:{ bg:'#fbfbfa', nav:'#fbfbfa', h:'#141414', a:'#2f8f8a', s:'#5f5f5f', b:'#f1f1ee' } },
 ]
 
 const restaurant: Template[] = [

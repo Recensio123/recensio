@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Tooltip } from '@/components/Tooltip'
 import { ExternalLink } from '@/components/ExternalLink'
 import { type MediaItem } from '@/lib/google'
+import { useNu } from '@/components/useNu'
 import { useLang, type Lang } from '@/components/LanguageProvider'
 
 type CategoryDef = {
@@ -225,6 +226,7 @@ function TrashIcon() {
 /* ── Main tab ─────────────────────────────────────────────────────────────── */
 export function PhotosTabTest2({ displayItems: initial }: { displayItems: MediaItem[] }) {
   const { lang } = useLang()
+  const nu = useNu()
   const t = T[lang]
   const [items,          setItems]          = useState<MediaItem[]>(initial)
   const [lightbox,       setLightbox]       = useState<{ photos: MediaItem[]; idx: number } | null>(null)
@@ -243,11 +245,16 @@ export function PhotosTabTest2({ displayItems: initial }: { displayItems: MediaI
   const categoriesPresent = new Set(items.map(m => m.category))
   const missingCats       = CATEGORIES.filter(c => !categoriesPresent.has(c.id))
 
+  /* Klockan kommer från webbläsaren, inte från renderingen. Före montering är
+     `nu` null och åldern okänd — då säger vi ingenting om färskheten i stället
+     för att räkna fram den ur serverns klocka och visa något annat en tiondels
+     sekund senare. */
   const latestOwner = ownerPhotos.filter(m => m.createTime)[0]
-  const daysSincePhoto = latestOwner
-    ? Math.floor((Date.now() - new Date(latestOwner.createTime).getTime()) / 86_400_000)
+  const daysSincePhoto = latestOwner && nu !== null
+    ? Math.floor((nu - new Date(latestOwner.createTime).getTime()) / 86_400_000)
     : null
   const freshnessStatus =
+    nu === null            ? 'good'     :
     daysSincePhoto === null ? 'critical' :
     daysSincePhoto <= 30   ? 'good'     :
     daysSincePhoto <= 90   ? 'warning'  : 'critical'

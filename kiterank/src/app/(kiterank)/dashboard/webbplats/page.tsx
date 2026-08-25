@@ -5,6 +5,7 @@ import { getTemplatesForIndustry, resolveTemplate } from '@/lib/templates'
 import { baseIndustry } from '@/lib/industries'
 import { CONTENT as SITE_DEFAULTS } from '@/lib/siteExampleContent'
 import { PanelEditor } from './PanelEditor'
+import { domänData } from '@/lib/domanData'
 
 export default async function WebbplatsPage() {
   const supabase = await createClient()
@@ -32,6 +33,12 @@ export default async function WebbplatsPage() {
    * family happened to contain that id won — so a nail studio that picked a
    * design also shared with hair salons was served hair-salon wording and the
    * hair-salon list. The trade is theirs; a design choice cannot change it. */
+  /* Kopplingen avgör en post i kom igång-listan. En läsning av en indexerad
+     kolumn, på en sida som ändå läser tre tabeller. */
+  const { data: conn } = await admin
+    .from('google_connections').select('refresh_token').eq('company_id', company.id).maybeSingle()
+  const googleKopplat = Boolean(conn?.refresh_token)
+
   const trade  = company.industry ?? 'other'
 
   /* Every salon trade picks from the same list — the trade decides the
@@ -53,6 +60,8 @@ export default async function WebbplatsPage() {
       initialContent={initialContent}
       siteSlug={company.slug ?? undefined}
       templates={choices}
+      domäner={await domänData(admin, company.id)}
+      googleKopplat={googleKopplat}
     />
   )
 }

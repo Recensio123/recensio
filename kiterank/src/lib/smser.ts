@@ -28,14 +28,42 @@ export function smsConfigured(): boolean {
   )
 }
 
-/** Avsändaren kunden ser. Alfanumeriskt, max 11 tecken — salongens namn i
- *  stället för ett okänt nummer, vilket avgör om meddelandet öppnas. */
-export function smsSender(salonName: string): string {
-  const clean = salonName
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // å → a, ö → o
+/**
+ * Får panelen visa SMS som ett val?
+ *
+ * Skilt från `smsConfigured()` med flit. Den frågan är "går det att skicka", och
+ * på den får svaret aldrig vara påhittat — ett ja skulle sluta i utskick som
+ * loggas som lyckade och aldrig når någon. Den här frågan är "får salongen se
+ * och ställa in kanalen", och den kan besvaras ja innan leverantören är kopplad.
+ *
+ * I utveckling är gränssnittet därför öppet, så hela flödet går att bygga och
+ * granska innan avtalet är på plats. I drift krävs riktiga nycklar: en salong
+ * ska aldrig kunna välja en kanal som tyst inte skickar något.
+ */
+export function smsUiUnlocked(): boolean {
+  return smsConfigured() || process.env.NODE_ENV !== 'production'
+}
+
+/**
+ * Ett avsändarnamn som operatörerna släpper igenom.
+ *
+ * Elva tecken, bokstäver och siffror. Gränsen är GSM-standardens och inte vår.
+ * Diakriter skalas hellre än stryks — "Nordström" blir "Nordstrom" och inte
+ * "Nordstrm" — eftersom namnet ska gå att känna igen även när det inte går att
+ * stava rätt.
+ */
+export function rensaAvsandare(rå: string): string {
+  return rå
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // å → a, ö → o
     .replace(/[^A-Za-z0-9]/g, '')
     .slice(0, 11)
-  return clean || 'Salong'
+}
+
+/** Avsändaren kunden ser. Salongens eget val när de gjort ett, annars namnet
+ *  skalat till samma form — ett namn i stället för ett okänt nummer, vilket
+ *  avgör om meddelandet öppnas. */
+export function smsSender(salonName: string, eget?: string | null): string {
+  return rensaAvsandare(eget ?? '') || rensaAvsandare(salonName) || 'Salong'
 }
 
 /*
@@ -108,6 +136,8 @@ const RESERV: Record<string, number> = {
   '{behandling}':  26,
   '{medarbetare}': 18,
   '{salong}':      26,
+  /* En Google-länk för omdömen: https://g.page/r/ plus id. */
+  '{omdömeslänk}': 34,
 }
 
 /** Längden på det färdiga SMS:et, uppskattad. `extra` är det som läggs till vid

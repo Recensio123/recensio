@@ -29,6 +29,13 @@ export const SITE_LABELS = {
      the other. */
   contactIntro:      'Välkommen in. Här hittar du våra öppettider, vägen hit och hur du enklast når oss.',
   hoursTitle:        'Öppettider',
+  /* Kontaktsidan listade tidigare fyra tjänster med priser. Det var en andra
+     prislista på fel sida: den blev inaktuell så fort priserna ändrades, och
+     den som står på kontaktsidan söker telefonnumret, inte ett urval. Nu står
+     det salongen gör i egna ord, med en länk till hela listan. */
+  contactDoTitle:    'Det vi gör',
+  contactDoBody:     'Klippning, färg och behandlingar för hår som ska hålla länge. Hela utbudet med tider och priser hittar du på prislistan.',
+  seePrices:         'Se prislista',
   followTitle:       'Följ oss',
   followMore:        'Mer av vårt arbete:',
   directions:        'Hitta hit →',
@@ -66,6 +73,9 @@ export const LABEL_NAMES: Record<LabelKey, string> = {
   contactTitle:      'Rubrik över kontaktuppgifterna',
   contactIntro:      'Texten överst på kontaktsidan',
   hoursTitle:        'Rubrik över öppettiderna',
+  contactDoTitle:    'Rubrik över vad ni gör',
+  contactDoBody:     'Texten om vad ni gör, på kontaktsidan',
+  seePrices:         'Länken till prislistan',
   followTitle:       'Rubrik över sociala medier',
   followMore:        'Texten före länkarna under galleriet',
   directions:        'Länken till kartan',

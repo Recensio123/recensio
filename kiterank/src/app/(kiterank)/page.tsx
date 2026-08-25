@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Nav } from '@/components/marketing/Nav'
+import { priskatalog, paketnyckel, bokningsnyckel, SMS_PRIS_KR } from '@/lib/betalning'
 
 /*
  * The landing page.
@@ -144,6 +145,233 @@ function DashboardMockup() {
   )
 }
 
+// ─── Priser ───────────────────────────────────────────────────────────────────
+
+/*
+ * Beloppen hämtas ur Stripes priskatalog, aldrig ur koden.
+ *
+ * Startsidan och panelen läser samma källa, vilket är hela poängen: en kund
+ * som ser 169 kr här och 299 kr i kassan slutar lita på båda siffrorna. Ändrar
+ * Jakob ett pris i Stripe följer den här sidan med vid nästa omgenerering.
+ *
+ * Svarar Stripe inte visas "Offert" i stället för ett gammalt belopp. Ett
+ * uteblivet pris kostar ett samtal; ett felaktigt pris kostar förtroendet.
+ */
+export const revalidate = 300
+
+const KONTAKT = 'mailto:kontakt@kiterank.se'
+
+type Prislista = {
+  mall:        string | null
+  design:      string | null
+  fullservice: string | null
+  bokning:     string | null
+  sms:         string
+}
+
+async function hämtaPriser(): Promise<Prislista> {
+  const kr = (b: number | null | undefined) =>
+    b == null ? null : `${b.toLocaleString('sv-SE')} kr`
+
+  try {
+    const katalog = await priskatalog()
+    return {
+      mall:        kr(katalog.get(paketnyckel('mall', 'manad'))?.belopp),
+      design:      kr(katalog.get(paketnyckel('design', 'manad'))?.belopp),
+      fullservice: kr(katalog.get(paketnyckel('fullservice', 'manad'))?.belopp),
+      /* Mallnivåns bokningspris är rubriken — det är vad den stora majoriteten
+         kommer att betala. Att det är billigare högre upp står i finstilten
+         under, inte som ett "från"-pris få kan få. */
+      bokning:     kr(katalog.get(bokningsnyckel('mall', 'manad'))?.belopp),
+      sms:         `${SMS_PRIS_KR} kr`,
+    }
+  } catch {
+    return { mall: null, design: null, fullservice: null, bokning: null, sms: `${SMS_PRIS_KR} kr` }
+  }
+}
+
+type Paket = {
+  namn:      string
+  pris:      string
+  per:       string
+  pitch:     string
+  punkter:   string[]
+  cta:       string
+  href:      string
+  utmärkt?:  boolean
+}
+
+/*
+ * Tre nivåer, en trappa: mallen, den formgivna sidan, och handen som gör
+ * marknadsföringen åt er. Varje kort listar bara det som skiljer det från
+ * kortet innan — "Allt i X" bär resten. Tre listor som upprepar varandra är
+ * tre listor ingen jämför.
+ *
+ * Bokningssystemet står medvetet utanför trappan. Det är ett tillägg på alla
+ * tre nivåerna, och att baka in det i en av dem hade tvingat den som vill ha
+ * kalender men inte formgivning att köpa fel sak.
+ */
+/*
+ * Vart ett paketkort leder.
+ *
+ * Alla tre korten leder rakt in i registreringen med paketet i adressen. Kontot
+ * skapas där som steg 1, så kunden går från pris till första steget utan en
+ * inloggningssida emellan som frågar om samma uppgifter.
+ *
+ * Paketet i adressen avgör vilken guide de möter: designfrågor i stället för
+ * ett mallgalleri på de två formgivna nivåerna — och då får du ett underlag
+ * att bygga på i stället för ett mejl med "hej, jag är intresserad".
+ *
+ * Kontot skapas ändå på mallnivån tills en betalning finns. Adressraden är en
+ * anteckning om vad de vill ha, aldrig en uppgradering.
+ */
+const köpKnapp = (nivå: 'mall' | 'design' | 'fullservice') => nivå === 'mall'
+  ? { cta: 'Prova gratis i 7 dagar', href: '/onboarding?paket=mall' }
+  : { cta: 'Kom igång — vi ritar åt er', href: `/onboarding?paket=${nivå}` }
+
+const paketen = (p: Prislista): Paket[] => [
+  {
+    namn:  'Hemsida + marknadsföringsplattform',
+    pris:  p.mall ?? 'Offert',
+    per:   p.mall ? '/mån' : '',
+    pitch: 'Välj en mall, gör den till din — och bli hittad på Google',
+    punkter: [
+      'Välj bland färdiga mallar och forma efter ditt varumärke',
+      'Ifylld för din bransch från start',
+      'Drift, SSL-säkerhet och uppdateringar ingår',
+      'Koppla din egen domän',
+      'En egen sida per tjänst — byggt för Google',
+      'Hela marknadsföringsplattformen: Google-profil, synlighet, annonser och besök',
+      'Omdömesbevakning med färdiga svarsförslag',
+      'Veckans att göra-lista',
+    ],
+    ...köpKnapp('mall'),
+  },
+  {
+    namn:  'Designad hemsida + marknadsföringsplattform',
+    pris:  p.design ?? 'Offert',
+    per:   p.design ? '/mån' : '',
+    pitch: 'Vi formger sidan från grunden och startar upp er',
+    punkter: [
+      'Allt i mallpaketet',
+      'Hemsida formgiven för just er — inte en mall',
+      'Vi bygger, fyller och publicerar åt er',
+      'Personlig onboarding genom hela plattformen',
+      'Prioriterad hjälp, direkt till en människa',
+    ],
+    ...köpKnapp('design'),
+    utmärkt: true,
+  },
+  {
+    namn:  'Full service',
+    pris:  p.fullservice ?? 'Offert',
+    per:   p.fullservice ? '/mån' : '',
+    pitch: 'Vi sköter marknadsföringen — ni sköter salongen',
+    punkter: [
+      'Allt i designpaketet',
+      'Vi driver marknadsföringen åt er löpande',
+      'Annonser som sköts och följs upp',
+      'Omdömen bevakas och besvaras',
+      'Löpande ändringar på sidan — säg vad ni vill',
+      'Månatlig genomgång av resultatet',
+    ],
+    ...köpKnapp('fullservice'),
+  },
+]
+
+function PrisSektion({ priser }: { priser: Prislista }) {
+  return (
+    <section id="pricing" className="max-w-6xl mx-auto px-6 py-16 space-y-10">
+      <div className="text-center space-y-3">
+        <h2 className="text-3xl font-bold">Ett pris i månaden. Inga överraskningar.</h2>
+        <p className="text-white/45">7 dagar gratis · Ingen bindningstid · Avsluta när du vill</p>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-6">
+        {paketen(priser).map(p => (
+          <div
+            key={p.namn}
+            className={`rounded-2xl p-8 space-y-6 relative flex flex-col ${
+              p.utmärkt
+                ? 'bg-[#f0b429]/5 border border-[#f0b429]/25'
+                : 'bg-white/3 border border-white/10'
+            }`}
+          >
+            {p.utmärkt && (
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#f0b429] text-[#080f1e] text-xs font-bold px-3 py-1 rounded-full">
+                Populärast
+              </div>
+            )}
+            <div>
+              <p className={`text-sm font-medium mb-1 ${p.utmärkt ? 'text-[#f0b429]' : 'text-white/50'}`}>{p.namn}</p>
+              <p className="text-4xl font-bold text-white">
+                {p.pris}
+                {p.per && <span className="text-lg font-normal text-white/40">{p.per}</span>}
+              </p>
+              <p className="text-white/30 text-xs mt-1">{p.pitch}</p>
+            </div>
+            <ul className="space-y-2.5 text-sm text-white/60 flex-1">
+              {p.punkter.map(f => (
+                <li key={f} className="flex items-start gap-2.5">
+                  <span className="text-[#f0b429] mt-0.5 shrink-0 text-xs">✓</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            {p.href.startsWith('mailto:') ? (
+              <a
+                href={p.href}
+                className="block text-center border border-white/15 hover:border-white/30 text-white text-sm font-medium py-3 rounded-xl transition-colors"
+              >
+                {p.cta}
+              </a>
+            ) : (
+              <Link
+                href={p.href}
+                className={`block text-center text-sm font-semibold py-3 rounded-xl transition-colors ${
+                  p.utmärkt
+                    ? 'bg-[#f0b429] hover:bg-[#e0a520] text-[#080f1e]'
+                    : 'border border-white/15 hover:border-white/30 text-white font-medium'
+                }`}
+              >
+                {p.cta}
+              </Link>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Tillägget står under trappan, inte i den: det hör till alla tre
+          nivåerna, och ett fjärde kort i raden hade läst som en fjärde nivå. */}
+      <div className="rounded-2xl border border-[#f0b429]/20 bg-[#f0b429]/4 p-8 md:flex md:items-center md:gap-8">
+        <div className="md:flex-1 space-y-3">
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h3 className="text-white text-xl font-bold">Bokningssystem</h3>
+            <span className="text-[#f0b429] text-sm font-semibold">
+              {priser.bokning
+                ? `${priser.bokning}/mån — läggs till på valfritt paket`
+                : 'Läggs till på valfritt paket'}
+            </span>
+          </div>
+          <p className="text-white/50 text-sm leading-relaxed max-w-2xl">
+            Onlinebokning direkt på hemsidan, kalender med personal och scheman, automatiska
+            bekräftelser och påminnelser, omdömesfrågor efter besöket, samt kundhistorik och
+            bokningsstatistik.
+          </p>
+          <p className="text-white/30 text-xs">
+            SMS {priser.sms}/st — betala bara för det som skickas, mejl ingår.
+            Tillägget kostar mindre på de större paketen.
+          </p>
+        </div>
+      </div>
+
+      <p className="text-center text-white/25 text-sm">
+        7 dagar gratis · Ingen kortuppgift för att börja · Två månader gratis vid årsbetalning
+      </p>
+    </section>
+  )
+}
+
 // ─── Feature card ─────────────────────────────────────────────────────────────
 
 function FeatureCard({ icon, title, body }: { icon: string; title: string; body: string }) {
@@ -158,7 +386,9 @@ function FeatureCard({ icon, title, body }: { icon: string; title: string; body:
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function HomePage() {
+export default async function HomePage() {
+  const priser = await hämtaPriser()
+
   return (
     <div className="bg-[#080f1e] text-white min-h-screen">
 
@@ -194,7 +424,7 @@ export default function HomePage() {
 
           <div className="flex flex-wrap items-center gap-4">
             <Link
-              href="/auth/login"
+              href="/onboarding"
               className="bg-[#f0b429] hover:bg-[#e0a520] text-[#080f1e] font-semibold px-6 py-3 rounded-xl transition-colors text-sm"
             >
               Välj design för din hemsida →
@@ -216,6 +446,11 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* ── Priser — högt upp med flit. Tre paket, en blick. Den som landat
+             här via en rekommendation ska inte behöva leta efter vad det
+             kostar; priset är en del av erbjudandet, inte finstilt. ─────────── */}
+      <PrisSektion priser={priser} />
 
       {/* ── The two halves of the offer ───────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-6 py-16 space-y-10">
@@ -414,85 +649,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Pricing ───────────────────────────────────────────────────────── */}
-      <section id="pricing" className="max-w-6xl mx-auto px-6 py-16 space-y-10">
-        <div className="text-center space-y-3">
-          <h2 className="text-3xl font-bold">Hemsida och marknadsföring. Ett pris, inga överraskningar.</h2>
-          <p className="text-white/45">7 dagar gratis · Ingen bindningstid · Avsluta när du vill</p>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-          {/* Starter */}
-          <div className="bg-white/3 border border-white/10 rounded-2xl p-8 space-y-6">
-            <div>
-              <p className="text-white/50 text-sm font-medium mb-1">Hemsida</p>
-              <p className="text-4xl font-bold text-white">495 kr<span className="text-lg font-normal text-white/40">/mån</span></p>
-              <p className="text-white/30 text-xs mt-1">Allt du behöver för att synas rätt</p>
-            </div>
-            <ul className="space-y-2.5 text-sm text-white/60">
-              {[
-                'Färdig hemsida, ifylld för din bransch',
-                'En egen sida per tjänst — byggt för Google',
-                'Prislista, artiklar, omdömen och bokningsknappar',
-                'Egna färger, typsnitt och logga',
-                'Din Google-profil kopplad och bevakad',
-                'Veckans att göra-lista',
-              ].map(f => (
-                <li key={f} className="flex items-start gap-2.5">
-                  <span className="text-[#f0b429] mt-0.5 shrink-0 text-xs">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/auth/login"
-              className="block text-center border border-white/15 hover:border-white/30 text-white text-sm font-medium py-3 rounded-xl transition-colors"
-            >
-              Prova gratis i 7 dagar
-            </Link>
-          </div>
-
-          {/* Growth */}
-          <div className="bg-[#f0b429]/5 border border-[#f0b429]/25 rounded-2xl p-8 space-y-6 relative">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#f0b429] text-[#080f1e] text-xs font-bold px-3 py-1 rounded-full">
-              Populärast
-            </div>
-            <div>
-              <p className="text-[#f0b429] text-sm font-medium mb-1">Hemsida + Fler kunder</p>
-              <p className="text-4xl font-bold text-white">795 kr<span className="text-lg font-normal text-white/40">/mån</span></p>
-              <p className="text-white/30 text-xs mt-1">För dig som vill växa aktivt</p>
-            </div>
-            <ul className="space-y-2.5 text-sm text-white/60">
-              {[
-                'Allt i Hemsida',
-                'Synlighet i ditt område — plats för plats, sökord för sökord',
-                'Annonser på Google, bevakade i klarspråk',
-                'Omdömesbevakning med färdiga svarsförslag',
-                'Sidbesök, samtal och bokningar i en vy',
-                'Prioriterad support',
-              ].map(f => (
-                <li key={f} className="flex items-start gap-2.5">
-                  <span className="text-[#f0b429] mt-0.5 shrink-0 text-xs">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/auth/login"
-              className="block text-center bg-[#f0b429] hover:bg-[#e0a520] text-[#080f1e] text-sm font-semibold py-3 rounded-xl transition-colors"
-            >
-              Prova gratis i 7 dagar
-            </Link>
-          </div>
-        </div>
-        <div className="text-center space-y-2">
-          <p className="text-white/25 text-sm">7 dagar gratis på båda · Ingen kortuppgift för att börja</p>
-          <Link href="/pricing" className="text-[#f0b429]/60 hover:text-[#f0b429] text-xs transition-colors">
-            Se hela jämförelsen →
-          </Link>
-        </div>
-      </section>
-
       {/* ── AI highlight ──────────────────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-6 py-16">
         <div className="bg-gradient-to-br from-[#f0b429]/8 to-transparent border border-[#f0b429]/15 rounded-2xl p-10 grid md:grid-cols-2 gap-10 items-center">
@@ -541,7 +697,7 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col items-center gap-3">
             <Link
-              href="/auth/login"
+              href="/onboarding"
               className="bg-[#f0b429] hover:bg-[#e0a520] text-[#080f1e] font-semibold px-8 py-3.5 rounded-xl transition-colors"
             >
               Välj din design →
@@ -558,9 +714,14 @@ export default function HomePage() {
             <p className="text-white font-bold text-sm">Kiterank</p>
             <p className="text-white/25 text-xs mt-0.5">Hemsida, marknadsföring och fler kunder — för salonger och lokala företag</p>
           </div>
-          <div className="flex items-center gap-8 text-white/30 text-sm">
+          {/* Villkoren och policyn hör hemma i sidfoten och ingen annanstans.
+              Den som letar efter dem letar här, och Stripes kundportal länkar
+              till samma adresser för varje betalande kund. */}
+          <div className="flex items-center gap-6 flex-wrap justify-center text-white/30 text-sm">
             <Link href="/features" className="hover:text-white/60 transition-colors">Funktioner</Link>
             <Link href="/pricing"  className="hover:text-white/60 transition-colors">Priser</Link>
+            <Link href="/villkor"  className="hover:text-white/60 transition-colors">Villkor</Link>
+            <Link href="/integritetspolicy" className="hover:text-white/60 transition-colors">Integritetspolicy</Link>
             <Link href="/auth/login" className="hover:text-white/60 transition-colors">Logga in</Link>
           </div>
           <p className="text-white/20 text-xs">© {new Date().getFullYear()} Kiterank. Alla rättigheter förbehållna.</p>

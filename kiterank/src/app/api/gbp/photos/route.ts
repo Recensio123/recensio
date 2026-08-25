@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { currentCompany } from '@/lib/companyScope'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { getValidToken, fetchMediaItems, createMediaItem, deleteMediaItem } from '@/lib/google'
 
 export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin = c.admin
   const { data: company } = await admin
     .from('companies')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('id', c.id)
     .single()
 
   if (!company) return NextResponse.json({ items: [] })
@@ -39,13 +37,11 @@ export async function GET() {
 // POST — upload a photo to GBP by URL
 // Body: { url: string, category: string }
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin = c.admin
   const { data: company } = await admin
-    .from('companies').select('id').eq('user_id', user.id).single()
+    .from('companies').select('id').eq('id', c.id).single()
   if (!company) return NextResponse.json({ error: 'No company' }, { status: 404 })
 
   const { data: conn } = await admin
@@ -74,13 +70,11 @@ export async function POST(req: NextRequest) {
 
 // DELETE — remove an owner-uploaded photo by its GBP media name
 export async function DELETE(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin = c.admin
   const { data: company } = await admin
-    .from('companies').select('id').eq('user_id', user.id).single()
+    .from('companies').select('id').eq('id', c.id).single()
   if (!company) return NextResponse.json({ error: 'No company' }, { status: 404 })
 
   const { data: conn } = await admin

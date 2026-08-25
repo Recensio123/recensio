@@ -26,15 +26,23 @@ function donutSegmentPath(
 export function DonutChart({ segments }: { segments: { label: string; value: number }[] }) {
   const size = 140, cx = 70, cy = 70, outerR = 56, innerR = 36
   const total = segments.reduce((s, seg) => s + seg.value, 0) || 1
-  let angle = -Math.PI / 2
+
+  /* Vinklarna räknas ut före ritningen i stället för att summeras under den.
+     En variabel som ändrades inuti map() gav rätt bild första gången och fel
+     bild vid varje omrendering — segmenten fortsatte där de slutade förra
+     varvet i stället för att börja om på tolv. Felet syns bara ibland, vilket
+     är det som gör det svårt att hitta. */
+  const bågar = segments.map((seg, i) => {
+    const före = segments.slice(0, i).reduce((s, x) => s + x.value, 0)
+    const från = -Math.PI / 2 + (före / total) * 2 * Math.PI
+    return { från, till: från + (seg.value / total) * 2 * Math.PI - 0.02 }
+  })
+
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {segments.map((seg, i) => {
-        const span  = (seg.value / total) * 2 * Math.PI
-        const end   = angle + span - 0.02
-        const path  = donutSegmentPath(cx, cy, outerR, innerR, angle, end)
+        const path  = donutSegmentPath(cx, cy, outerR, innerR, bågar[i].från, bågar[i].till)
         const color = DONUT_COLORS[seg.label] ?? DONUT_PALETTE[i % DONUT_PALETTE.length]
-        angle += span
         return <path key={i} d={path} fill={color} />
       })}
       <text x={cx} y={cy - 6}  textAnchor="middle" fill="white"  fontSize="18" fontWeight="700">{total.toLocaleString('sv-SE')}</text>

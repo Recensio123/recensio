@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getValidToken, fetchReviews, fetchLocationCategory, fetchPerformance, fetchSCSites, fetchSCQueries, fetchAdsCustomers, fetchAdsCampaigns, fetchAdsKeywords, fetchGA4Properties, fetchGA4Stream, väljGA4Property, fetchGA4Report, type GA4Window } from '@/lib/google'
+import { getValidToken, fetchReviews, fetchLocationCategory, fetchPerformance, fetchSCSites, fetchSCQueries, fetchSCDagar, väljSCSajt, fetchAdsCustomers, fetchAdsCampaigns, fetchAdsKeywords, fetchGA4Properties, fetchGA4Stream, väljGA4Property, fetchGA4Report, type GA4Window } from '@/lib/google'
 import { categoriseSource } from '@/lib/categorise-source'
 
 const starMap: Record<string, number> = { FIVE: 5, FOUR: 4, THREE: 3, TWO: 2, ONE: 1 }
@@ -181,21 +181,42 @@ export async function syncAds(companyId: string): Promise<boolean> {
   const token = await getValidToken(companyId)
   if (!token) return false
 
-  // Auto-detect customer ID if not stored
+  /*
+   * Vilket annonskonto.
+   *
+   * Tog tidigare det första i listan, en gång, för alltid. Har salongen haft
+   * en byrå ligger byråns konton ofta kvar i deras åtkomst, och då hämtade vi
+   * någon annans annonssiffror — utan att något såg fel ut.
+   *
+   * Nu väljs bara när valet är entydigt. Google ger ingen adress eller något
+   * annat att matcha på här, till skillnad från GA4-propertyn, så flera konton
+   * går inte att skilja åt härifrån. Då är det bättre att inte hämta något:
+   * en tom vy leder till en fråga, fel siffror leder till fel beslut.
+   *
+   * Kvar att bygga: ett val i panelen för den som har flera. Tills dess är den
+   * kunden osynlig i annonsvyn i stället för felaktigt beskriven.
+   */
   let customerId = conn.ads_customer_id
-  if (!customerId) {
-    try {
-      const customers = await fetchAdsCustomers(token)
-      if (!customers.length) return false
+  try {
+    const customers = await fetchAdsCustomers(token)
+    if (!customers.length) return false
+
+    /* Ett sparat konto som inte längre finns i åtkomsten är inte längre
+       giltigt — då väljs om i stället för att fortsätta fråga efter det. */
+    if (customerId && !customers.includes(customerId)) customerId = null
+
+    if (!customerId && customers.length === 1) {
       customerId = customers[0]
       await admin
         .from('google_connections')
         .update({ ads_customer_id: customerId })
         .eq('company_id', companyId)
-    } catch {
-      return false
     }
+  } catch {
+    /* Listan kunde inte hämtas. Ett redan sparat konto duger. */
   }
+
+  if (!customerId) return false
 
   try {
     const [campaigns, keywords] = await Promise.all([
@@ -390,8 +411,19 @@ export async function syncGA4(companyId: string): Promise<boolean> {
   }
 }
 
-// Syncs Search Console query data for a company.
-// Replaces all existing SC queries with fresh data from the last 28 days.
+/**
+ * Search Console: sökorden för fönstret, och dygnen bakom dem.
+ *
+ * Två skrivningar, båda som upsert. Att köra funktionen två gånger ger samma
+ * resultat som att köra den en gång, och en natt som missades lagas nästa
+ * körning eftersom hela 28-dagarsfönstret hämtas varje gång.
+ *
+ * Sökorden skrevs tidigare med radera-och-skriv-om. Det höll tabellen ren men
+ * utan transaktion runt sig: föll skrivningen efter raderingen stod salongen
+ * utan sökord till nästa dygn. Nu skrivs raderna över på plats, och de som
+ * inte längre finns kvar hos Google städas bort efteråt — i den ordningen, så
+ * det aldrig finns ett ögonblick då tabellen är tom.
+ */
 export async function syncSearchConsole(companyId: string): Promise<number | null> {
   const admin = createAdminClient()
 
@@ -406,30 +438,56 @@ export async function syncSearchConsole(companyId: string): Promise<number | nul
   const token = await getValidToken(companyId)
   if (!token) return null
 
-  // Auto-detect site URL if not stored yet
+  /*
+   * Vilken property. Frågan ställs varje synk och inte bara första gången —
+   * samma skäl som för GA4-propertyn: en sajt kan verifieras efter att kunden
+   * kopplade, och en sparad property kan sluta gälla. Valet självt ligger i
+   * väljSCSajt, som matchar mot salongens egna adresser i stället för att ta
+   * första bästa.
+   */
   let siteUrl = conn.sc_site_url
-  if (!siteUrl) {
-    try {
-      const sites = await fetchSCSites(token)
-      if (!sites.length) return null
-      siteUrl = sites[0]
+  try {
+    const sites = await fetchSCSites(token)
+    const vald  = väljSCSajt(sites, await sajtensAdresser(admin, companyId), siteUrl)
+    if (vald && vald !== siteUrl) {
+      siteUrl = vald
       await admin
         .from('google_connections')
         .update({ sc_site_url: siteUrl })
         .eq('company_id', companyId)
-    } catch {
-      return null
     }
+  } catch {
+    /* Listan kunde inte hämtas. En redan sparad property duger. */
   }
 
+  if (!siteUrl) return null
+
   try {
-    const queries = await fetchSCQueries(token, siteUrl)
+    const [queries, dagar] = await Promise.all([
+      fetchSCQueries(token, siteUrl),
+      fetchSCDagar(token, siteUrl),
+    ])
+
+    /* Dygnsraderna först. De är historiken, och de ska in även en dag då
+       sökordslistan råkar komma tom tillbaka. */
+    if (dagar.length) {
+      await admin.from('search_console_daily').upsert(
+        dagar.map(d => ({
+          company_id:  companyId,
+          date:        d.date,
+          clicks:      d.clicks,
+          impressions: d.impressions,
+          position:    d.position,
+          synced_at:   new Date().toISOString(),
+        })),
+        { onConflict: 'company_id,date' },
+      )
+    }
+
     if (!queries.length) return 0
 
-    // Replace existing rows for this company with fresh data
-    await admin.from('search_console_queries').delete().eq('company_id', companyId)
-
-    await admin.from('search_console_queries').insert(
+    const nu = new Date().toISOString()
+    await admin.from('search_console_queries').upsert(
       queries.map(q => ({
         company_id:  companyId,
         query:       q.query,
@@ -437,8 +495,18 @@ export async function syncSearchConsole(companyId: string): Promise<number | nul
         impressions: q.impressions,
         ctr:         q.ctr,
         position:    q.position,
-      }))
+        synced_at:   nu,
+      })),
+      { onConflict: 'company_id,query' },
     )
+
+    /* Sökord som inte längre finns i fönstret. De skrevs inte över nyss, så
+       deras synced_at är äldre än den här körningens — det är hela testet. */
+    await admin
+      .from('search_console_queries')
+      .delete()
+      .eq('company_id', companyId)
+      .lt('synced_at', nu)
 
     return queries.length
   } catch {

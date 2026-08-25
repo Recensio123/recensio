@@ -1,7 +1,6 @@
 import { notFound, permanentRedirect } from 'next/navigation'
 import { sectionPageTitle } from '@/lib/sectionPages'
 import type { Metadata } from 'next'
-import { sitePath, siteAbsUrl } from '@/lib/siteHost'
 import { BookButton } from '@/components/site/PreviewSite'
 import { getPublishedSite, redirectToOwnDomain, sitePathOf, siteAbsUrlOf } from '../site-data'
 import { SitePage, isDark } from '../artiklar/chrome'
@@ -104,7 +103,10 @@ export default async function ContactPage({ params }: Props) {
           </a>
         ))}
 
-        {row(siteLabel(content.labels, 'hoursTitle'), (
+        {/* Tömmer salongen öppettiderna försvinner rubriken med dem. En rubrik
+            utan innehåll ser ut som att sidan gått sönder, och "Öppettider"
+            följt av ingenting är sämre än att inte nämna dem alls. */}
+        {content.hours?.trim() && row(siteLabel(content.labels, 'hoursTitle'), (
           <p style={{ fontSize: 16, color: c.h }}>{content.hours}</p>
         ))}
 
@@ -129,19 +131,18 @@ export default async function ContactPage({ params }: Props) {
           </div>
         ))}
 
-        {/* What the salon does, in their own words and prices — a visitor who
-            reached the contact page is choosing, not browsing, and the four
-            things they might book belong within reach of the phone number. */}
-        {(content.services ?? []).length > 0 && row('Det vi gör', (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(content.services ?? []).slice(0, 4).map((s, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                <span style={{ fontSize: 15, color: c.h }}>{s.name}</span>
-                {!!s.price?.trim() && <span style={{ fontSize: 15, color: fgSub, whiteSpace: 'nowrap' }}>{s.price}</span>}
-              </div>
-            ))}
-            <a href={`/s/${site.slug}/tjanster`} style={{ fontSize: 14, color: c.a, textDecoration: 'underline', marginTop: 4 }}>
-              {siteLabel(content.labels, 'pricePage')} →
+        {/* Vad salongen gör, i egna ord — inte fyra tjänster med priser.
+            Listan var en andra prislista på fel sida: den blev inaktuell så
+            fort priserna ändrades, och den som står här söker telefonnumret,
+            inte ett urval. Texten är kundens egen att skriva om, och länken
+            går till hela listan i stället för att kopiera delar av den. */}
+        {!!siteLabel(content.labels, 'contactDoBody') && row(siteLabel(content.labels, 'contactDoTitle'), (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
+            <p style={{ fontSize: 16, color: c.h, lineHeight: 1.7 }}>
+              {siteLabel(content.labels, 'contactDoBody')}
+            </p>
+            <a href={sitePathOf(site, '/tjanster')} style={{ fontSize: 15, color: c.a, textDecoration: 'none', borderBottom: `1.5px solid ${c.a}`, paddingBottom: 2 }}>
+              {siteLabel(content.labels, 'seePrices')} →
             </a>
           </div>
         ))}

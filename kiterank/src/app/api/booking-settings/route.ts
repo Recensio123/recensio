@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { currentAccess, canManageSalon } from '@/lib/access'
 import { fetchPolicy } from '@/lib/bookingPolicy'
+import { hämtaKrav } from '@/lib/bokningskrav'
 
 /* The salon's booking policy: how late a customer may cancel, how close to
  * the hour they may book, whether a free slot confirms itself, and what the
@@ -12,7 +13,17 @@ export async function GET() {
   const access = await currentAccess()
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const admin = createAdminClient()
-  return NextResponse.json(await fetchPolicy(admin, access.companyId))
+  /* Kravet på kunduppgifter hör hit: det är en bokningsregel som salongen
+     sätter, även om kanalvalet sätter dess golv. */
+  const [policy, krav] = await Promise.all([
+    fetchPolicy(admin, access.companyId),
+    hämtaKrav(admin, access.companyId),
+  ])
+  return NextResponse.json({
+    ...policy,
+    contact_channel: krav.kanal,
+    required:        krav.krav,
+  })
 }
 
 /* The policy applies to the whole salon, so only the salon changes it. */
@@ -43,6 +54,32 @@ export async function PATCH(req: NextRequest) {
 
   if ('auto_confirm' in body) {
     fields.booking_auto_confirm = Boolean(body.auto_confirm)
+  }
+
+  /* Marginalen innan ett besök stängs, och gränsen för när en sen bokning
+     slipper påminnelse. Båda i timmar, båda med samma tak — ett dygn är så
+     långt någon av dem är meningsfull, och taket hindrar ett skrivfel från
+     att stänga av regeln i praktiken. */
+  for (const [namn, kolumn] of [
+    ['auto_complete_hours', 'booking_auto_complete_hours'],
+    ['reminder_skip_hours', 'booking_reminder_skip_hours'],
+  ] as const) {
+    if (!(namn in body)) continue
+    const timmar = Number(body[namn])
+    if (!Number.isFinite(timmar) || timmar < 0 || timmar > 24) {
+      return NextResponse.json({ error: 'Ogiltigt värde' }, { status: 400 })
+    }
+    fields[kolumn] = Math.round(timmar)
+  }
+
+  /* Städtiden. Taket på två timmar är inte en gräns någon når — det är för att
+     ett skrivfel i fältet inte ska kunna tömma en hel dag i kalendern. */
+  if ('buffer_minutes' in body) {
+    const mins = Number(body.buffer_minutes)
+    if (!Number.isFinite(mins) || mins < 0 || mins > 120) {
+      return NextResponse.json({ error: 'Ogiltigt värde' }, { status: 400 })
+    }
+    fields.booking_buffer_minutes = Math.round(mins)
   }
 
 

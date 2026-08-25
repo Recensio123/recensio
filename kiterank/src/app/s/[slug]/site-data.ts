@@ -14,6 +14,7 @@ import {
 } from '@/lib/articles'
 import { sectionPageEnabled, sectionPageTitle, sectionPageBlocks, type SectionPageId } from '@/lib/sectionPages'
 import { withExamples } from '@/lib/exampleContent'
+import { somPrislista, type Tjanst } from '@/lib/tjanster'
 
 /*
  * The published customer site, resolved from a slug.
@@ -317,17 +318,60 @@ async function loadSite(companyId: string): Promise<Omit<PublishedSite, 'matched
     ...((config.content as Partial<SiteContent>) ?? {}),
   }, industry)
 
+  /*
+   * Prislistan kommer ur tjänstetabellen, inte ur sparat innehåll.
+   *
+   * Det här är den enda listan numera. Förut fanns en prislista i content och
+   * en tjänstelista i en tabell, båda seedade ur branschpaketet vid
+   * registreringen, och de gled isär i samma stund kunden ändrade ett pris:
+   * hemsidan sa 750, bokningen tog 650.
+   *
+   * Tom tabell betyder att salongen inte lagt upp sina tjänster. Då publiceras
+   * ingen prissida — varken listan eller de fyra som lyfts fram på startsidan,
+   * som kommer ur samma rader. Att bara tömma listan räcker inte: en tom
+   * prislista faller tillbaka på branschens standardtjänster när den ritas, en
+   * bekvämlighet för förhandsvisningen som här hade publicerat exakt de priser
+   * vi aldrig går i god för. Sektionen måste stängas av.
+   *
+   * Ett fel pris ute på en publicerad sida är inget skönhetsfel. En kund som
+   * bokat på "Klippning 650 kr" har en rimlig förväntan när hon sätter sig i
+   * stolen, och salongen får hantera skillnaden.
+   */
+  const { data: tjänsteRader } = await admin
+    .from('services')
+    .select('id, kategori, namn, beskrivning, pris_kr, pris_fran, visa_pris, minuter, visa_tid, bokningsbar, max_per_dag, avbokning_timmar, forberedelse, aktiv, sort_order')
+    .eq('company_id', company.id)
+    .eq('aktiv', true)
+    .order('sort_order')
+
+  const prislista = somPrislista((tjänsteRader ?? []) as unknown as Tjanst[])
+
+  if (prislista.length) {
+    content.menuCategories = prislista
+  } else {
+    content.menuCategories = []
+    content.services       = []
+    content.siteFeatures   = { ...(content.siteFeatures ?? {}), pricelist: false }
+  }
+
   // The customer's colors baked into the template here, once — every page
   // that renders from this (articles, service pages) gets them for free
   if (content.colorOverrides && Object.keys(content.colorOverrides).length) {
     template = { ...template, colors: { ...template.colors, ...content.colorOverrides } }
   }
 
-  /* Every booking button on every template resolves through bookingUrl. A
-   * customer who pasted an external link (Bokadirekt and the like) keeps it;
-   * everyone else gets Kiterank's own booking page — so no published site
-   * ever ships a booking button that goes nowhere. */
-  if (!content.bookingUrl?.trim()) {
+  /*
+   * Bokningsadressen, när det finns en bokning att peka på.
+   *
+   * En kund som klistrat in en extern länk — Bokadirekt och liknande — behåller
+   * den. Har de vårt bokningssystem påslaget får de vår bokningssida.
+   *
+   * Har de varken eller lämnas fältet tomt, och knapparna ritas som döda. Den
+   * här raden pekade tidigare alltid på /book/<slug> oavsett, vilket garanterade
+   * att en länk fanns men inte att den ledde någonstans: en salong utan
+   * bokningssystem fick en knapp till en sida som inte tar emot tider.
+   */
+  if (!content.bookingUrl?.trim() && (content.siteFeatures?.booking ?? true)) {
     content.bookingUrl = `/book/${company.slug}`
   }
 
@@ -442,19 +486,4 @@ export type { Article }
 /** The articles a visitor can actually reach on this site, newest first. */
 export function articlesOf(site: PublishedSite): Article[] {
   return publishedArticles(site.content.articles)
-}
-
-/** Every published site — feeds the sitemap. */
-export async function getPublishedSlugs(): Promise<string[]> {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('site_config')
-    .select('template, companies!inner(slug)')
-    .not('template', 'is', null)
-
-  type Row = { companies: { slug: string | null } | { slug: string | null }[] }
-  return (data as Row[] | null ?? [])
-    .flatMap(r => Array.isArray(r.companies) ? r.companies : [r.companies])
-    .map(c => c.slug)
-    .filter((s): s is string => !!s)
 }

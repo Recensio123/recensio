@@ -1,12 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SyncButton } from '../connections/SyncButton'
-import { AnalyticsDashboard } from './AnalyticsDashboard'
+import { AnalyticsDashboardTest2 } from './AnalyticsDashboardTest2'
 import { PageHeader } from '@/components/dashboard/PageHeader'
 import { getPublishedSite, servicesOf, articlesOf } from '@/app/s/[slug]/site-data'
 import { siteBookings } from './siteBookings'
 import { WebsiteSetupGuide } from './WebsiteSetupGuide'
-import { VISA_EXEMPEL } from '@/lib/datalage'
+import { dataläge, harSiffror } from '@/lib/datalage'
+import { visaExempel } from '@/lib/datalage.server'
+import { TomtLage } from '@/components/dashboard/TomtLage'
 
 const mockData = {
   website_url:          'https://www.bbc.com',
@@ -204,7 +206,11 @@ export default async function AnalyticsPage() {
      here and passed down — all three windows, so the period selector has
      something to switch between. */
   const bookings = company ? await siteBookings(company.id) : null
-  const isLive = !VISA_EXEMPEL && !!snapshot
+  /* Exempel bara när läget är påslaget. Utan koppling och utan data visas
+     ingenting — mockdatan var tidigare reserven, vilket betydde att en kund
+     utan Google-koppling fick påhittade besökssiffror som sina egna. */
+  const läge   = dataläge({ kopplat: !!conn?.ga4_property_id, harData: !!snapshot, exempel: await visaExempel() })
+  const isLive = läge === 'egen'
   const data   = isLive ? snapshot : mockData
 
   /* What the selector switches between on a live account. On the example data
@@ -217,6 +223,21 @@ export default async function AnalyticsPage() {
         Yearly:  newest('Yearly')  ?? snapshot,
       }
     : null
+
+  /* Rubriken står kvar även när det inte finns något att visa. En flik som
+     tappar sitt namn ser trasig ut; en som behåller det ser tom ut, vilket
+     är sanningen. */
+  if (!harSiffror(läge)) return (
+    <div className="px-4 sm:px-8 py-6 space-y-6">
+      <PageHeader
+        titleSv="Hemsida"
+        titleEn="Website"
+        subSv="Besökare, trafikkällor och hur dina sidor fungerar"
+        subEn="Visitors, traffic sources, and how your pages perform"
+      />
+      <TomtLage källa="website" läge={läge} />
+    </div>
+  )
 
   return (
     <div className="px-4 sm:px-8 py-6 space-y-6">
@@ -236,7 +257,7 @@ export default async function AnalyticsPage() {
 
       {needsSetup && <WebsiteSetupGuide isConnected={!!conn?.refresh_token} />}
 
-      <AnalyticsDashboard data={data as typeof mockData} pageTitles={pageTitles} bookings={bookings} periods={periods} />
+      <AnalyticsDashboardTest2 data={data as typeof mockData} pageTitles={pageTitles} bookings={bookings} periods={periods} />
 
     </div>
   )

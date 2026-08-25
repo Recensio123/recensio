@@ -1,5 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
+import type { teamData } from '@/lib/teamData'
+
+type TeamData = Awaited<ReturnType<typeof teamData>>
 import { useLang } from '@/components/LanguageProvider'
 import { type StaffMember } from './data'
 
@@ -65,12 +68,17 @@ const ROLE_ORDER = ['admin', 'schema', 'staff'] as const
 
 const inputCls = 'bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-mustard/60 w-full'
 
-export function KontonTab({ staff, ownerEmail }: { staff: StaffMember[]; ownerEmail: string | null }) {
+export function KontonTab({ staff, ownerEmail, initial = null }: {
+  staff: StaffMember[]
+  ownerEmail: string | null
+  /* Sidan har oftast redan läst kontona. Då ritas listan direkt. */
+  initial?: TeamData | null
+}) {
   const { lang } = useLang()
   const L = T[lang]
 
-  const [members, setMembers] = useState<Member[]>([])
-  const [migrated, setMigrated] = useState(true)
+  const [members, setMembers] = useState<Member[]>((initial?.members ?? []) as Member[])
+  const [migrated, setMigrated] = useState(initial ? initial.migrated : true)
   const [adding, setAdding]     = useState(false)
   const [busy, setBusy]         = useState(false)
   const [error, setError]       = useState('')
@@ -82,12 +90,14 @@ export function KontonTab({ staff, ownerEmail }: { staff: StaffMember[]; ownerEm
   const [role, setRole]         = useState<Member['role']>('staff')
   const [staffId, setStaffId]   = useState('')
 
+  /* Hämtas bara när sidan inte hann göra det. */
   useEffect(() => {
+    if (initial) return
     fetch('/api/team')
       .then(r => r.json())
       .then(d => { setMembers(d.members ?? []); if (d.migrated === false) setMigrated(false) })
       .catch(() => {})
-  }, [])
+  }, [initial])
 
   const bookable = staff.filter(s => s.is_active)
 

@@ -20,7 +20,7 @@ import { isOwnHost } from '@/lib/siteHost'
 /** Paths that belong to the platform rather than to a customer's site. */
 const PASS_THROUGH = [
   '/api', '/_next', '/book', '/auth', '/dashboard', '/onboarding',
-  '/hub', '/site-editor', '/preview', '/favicon.ico',
+  '/hub', '/preview', '/favicon.ico',
 ]
 
 export async function proxy(request: NextRequest) {
@@ -29,6 +29,17 @@ export async function proxy(request: NextRequest) {
   /* ── A salon's own domain ─────────────────────────────────────────────── */
   if (host && !isOwnHost(host)) {
     const { pathname } = request.nextUrl
+
+    /* Google och äldre webbläsare hämtar /favicon.ico direkt på roten, utan
+       att läsa sidans head. Släpps den igenom serverar Next plattformens egen
+       ikon — och salongen bär vårt märke i Googles sökresultat på sin egen
+       domän. Den skrivs därför om till sajtens ikon, som resten av sidorna. */
+    if (pathname === '/favicon.ico') {
+      const url = request.nextUrl.clone()
+      url.pathname = `/s/${host.split(':')[0].toLowerCase()}/icon`
+      return NextResponse.rewrite(url)
+    }
+
     const platform = PASS_THROUGH.some(p => pathname === p || pathname.startsWith(p + '/'))
     /* robots and sitemap answer per host and already know which; /s/ means the
        request has been rewritten already, or someone typed our internal

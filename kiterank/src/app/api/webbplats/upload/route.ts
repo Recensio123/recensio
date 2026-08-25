@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient }      from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { currentCompany } from '@/lib/companyScope'
 
 /*
  * Image uploads for the website editor.
@@ -25,17 +24,11 @@ const FONT_TYPES: Record<string, string> = {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
-
-  const { data: company } = await admin
-    .from('companies').select('id').eq('user_id', user.id).single()
-  if (!company) return NextResponse.json({ error: 'No company' }, { status: 404 })
-
-  const formData = await req.formData()
+  const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin   = c.admin
+  const company = { id: c.id }
+const formData = await req.formData()
   const file = formData.get('file') as File | null
 
   if (!file)                return NextResponse.json({ error: 'Ingen fil' },        { status: 400 })

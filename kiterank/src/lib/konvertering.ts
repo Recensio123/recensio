@@ -1,4 +1,4 @@
-import { hasBooking, type Plan } from '@/components/PlanProvider'
+import { hasBooking, type Plan } from '@/lib/plan'
 
 /*
  * Vad en ny kund kallas — ett ord, på ett ställe.

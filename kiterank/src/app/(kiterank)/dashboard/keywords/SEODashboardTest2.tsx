@@ -2,72 +2,16 @@
 import { useState, useMemo }  from 'react'
 import { Tooltip }            from '@/components/Tooltip'
 import { PeriodSelector, type Period } from '@/components/dashboard/PeriodSelector'
-import { useLang, type Lang } from '@/components/LanguageProvider'
+import { useLang }            from '@/components/LanguageProvider'
 import { SEOTrendChart }      from './TrendChart'
+import { hinkar, summa, spann, mättSedan, type Dag } from '@/lib/sokhistorik'
+import { computeCoverage } from '@/components/DataCoverageProvider'
 import type { Query }         from './KeywordTable'
 import { KeywordTableTest2, DEFAULT_SORT, type TableSort, type SortCol } from './KeywordTableTest2'
 import { OpportunitiesPanelTest2 } from './OpportunitiesPanelTest2'
-import { type TrendPoint }    from './TrendChart'
 import { ActionPlanLink }     from '@/components/dashboard/ActionPlanLink'
 import { HelpButton }         from '@/components/dashboard/HelpButton'
-import { useCoverage, coveredValue } from '@/components/DataCoverageProvider'
 import { CoverageNote, MeasuringSince } from '@/components/dashboard/CoverageNote'
-
-type PrevData = { clicks: number; impressions: number; avgPosition: number }
-
-// Flow metrics (clicks/impressions) scale with the selected period.
-// Weekly ≈ monthly / 4.3, Yearly ≈ monthly × 12. Deterministic — no randomness.
-const FLOW_FACTOR: Record<Period, number> = { Weekly: 1 / 4.3, Monthly: 1, Yearly: 12 }
-// Adjusts the previous-period baseline so WoW / MoM / YoY deltas differ plausibly:
-// week-over-week is noisier and smaller, year-over-year shows cumulative growth.
-const PREV_ADJUST: Record<Period, number> = { Weekly: 1.05, Monthly: 1, Yearly: 0.78 }
-
-// One chart bar covers this many days, per selected period. Used to cut the
-// series back to the number of buckets our Search Console history can actually
-// fill — Google does not backfill, so drawing three year-bars for a property
-// registered 16 months ago would invent two of them.
-const BUCKET_DAYS: Record<Period, number> = { Weekly: 7, Monthly: 30, Yearly: 365 }
-const DAY_MS = 86_400_000
-
-/** How many chart buckets our history for this source can honestly fill. */
-function supportedBuckets(startedAt: Date | null, period: Period): number {
-  if (!startedAt) return 1
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)   // midnight-anchored, matching DataCoverageProvider
-  const held = Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / DAY_MS))
-  return Math.max(1, Math.ceil(held / BUCKET_DAYS[period]))
-}
-
-/* Period-scaled trend series, derived from the monthly mock. Fixed
-   deterministic factors — no randomness in render. */
-function buildSeries(period: Period, trend: TrendPoint[], lang: Lang): TrendPoint[] {
-  if (period === 'Weekly') {
-    const lastClicks = trend[trend.length - 1]?.clicks      ?? 99
-    const lastImp    = trend[trend.length - 1]?.impressions ?? 5_440
-    const factors    = [0.85, 0.88, 0.82, 0.90, 0.95, 0.93, 0.98, 1.0]
-    return Array.from({ length: 8 }, (_, i) => {
-      const d = new Date()
-      d.setDate(d.getDate() - (7 - i) * 7)
-      return {
-        month:       d.toLocaleDateString(lang === 'sv' ? 'sv-SE' : 'en-GB', { day: 'numeric', month: 'short' }),
-        clicks:      Math.round(lastClicks / 4.3 * factors[i]),
-        impressions: Math.round(lastImp    / 4.3 * factors[i]),
-      }
-    })
-  }
-  if (period === 'Yearly') {
-    const now         = new Date()
-    const totalClicks = trend.reduce((s, p) => s + p.clicks, 0)
-    const totalImp    = trend.reduce((s, p) => s + p.impressions, 0)
-    const scales      = [0.55, 0.75, 1.0]
-    return Array.from({ length: 3 }, (_, i) => ({
-      month:       String(now.getFullYear() - 2 + i),
-      clicks:      Math.round(totalClicks * 2 * scales[i]),
-      impressions: Math.round(totalImp    * 2 * scales[i]),
-    }))
-  }
-  return trend
-}
 
 const T = {
   sv: {
@@ -94,6 +38,7 @@ const T = {
     opportunitiesTip: 'Sökord du inte rankar för ännu — förslag att satsa på, växande efterfrågan, säsongstoppar och din egen bevakningslista.',
     actionContext: 'Vill du klättra i placeringarna?',
     period: { Weekly: 'mot förra veckan', Monthly: 'mot förra månaden', Yearly: 'mot förra året' } as Record<Period, string>,
+    unchanged:     'Oförändrat',
   },
   en: {
     subtitle:      "How people find you on Google — and where you're leaving traffic on the table",
@@ -119,20 +64,22 @@ const T = {
     opportunitiesTip: "Keywords you don't rank for yet — suggestions to target, growing demand, seasonal peaks, and your own watchlist.",
     actionContext: 'Want to climb these rankings?',
     period: { Weekly: 'WoW', Monthly: 'MoM', Yearly: 'YoY' } as Record<Period, string>,
+    unchanged:     'Unchanged',
   },
 }
 
 export function SEODashboardTest2({
   queries,
-  trend,
-  prev,
+  dagar,
+  idag,
   isLive,
 }: {
   queries:    Query[]
-  trend:      TrendPoint[]
-  prev:       PrevData
+  /** Söktrafiken dygn för dygn, äldst först. Allt över kurvan räknas ur den. */
+  dagar:      Dag[]
+  /** Serverns datum. Vyn får inte fråga webbläsaren vad klockan är. */
+  idag:       string
   isLive:     boolean
-  paid?:      unknown
 }) {
   const { lang } = useLang()
   const t = T[lang]
@@ -140,26 +87,30 @@ export function SEODashboardTest2({
   const [tableSort, setTableSort] = useState<TableSort>(DEFAULT_SORT)
   const periodLabel = t.period[period]
 
-  // How far back our Search Console record actually reaches. A change
-  // percentage is only safe to render once the preceding period is covered too.
-  const coverage  = useCoverage('search', period)
+  /*
+   * Hur långt tillbaka minnet räcker — läst ur den äldsta raden vi har, inte
+   * ur växeln i sidomenyn.
+   *
+   * Google efterfyller ingenting: en property som verifierades i mars har
+   * ingenting före mars, och det finns inget sätt att få fram det. Därför
+   * måste varje jämförelse på skärmen ställas mot vad vi faktiskt mätt, och
+   * det är den här raden som svarar på det numera.
+   */
+  const coverage = useMemo(
+    () => computeCoverage(mättSedan(dagar), period, new Date(`${idag}T12:00:00`)),
+    [dagar, period, idag])
   const showDelta = coverage.state === 'full'
-  const startedAt = coverage.startedAt
 
-  // Period-aware chart data, cut back to the buckets our history can fill.
-  // Anything older than the day we started measuring would be a fabricated bar.
-  const chartTrend = useMemo(() => {
-    const series    = buildSeries(period, trend, lang)
-    const supported = supportedBuckets(startedAt, period)
-    const trimmed   = supported >= series.length ? series : series.slice(series.length - supported)
-    // A surviving bucket only holds the days we actually measured, so its bar
-    // has to shrink to match — otherwise a 6-day record draws a full year.
-    return trimmed.map(p => ({
-      ...p,
-      clicks:      coveredValue(p.clicks,      coverage),
-      impressions: coveredValue(p.impressions, coverage),
-    }))
-  }, [period, trend, lang, startedAt, coverage])
+  /* Staplarna, räknade ur dygnen. Ingen skalning och ingen projicering — en
+     stapel är summan av sina dagar, och en period vi inte mätt hela ritas som
+     stympad i stället för att fyllas ut. */
+  const chartTrend = useMemo(
+    () => hinkar(dagar, period, idag, lang).map(h => ({
+      month:       h.etikett,
+      clicks:      h.clicks,
+      impressions: h.impressions,
+    })),
+    [dagar, period, idag, lang])
 
   const trendTitle =
     coverage.state === 'since-start' ? t.trendStart  :
@@ -167,25 +118,32 @@ export function SEODashboardTest2({
     period === 'Yearly'              ? t.trendYearly :
     t.trendMonthly
 
-  // KPIs — clicks are a flow metric and scale with the period; page-1 and
-  // quick-win counts are state metrics and stay the same regardless of period.
-  // A period-scaled flow figure is also trimmed to the days we actually hold:
-  // under a "sedan start" heading, a full year projected from a few weeks of
-  // measurement would be exactly the confident-but-wrong number to avoid.
+  /*
+   * Nyckeltalen: perioden mot den lika långa före den.
+   *
+   * Båda är mätta. Tidigare multiplicerades sökordslistans 28-dagarssumma med
+   * en faktor per period — "Klick i år" var alltså senaste månaden gånger tolv
+   * — och jämförelsetalet var hårdkodat. Nu läses båda ur dygnsraderna, och
+   * finns inte den föregående perioden i minnet visas ingen pil alls.
+   */
   const { periodClicks, periodPrevClicks } = useMemo(() => {
-    const monthlyClicks = queries.reduce((s, q) => s + q.clicks, 0)
-    const f = FLOW_FACTOR[period]
+    const s = spann(period, idag)
     return {
-      periodClicks:     coveredValue(Math.round(monthlyClicks * f), coverage),
-      periodPrevClicks: prev.clicks * f * PREV_ADJUST[period],
+      periodClicks:     summa(dagar, s.från, s.till).clicks,
+      periodPrevClicks: summa(dagar, s.förraFrån, s.förraTill).clicks,
     }
-  }, [queries, prev, period, coverage])
+  }, [dagar, period, idag])
   const page1Count  = queries.filter(q => q.position <= 10).length
   const quickWins   = queries.filter(q => q.position >= 4 && q.position <= 15).length
 
   const mkDelta = (curr: number, p: number, lowerIsBetter = false) => {
     if (!p) return null
-    const pct        = (curr - p) / p * 100
+    const pct = (curr - p) / p * 100
+    /* Avrundat till noll är oförändrat. "↓0.0% mot förra veckan" är en pil som
+       pekar utan att mena något — ordet säger samma sak utan att låtsas. */
+    if (Math.abs(pct) < 0.05) {
+      return { label: t.unchanged, color: 'text-slate-500' }
+    }
     const isPositive = lowerIsBetter ? pct < 0 : pct > 0
     return {
       label: `${pct > 0 ? '↑' : '↓'}${Math.abs(pct).toFixed(1)}% ${periodLabel}`,

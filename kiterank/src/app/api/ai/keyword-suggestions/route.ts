@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { currentCompany } from '@/lib/companyScope'
 import { type KeywordSuggestion } from '@/app/(kiterank)/dashboard/paid-search/types'
 
 // ── Mock fallback (Stockholm plumber) ─────────────────────────────────────────
@@ -57,6 +58,12 @@ function parseKeywords(text: string): KeywordSuggestion[] | null {
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  /* Rutten skickar en fråga till modellen och betalar för svaret. Öppen var
+     den vår faktura åt vem som helst som hittade adressen. */
+  if (!await currentCompany()) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { businessType, location, services, country, currency, existingKeywords = [] } =
     (await req.json()) as {
       businessType:     string

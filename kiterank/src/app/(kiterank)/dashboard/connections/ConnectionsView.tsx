@@ -323,6 +323,13 @@ export function ConnectionsView({
           {/* Footer actions */}
           <div className="px-4 sm:px-6 py-4 border-t border-navy-700 flex items-center flex-wrap gap-4">
             <SyncButton lastSynced={lastSynced} />
+            {/* Sökdatan hade ingen egen knapp: rutten fanns men inget anropade
+                den, så den enda vägen till nya siffror var att vänta på natten.
+                Profilen och hemsidemätningen har haft sin knapp hela tiden. */}
+            <SyncButton
+              endpoint="/api/sc/sync"
+              label={lang === 'sv' ? 'Synka sökdata' : 'Sync search data'}
+            />
             <ExternalLink href="/api/auth/google" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
               {L.reconnect}
             </ExternalLink>

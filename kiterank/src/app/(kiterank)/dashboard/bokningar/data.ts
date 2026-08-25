@@ -154,6 +154,94 @@ const MOCK_SPREAD: Booking[] = (() => {
   return out
 })()
 
+/*
+ * Året som gått.
+ *
+ * Samma sorts rader som veckorna ovan, bara äldre: riktiga bokningar med kund,
+ * behandling, pris och stol. Statistiken i bokningshistoriken räknas ur dem och
+ * inte ur en egen sifferserie — en salong som markerar ett besök som avslutat
+ * ska se stapeln röra sig, och det gör den bara om det är samma rader hela
+ * vägen.
+ *
+ * Säsongen är en frisörsalongs år som det faktiskt ser ut: december är bäst,
+ * juli är sämst eftersom halva Sverige är bortrest, och augusti tar igen det
+ * när skolan börjar. Ovanpå ligger en försiktig tillväxt — exempelsalongen ska
+ * visa en verksamhet som går framåt, för det är den formen en kund ska känna
+ * igen när kurvan är deras egen.
+ *
+ * Kunderna delas i två grupper med flit. Ungefär sextio stamkunder står för
+ * fyra bokningar av tio och kommer tillbaka var sjätte vecka; resten är
+ * lösare. Utan den uppdelningen blir kundhistoriken en lista där alla varit här
+ * exakt lika många gånger, vilket ingen salong känner igen sig i.
+ */
+const SÄSONG = [0.95, 0.92, 1.02, 1.05, 1.10, 1.00, 0.62, 1.08, 1.06, 1.00, 1.04, 1.28]
+
+const FÖRNAMN = [
+  'Karin', 'Nils', 'Ida', 'Tobias', 'Rebecka', 'Mattias', 'Linnea', 'Viktor',
+  'Amanda', 'Fredrik', 'Sofia', 'Daniel', 'Klara', 'Anton', 'Emma', 'Gustav',
+  'Nora', 'Simon', 'Alva', 'Oscar',
+]
+const EFTERNAMN = [
+  'Ek', 'Ahlberg', 'Sjögren', 'Lund', 'Falk', 'Roos', 'Dahl', 'Hage',
+  'Ström', 'Nyman', 'Berglund', 'Wik', 'Söderberg', 'Ryd', 'Palm', 'Lindahl',
+  'Wallin', 'Krook', 'Rehn', 'Bergqvist',
+]
+
+/** 400 namn — ungefär så många kunder en trestolssalong träffar på ett år. */
+const KUNDER = FÖRNAMN.flatMap(f => EFTERNAMN.map(e => `${f} ${e}`))
+const STAMKUNDER = 60
+
+const MOCK_HISTORIK: Booking[] = (() => {
+  const ut: Booking[] = []
+  let n = 0
+
+  /* Bakåt till dagen efter det spann veckorna ovan täcker, så att de två inte
+     lägger bokningar på samma dagar. Fyrahundra dagar räcker till de tretton
+     månader historiken visar, med marginal för att månaden vi står i inte är
+     slut. */
+  for (let day = -400; day <= -13; day++) {
+    const datum = daysFromToday(day)
+    const d = new Date(datum + 'T12:00:00')
+    if (d.getDay() === 0) continue                                  // stängt
+
+    /* Samma täthet som veckorna framåt, men vägd med säsongen. Att räkna
+       kvar-tid som tillväxt gör att kurvan lutar uppåt mot idag. */
+    const växt   = 1 + (400 + day) * 0.0004
+    const bas    = 2 + (Math.abs(day) % 3)                          // 2–4
+    const perDag = Math.max(1, Math.round(bas * SÄSONG[d.getMonth()] * växt))
+
+    for (let i = 0; i < perDag; i++) {
+      const svc   = SPREAD_SERVICES[n % SPREAD_SERVICES.length]
+      const staff = MOCK_STAFF[n % MOCK_STAFF.length]
+      /* Två av fem bokningar går till en stamkund. */
+      const kund  = n % 5 < 2
+        ? KUNDER[(n * 31) % STAMKUNDER]
+        : KUNDER[STAMKUNDER + ((n * 137) % (KUNDER.length - STAMKUNDER))]
+
+      /* Numret följer personen och inte bokningen — det är det som håller ihop
+         en kund mellan besöken i kundhistoriken. */
+      const kundNr = KUNDER.indexOf(kund)
+
+      ut.push({
+        id: `mh-${day}-${i}`,
+        customerName: kund,
+        phone: `070-${String(100 + (kundNr % 900)).padStart(3, '0')} ${String(10 + (kundNr % 89)).padStart(2, '0')} ${String(11 + (kundNr % 88)).padStart(2, '0')}`,
+        email: '', service: svc.name, duration: svc.duration, price: svc.price,
+        date: datum, time: SPREAD_TIMES[(i + Math.abs(day)) % SPREAD_TIMES.length],
+        /* Elva av hundra blev aldrig av: sju återbud och fyra som inte kom.
+           Siffrorna är inte pynt — de är vad panelens andelar räknas ur. */
+        status: n % 25 === 0 ? 'no_show' : (n % 14 === 0 ? 'cancelled' : 'completed'),
+        note: '', source: n % 5 === 0 ? 'phone' : 'online',
+        channel: n % 5 === 0 ? null : ['google', 'facebook', 'instagram', 'direct'][n % 4],
+        staffId: staff.id, staffRequested: n % 3 !== 0,
+        createdAt: daysFromToday(day - 7),
+      })
+      n++
+    }
+  }
+  return ut
+})()
+
 export const MOCK_BOOKINGS: Booking[] = [
   // Today — a day that looks like work
   { id: 'm1',  customerName: 'Anna Karlsson',   phone: '070-123 45 67', email: 'anna@example.com',   service: 'Klippning dam',              duration: 45,  price: 650,  date: daysFromToday(0),  time: '09:00', status: 'confirmed', note: '',                              source: 'online',  channel: 'google',   staffId: 'ms1', staffRequested: true, createdAt: daysFromToday(-6) },
@@ -169,7 +257,31 @@ export const MOCK_BOOKINGS: Booking[] = [
   { id: 'm9',  customerName: 'Erik Sandberg',   phone: '070-567 89 01', email: 'erik@example.com',   service: 'Skägg & konturering',        duration: 25,  price: 250,  date: daysFromToday(-2), time: '15:30', status: 'completed', note: '',                              source: 'walk_in', channel: null,       staffId: 'ms1', staffRequested: false, createdAt: daysFromToday(-9)  },
   { id: 'm10', customerName: 'Maria Öman',      phone: '073-678 90 12', email: 'maria@example.com',  service: 'Slingor (helhuvud)',         duration: 150, price: 1900, date: daysFromToday(-3), time: '10:00', status: 'completed', note: '',                              source: 'online',  channel: 'google',   staffId: 'ms3', staffRequested: true, createdAt: daysFromToday(-12) },
   { id: 'm11', customerName: 'Peter Holm',      phone: '070-789 01 23', email: 'peter@example.com',  service: 'Klippning herr',             duration: 30,  price: 450,  date: daysFromToday(-5), time: '16:00', status: 'no_show',   note: '',                              source: 'online',  channel: 'facebook', staffId: 'ms2', staffRequested: false, createdAt: daysFromToday(-11) },
+  /* Stamkunderna.
+   *
+   * En salong lever på dem som kommer tillbaka, och utan några i exemplet
+   * ser kundhistoriken ut som en lista med engångskunder — vilket är precis
+   * det en salong inte vill ha. De tre nedan visar de mönster ägaren ska
+   * kunna känna igen: den lojala med jämn cykel, den som lägger mycket per
+   * besök, och den som varit borta länge och bör ringas.
+   *
+   * Samma telefonnummer i varje rad — det är det som håller ihop en person
+   * mellan bokningarna. */
+  { id: 'mk1', customerName: 'Karin Lindgren', phone: '070-411 22 33', email: 'karin@example.com', service: 'Klippning dam',       duration: 45,  price: 650,  date: daysFromToday(-18),  time: '10:00', status: 'completed', note: '', source: 'online', channel: 'google',    staffId: 'ms1', staffRequested: true, createdAt: daysFromToday(-25)  },
+  { id: 'mk2', customerName: 'Karin Lindgren', phone: '070-411 22 33', email: 'karin@example.com', service: 'Klippning dam',       duration: 45,  price: 650,  date: daysFromToday(-74),  time: '10:30', status: 'completed', note: '', source: 'online', channel: 'direct',    staffId: 'ms1', staffRequested: true, createdAt: daysFromToday(-81)  },
+  { id: 'mk3', customerName: 'Karin Lindgren', phone: '070-411 22 33', email: 'karin@example.com', service: 'Slingor (helhuvud)',  duration: 150, price: 1900, date: daysFromToday(-131), time: '13:00', status: 'completed', note: '', source: 'phone',  channel: null,        staffId: 'ms1', staffRequested: true, createdAt: daysFromToday(-138) },
+
+  { id: 'mk4', customerName: 'David Ohlsson',  phone: '073-522 33 44', email: 'david@example.com', service: 'Klippning herr',      duration: 30,  price: 450,  date: daysFromToday(-26),  time: '17:00', status: 'completed', note: '', source: 'online', channel: 'instagram', staffId: 'ms2', staffRequested: false, createdAt: daysFromToday(-30) },
+  { id: 'mk5', customerName: 'David Ohlsson',  phone: '073-522 33 44', email: 'david@example.com', service: 'Klippning herr + Skägg & konturering', duration: 55, price: 700, date: daysFromToday(-61), time: '17:30', status: 'completed', note: '', source: 'walk_in', channel: null, staffId: 'ms2', staffRequested: false, createdAt: daysFromToday(-61) },
+
+  /* Borta i åtta månader. Den här raden är hela poängen med sorteringen på
+     senaste besök: hon syns längst ned, och det är ett säljtillfälle. */
+  { id: 'mk6', customerName: 'Ingrid Bergström', phone: '076-633 44 55', email: 'ingrid@example.com', service: 'Keratin-behandling', duration: 120, price: 2500, date: daysFromToday(-242), time: '11:00', status: 'completed', note: '', source: 'online', channel: 'google', staffId: 'ms3', staffRequested: true, createdAt: daysFromToday(-250) },
+  { id: 'mk7', customerName: 'Ingrid Bergström', phone: '076-633 44 55', email: 'ingrid@example.com', service: 'Balayage',           duration: 150, price: 2200, date: daysFromToday(-318), time: '11:00', status: 'completed', note: '', source: 'online', channel: 'google', staffId: 'ms3', staffRequested: true, createdAt: daysFromToday(-325) },
+
   // The weeks around this one — so the week and month views show a calendar
   // that is actually filling up rather than a single busy day
   ...MOCK_SPREAD,
+  // Och året före dem, som statistiken i bokningshistoriken räknas ur
+  ...MOCK_HISTORIK,
 ]

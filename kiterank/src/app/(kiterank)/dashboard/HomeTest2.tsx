@@ -1,5 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { harSiffror, type Dataläge } from '@/lib/datalage'
+import { TomtLage } from '@/components/dashboard/TomtLage'
 import Link from 'next/link'
 import { usePlan, hasBooking } from '@/components/PlanProvider'
 import { useLang } from '@/components/LanguageProvider'
@@ -142,7 +144,14 @@ const CHANNEL_NUMBERS = [
   { metric: '1 240',   deltaPct: +18, lowerBetter: false },
 ]
 
-export function HomeTest2({ companyName }: { companyName: string }) {
+/*
+ * Startsidan visar exempelsiffror så länge exempelläget är på. Är det av och
+ * ingenting är kopplat finns det inget att rapportera — och då säger sidan
+ * det i stället för att hitta på en vecka som inte hänt. Varje tal här är
+ * påhittat: fjorton nya kunder, 16 800 kronor, två sökord som slösat 700.
+ * En salong som läser det och tror på det fattar beslut på ingenting.
+ */
+export function HomeTest2({ companyName, läge }: { companyName: string; läge: Dataläge }) {
   const { plan } = usePlan()
   const { lang } = useLang()
   const t = T[lang]
@@ -204,19 +213,20 @@ export function HomeTest2({ companyName }: { companyName: string }) {
   const streak   = MOCK_STREAK.current + (complete ? 1 : 0)
   const best     = Math.max(MOCK_STREAK.best, streak)
 
-  return (
-    <div className="px-4 sm:px-8 py-6 space-y-6">
+  /* Rubriken står kvar, resten faller bort. */
+  if (!harSiffror(läge)) return <TomtLage källa="gbp" läge={läge} />
 
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold text-white">{companyName}</h1>
-          <p className="text-slate-400 text-sm mt-0.5">{t.subtitle}</p>
-        </div>
+  return (
+    <div className="space-y-6">
+
+      {/* Rubriken bor i sidan. Här står bara det som hör till sammanfattningen. */}
+      <div className="flex items-center justify-end gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-mustard bg-mustard/10 border border-mustard/20 px-3 py-1.5 rounded-full">
-            {t.sample}
-          </span>
+          {läge === 'exempel' && (
+            <span className="text-xs text-mustard bg-mustard/10 border border-mustard/20 px-3 py-1.5 rounded-full">
+              {t.sample}
+            </span>
+          )}
           <HelpButton topic="hem" />
         </div>
       </div>
@@ -411,7 +421,7 @@ export function HomeTest2({ companyName }: { companyName: string }) {
       {/* ── Bokningarna, mitt i marknadsföringen ─────────────────────────────
           The loop the platform promises: the sections above say what the
           marketing brought in, this says what it booked in kronor. */}
-      {bookingMode && <BokningarHemSection />}
+      {bookingMode && <BokningarHemSection exempel={läge === 'exempel'} />}
 
       {/* ── Channel row ──────────────────────────────────────────────────── */}
       <div>

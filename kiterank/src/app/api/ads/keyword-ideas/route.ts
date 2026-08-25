@@ -1,8 +1,7 @@
 import { NextResponse }       from 'next/server'
-import { createClient }       from '@/lib/supabase/server'
-import { createAdminClient }  from '@/lib/supabase/admin'
+import { currentCompany } from '@/lib/companyScope'
 import { getValidToken }      from '@/lib/google'
-import { VISA_EXEMPEL } from '@/lib/datalage'
+import { visaExempel } from '@/lib/datalage.server'
 
 const ADS_BASE = 'https://googleads.googleapis.com/v19'
 
@@ -28,18 +27,17 @@ export type KeywordIdea = {
   topOfPageBidMicros: number
 }
 export async function GET() {
-  if (VISA_EXEMPEL) return NextResponse.json({ ideas: MOCK_IDEAS, source: 'mock' })
+  const exempel = await visaExempel()
+  if (exempel) return NextResponse.json({ ideas: MOCK_IDEAS, source: 'mock' })
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin = c.admin
 
   const { data: company } = await admin
     .from('companies')
     .select('id, name, website')
-    .eq('user_id', user.id)
+    .eq('id', c.id)
     .single()
   if (!company) return NextResponse.json({ error: 'No company' }, { status: 404 })
 

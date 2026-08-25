@@ -198,7 +198,7 @@ export function Nav() {
                       All features included in your free 7-day trial.
                     </p>
                     <Link
-                      href="/auth/login"
+                      href="/onboarding"
                       onClick={() => setMenuOpen(false)}
                       className="text-xs font-semibold text-[#f0b429] hover:text-[#e0a520] transition-colors"
                     >
@@ -231,7 +231,7 @@ export function Nav() {
             Log in
           </Link>
           <Link
-            href="/auth/login"
+            href="/onboarding"
             className="bg-[#f0b429] hover:bg-[#e0a520] text-[#080f1e] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
             Get started free

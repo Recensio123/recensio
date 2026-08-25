@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server'
+import { currentCompany } from '@/lib/companyScope'
 // @ts-ignore — no types for this package
 import googleTrends from 'google-trends-api'
 
 export async function POST(request: Request) {
+  /* Ingen kunddata passerar här, men anropet går vidare till Google Trends
+     från vår adress. En öppen rutt är vår IP som någon annans verktyg. */
+  if (!await currentCompany()) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { keywords, geo } = await request.json()
 
   try {

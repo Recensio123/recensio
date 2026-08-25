@@ -6,8 +6,6 @@ import { annonser }     from './annonser'
 import { hemsida }      from './hemsida'
 import { bokningar }    from './bokningar'
 import { sms }          from './sms'
-import { aiSynlighet }  from './ai-synlighet'
-import { katalogkoll }  from './katalogkoll'
 import { webbplats }    from './webbplats'
 import { kopplingar }   from './kopplingar'
 import { installningar } from './installningar'
@@ -21,8 +19,6 @@ export const SUPPORT_TOPICS: SupportTopic[] = [
   hemsida,
   bokningar,
   sms,
-  aiSynlighet,
-  katalogkoll,
   webbplats,
   kopplingar,
   installningar,

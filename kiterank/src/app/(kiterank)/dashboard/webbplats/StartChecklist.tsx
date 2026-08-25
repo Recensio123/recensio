@@ -21,11 +21,18 @@ export type ChecklistItem = {
   done:    boolean
   /** The panel section a click opens. */
   section: string
+  /** Leder posten ut ur panelen i stället för till en sektion. Klicket fångas
+   *  av redigerarens egen varning om osparat, som redan bevakar varje länk. */
+  href?:   string
+  /** En andra väg, som en knapp till höger. För steg som går att göra på två
+   *  sätt — för hand, eller med hjälp. */
+  bredvid?: { text: string; action: string }
 }
 
-export function StartChecklist({ items, onGo }: {
+export function StartChecklist({ items, onGo, onAction }: {
   items: ChecklistItem[]
   onGo:  (section: string) => void
+  onAction?: (action: string) => void
 }) {
   const doneCount = items.filter(i => i.done).length
   const allDone   = doneCount === items.length
@@ -54,13 +61,19 @@ export function StartChecklist({ items, onGo }: {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {items.map(item => (
-          <button
-            key={item.id}
-            onClick={() => onGo(item.section)}
+        {items.map(item => {
+          /* Samma rad, men en länk när den lämnar sidan och en knapp när den
+             stannar. En knapp som navigerar bort går inte att öppna i en ny
+             flik, och den syns inte som en länk för den som läser med skärm. */
+          const Rad = item.href ? 'a' : 'button'
+          return (
+          <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <Rad
+            {...(item.href ? { href: item.href } : { onClick: () => onGo(item.section) })}
             style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left', width: '100%',
+              display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left', flex: 1, minWidth: 0,
               background: 'none', border: 'none', padding: '6px 2px', cursor: 'pointer', borderRadius: 6,
+              textDecoration: 'none',
             }}
           >
             <span style={{
@@ -84,9 +97,28 @@ export function StartChecklist({ items, onGo }: {
                 <span style={{ display: 'block', fontSize: 11, color: '#64748b', fontFamily: F, marginTop: 1 }}>{item.hint}</span>
               )}
             </span>
-            {!item.done && <span style={{ fontSize: 12, color: '#eab308', fontFamily: F, whiteSpace: 'nowrap', marginTop: 1 }}>Öppna →</span>}
-          </button>
-        ))}
+            {!item.done && !item.bredvid && <span style={{ fontSize: 12, color: '#eab308', fontFamily: F, whiteSpace: 'nowrap', marginTop: 1 }}>Öppna →</span>}
+          </Rad>
+
+          {/* Den andra vägen, till höger och i en lugnare form. Den är ett
+              alternativ och inte det vi föreslår först — två lika starka
+              knappar bredvid varandra blir ett val att fundera på i stället
+              för en väg framåt. */}
+          {item.bredvid && onAction && (
+            <button
+              onClick={() => onAction(item.bredvid!.action)}
+              style={{
+                flexShrink: 0, marginTop: 4, padding: '5px 9px', fontSize: 11, fontWeight: 600,
+                fontFamily: F, color: '#cbd5e1', background: 'none',
+                border: '1px solid #334155', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              {item.bredvid.text}
+            </button>
+          )}
+          </div>
+          )
+        })}
       </div>
     </div>
   )

@@ -1,25 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient }      from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { currentCompany } from '@/lib/companyScope'
 
 // GET /api/tools/utm-links — fetch all links for this company
 export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
-  const { data: company } = await admin
-    .from('companies')
-    .select('id')
-    .eq('user_id', user.id)
-    .single()
-  if (!company) return NextResponse.json({ links: [] })
-
-  const { data: links } = await admin
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  /* Salongens id kommer ur inloggningen. Att slå upp företaget en gång till
+     för att kontrollera att det finns är en tur och retur till databasen som
+     bara bekräftar något vi redan visste. */
+  const { data: links } = await c.admin
     .from('utm_links')
     .select('*')
-    .eq('company_id', company.id)
+    .eq('company_id', c.id)
     .order('created_at', { ascending: false })
     .limit(50)
 
@@ -28,10 +20,8 @@ export async function GET() {
 
 // POST /api/tools/utm-links — save a new link
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
   const { full_url, short_url, source, medium, campaign, term } = body
 
@@ -39,11 +29,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const admin = createAdminClient()
+  const admin = c.admin
   const { data: company } = await admin
     .from('companies')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('id', c.id)
     .single()
   if (!company) return NextResponse.json({ error: 'Company not found' }, { status: 404 })
 

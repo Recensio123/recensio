@@ -26,28 +26,37 @@ export type Källa = 'gbp' | 'search' | 'ads' | 'website'
 export type Dataläge = 'egen' | 'ej-kopplat' | 'för-nytt' | 'exempel'
 
 /*
- * Under bygget visas exempel i alla vyer.
+ * Exempeldata är ett läge man går in i, inte ett tillstånd produkten är i.
  *
- * Kopplade konton har mycket tunn verklig data medan produkten byggs, och en
- * vy som alltid är tom går inte att bedöma. När plattformen ska möta kund
- * ändras den här raden till `false` — och då slår det igenom överallt på en
- * gång, vilket är hela poängen med att den bara finns här.
+ * Var tidigare en konstant satt till `true`, vilket betydde att varje siffra i
+ * varje vy var påhittad för alla — inklusive en betalande kund. Nu är det en
+ * växel som bara plattformsadmin kan slå på, och bara för sin egen session.
+ *
+ * Två skäl att göra den till en växel i stället för att bara slå av den:
+ * vyerna behöver fortfarande gå att bedöma medan produkten byggs, och samma
+ * konto ska kunna se hur bokningsläget och leadläget ter sig med riktig data.
+ * Det går inte om exemplen ligger i vägen.
+ *
+ * Kunden når den aldrig. Kakan ensam räcker inte — behörigheten kontrolleras
+ * varje gång, så en satt kaka i en kundwebbläsare ger ingenting.
  */
-export const VISA_EXEMPEL = true
+export const MOCK_KAKA = 'kr_mock'
 
 /**
  * Vad vyn ska visa.
  *
  * `kopplat` — finns en anslutning alls för den här källan.
  * `harData` — har vi något att visa för perioden.
+ * `exempel` — läget är påslaget, från `visaExempel()`.
  */
-export function dataläge({ kopplat, harData }: {
+export function dataläge({ kopplat, harData, exempel }: {
   kopplat: boolean
   harData: boolean
+  exempel: boolean
 }): Dataläge {
-  if (VISA_EXEMPEL) return 'exempel'
-  if (!kopplat)     return 'ej-kopplat'
-  if (!harData)     return 'för-nytt'
+  if (exempel)  return 'exempel'
+  if (!kopplat) return 'ej-kopplat'
+  if (!harData) return 'för-nytt'
   return 'egen'
 }
 
@@ -55,4 +64,32 @@ export function dataläge({ kopplat, harData }: {
  *  lämna plats åt det tomma läget i stället. */
 export function harSiffror(läge: Dataläge): boolean {
   return läge === 'egen' || läge === 'exempel'
+}
+
+/*
+ * Vilken vy plattformen visas i.
+ *
+ * Var tidigare en av/på-växel mellan kundens konto och ett påhittat. Guiden
+ * gör det till tre lägen, och en boolean kan inte bära tre — därför ett värde
+ * och inte en flagga till. Nästa läge efter det ska inte kräva att någon
+ * hittar alla ställen som frågar "är demot på?".
+ *
+ *   kund   deras konto, deras siffror. Det enda en betalande kund ser.
+ *   mock   ett påhittat konto med exempelsiffror, alltid märkta som sådana.
+ *   guide  kundens eget konto, men med introduktionen påslagen — så att den
+ *          går att bedöma utan att skapa ett nytt konto varje gång.
+ *
+ * Guiden visar avsiktligt riktig data och inte exempel: den ska bedömas som en
+ * ny kund möter den, och en ny kund har ett tomt konto. Ser den bra ut fylld
+ * med en annan salongs siffror säger det ingenting om hur den känns dag ett.
+ */
+
+export type Vy = 'kund' | 'mock' | 'guide'
+
+export const VY_KAKA = 'kr_vy'
+
+/** Kakans värde som ett läge. Allt okänt är kundens egen vy — det säkra valet:
+ *  ett trasigt värde ska aldrig kunna visa påhittade siffror. */
+export function läsVy(rå: unknown): Vy {
+  return rå === 'mock' || rå === 'guide' ? rå : 'kund'
 }

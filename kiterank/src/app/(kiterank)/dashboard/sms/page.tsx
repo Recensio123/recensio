@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 
-/* SMS moved into Bokningar — the sendouts belong to the calendar they serve.
- * The old address keeps working for bookmarks and old links. */
+/* SMS-fliken blev Kommande och flyttade in i Bokningar: listan handlar om
+ * bokningarna den tjänar, inte om kanalen. Den gamla adressen fungerar kvar för
+ * bokmärken och gamla länkar. */
 export default function SMSPage() {
-  redirect('/dashboard/bokningar?flik=sms')
+  redirect('/dashboard/bokningar?flik=kommande')
 }

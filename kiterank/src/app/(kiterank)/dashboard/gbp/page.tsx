@@ -1,10 +1,12 @@
 import { createClient }      from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getValidToken, fetchMediaItems, type MediaItem } from '@/lib/google'
-import { GBPDashboard } from './GBPDashboard'
+import { GBPDashboardTest2 } from './GBPDashboardTest2'
 import { PageHeader } from '@/components/dashboard/PageHeader'
 import { type GBPData } from './types'
-import { VISA_EXEMPEL } from '@/lib/datalage'
+import { dataläge, harSiffror } from '@/lib/datalage'
+import { visaExempel } from '@/lib/datalage.server'
+import { TomtLage } from '@/components/dashboard/TomtLage'
 
 const now = new Date()
 
@@ -93,7 +95,8 @@ export default async function GBPPage() {
   let liveMediaItems: MediaItem[] = []
   let isLive = false
 
-  if (!VISA_EXEMPEL && company && conn?.gbp_location_id && conn?.refresh_token) {
+  const exempel = await visaExempel()
+  if (!exempel && company && conn?.gbp_location_id && conn?.refresh_token) {
     try {
       const token = await getValidToken(company.id)
       if (token) {
@@ -105,9 +108,28 @@ export default async function GBPPage() {
     }
   }
 
+  /* Profilen är kopplad eller inte. Är den inte det finns ingen profil att
+     beskriva, och exempelsiffror hade blivit ett påstående om en salong vi
+     aldrig sett. */
+  const läge = dataläge({ kopplat: !!conn?.gbp_location_id, harData: isLive, exempel })
   const data: GBPData = isLive
     ? { ...mockData, mediaItems: liveMediaItems }
     : mockData
+
+  /* Rubriken står kvar även när det inte finns något att visa. En flik som
+     tappar sitt namn ser trasig ut; en som behåller det ser tom ut, vilket
+     är sanningen. */
+  if (!harSiffror(läge)) return (
+    <div className="px-4 sm:px-8 py-6 space-y-6">
+        <PageHeader
+          titleSv="Din Google-profil"
+          titleEn="Google Business Profile"
+          subSv="Recensioner, inlägg och foton på din Google-profil"
+          subEn="Reviews, posts, and photos on your Google listing"
+        />
+      <TomtLage källa="gbp" läge={läge} />
+    </div>
+  )
 
   return (
     <div className="px-4 sm:px-8 py-6">
@@ -121,7 +143,7 @@ export default async function GBPPage() {
         />
       </div>
 
-      <GBPDashboard data={data} />
+      <GBPDashboardTest2 data={data} />
     </div>
   )
 }

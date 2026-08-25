@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { currentCompany } from '@/lib/companyScope'
 
 export async function POST(req: NextRequest) {
+  /* Rutten läser ingen kunddata, men den spenderar vår Bitly-kvot åt den som
+     anropar den. Utan inloggning är det vem som helst på internet. */
+  if (!await currentCompany()) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { url } = await req.json()
 
   if (!url || typeof url !== 'string') {

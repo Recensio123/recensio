@@ -1,5 +1,6 @@
 'use client'
 import { HomeTest2 } from './HomeTest2'
+import { type Dataläge } from '@/lib/datalage'
 
 /*
  * Startsidan — summering och veckans åtgärder på ett ställe.
@@ -13,10 +14,11 @@ import { HomeTest2 } from './HomeTest2'
  * Frågan ställs nu i dashboard/layout, mot kontot, på servern. Hit kommer man
  * bara om registreringen är klar — så här finns inget kvar att kontrollera.
  */
-export function StartpageSwitch({ companyName }: {
+export function StartpageSwitch({ companyName, läge }: {
   companyName: string
+  läge: Dataläge
   /** Serversidans markup behålls som skal, men renderas aldrig. */
   children?: React.ReactNode
 }) {
-  return <HomeTest2 companyName={companyName} />
+  return <HomeTest2 companyName={companyName} läge={läge} />
 }

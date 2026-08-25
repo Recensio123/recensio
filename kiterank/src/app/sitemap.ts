@@ -5,10 +5,10 @@ import { requestHost, requestOrigin, isOwnHost } from '@/lib/siteHost'
 /*
  * One sitemap per address.
  *
- * On kiterank.se it lists the marketing pages and every published customer
- * site under /s/<slug> — that is the file submitted to Search Console during
- * onboarding, and the customer pages are the ones whose indexing we are
- * accountable for.
+ * On kiterank.se it lists our own marketing pages and nothing else. The
+ * customer sites under /s/ are temporary addresses — noindexed until a domain
+ * is connected, 301-redirecting once one is — so listing them here would
+ * invite Google to pages we are simultaneously telling it to ignore.
  *
  * On a salon's own domain it lists that salon's pages and nothing else, at
  * their addresses. A sitemap listing other people's sites on their domain

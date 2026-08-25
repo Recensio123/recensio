@@ -1,26 +1,16 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { currentCompany } from '@/lib/companyScope'
 import { buildSiteDraft } from '@/lib/siteTemplates'
-import { clearSiteCache, clearSiteAddress } from '@/app/s/[slug]/site-data'
+import { clearSiteCache } from '@/app/s/[slug]/site-data'
 import { isClosed } from '@/lib/accountStatus'
+import { arkiveraPublicering } from '@/lib/sidarkiv'
 
 export async function PATCH(req: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
-
-  const { data: company } = await admin
-    .from('companies')
-    .select('id')
-    .eq('user_id', user.id)
-    .single()
-
-  if (!company) return NextResponse.json({ error: 'No company' }, { status: 404 })
-
-  /* Avslutat avtal skriver ingenting. Den här routen hämtar företaget på egen
+  const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin   = c.admin
+  const company = { id: c.id }
+/* Avslutat avtal skriver ingenting. Den här routen hämtar företaget på egen
      hand i stället för genom currentAccess, så grinden måste stå här också —
      annars kan en kvarglömd session spara i en panel som inte går att öppna. */
   if (await isClosed(admin, company.id)) {
@@ -28,7 +18,7 @@ export async function PATCH(req: Request) {
   }
 
   const body = await req.json()
-  const { content, template, slug, about, industry } = body
+  const { content, template, about, industry } = body
 
   /* The setup flow sends the customer's answers rather than a whole site.
    * Merged here, on the server, where the current content is known: their
@@ -57,51 +47,13 @@ export async function PATCH(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true, seeded: Object.keys(seeded) })
   }
-
-  /* Address change: the slug is the site's identity on Google, so a rename
-   * must be deliberate — validated, unique, and with the old address kept
-   * for permanent redirects. */
-  let newSlug: string | undefined
-  if (typeof slug === 'string' && slug.trim()) {
-    const normalized = slug
-      .toLowerCase()
-      .replace(/[åä]/g, 'a').replace(/ö/g, 'o')
-      .replace(/[^a-z0-9-]+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-+|-+$/g, '')
-    if (normalized.length < 3) {
-      return NextResponse.json({ error: 'Adressen måste vara minst 3 tecken (a–z, 0–9 och bindestreck)' }, { status: 400 })
-    }
-    const { data: current } = await admin
-      .from('companies').select('slug').eq('id', company.id).single()
-
-    if (current && normalized !== current.slug) {
-      const { data: taken } = await admin
-        .from('companies').select('id').eq('slug', normalized).neq('id', company.id).maybeSingle()
-      if (taken) {
-        return NextResponse.json({ error: 'Adressen är upptagen — välj en annan' }, { status: 409 })
-      }
-      const { error: slugError } = await admin
-        .from('companies').update({ slug: normalized }).eq('id', company.id)
-      if (slugError) return NextResponse.json({ error: slugError.message }, { status: 500 })
-      newSlug = normalized
-
-      // Remember the old address for redirects. Best effort: on databases
-      // where the migration hasn't run yet, the rename still succeeds.
-      try {
-        const { data: prev } = await admin
-          .from('companies').select('old_slugs').eq('id', company.id).single()
-        const oldSlugs: string[] = Array.isArray(prev?.old_slugs) ? prev.old_slugs : []
-        if (current.slug && !oldSlugs.includes(current.slug)) {
-          await admin.from('companies')
-            .update({ old_slugs: [...oldSlugs.filter(s => s !== normalized), current.slug] })
-            .eq('id', company.id)
-        }
-      } catch { /* old_slugs column not migrated yet — redirects start working after */ }
-    } else {
-      newSlug = current?.slug
-    }
-  }
+  /* Inget adressbyte här.
+   *
+   * Panelen slutade erbjuda det när adressen blev tillfällig och noindexerad,
+   * men routen fortsatte ta emot ett slug-fält — så regeln fanns bara i
+   * gränssnittet. En regel som bara finns i gränssnittet är ingen regel: ett
+   * anrop förbi panelen kunde döpa om sajten ändå och bryta varje länk kunden
+   * redan delat. Adressen sätts av servern vid registreringen och ändras inte. */
 
   const { error } = await admin
     .from('site_config')
@@ -120,10 +72,23 @@ export async function PATCH(req: Request) {
    * tills dygnsskyddet löper ut, och kunden ser sin sparning först nästa dag.
    *
    * Ett anrop räcker för alla deras adresser — /s/<slug>, deras egen domän och
-   * varje undersida bär samma etikett. Bytte de adress rensas den gamla också,
-   * annars svarar den kvar med sajten i stället för att skicka vidare. */
+   * varje undersida bär samma etikett. */
   clearSiteCache(company.id)
-  if (newSlug) clearSiteAddress(newSlug)
 
-  return NextResponse.json({ ok: true, ...(newSlug ? { slug: newSlug } : {}) })
+  /*
+   * En kopia av den nyss publicerade versionen.
+   *
+   * Sparningen här är publiceringen — sajten ligger live på samma innehåll —
+   * så det här är enda tillfället då vi säkert vet hur en liveversion såg ut.
+   * Kopian gör två saker: den ger kunden en väg tillbaka från en sparning de
+   * ångrar, och den betyder att formgivning vi utfört aldrig kan gå förlorad
+   * genom att någon skriver över den.
+   *
+   * Efter svaret hade varit snyggare, men en serverlös funktion får inte
+   * fortsätta arbeta efter att den svarat. Kostnaden är några tiondelar på en
+   * sparning; alternativet är kopior som ibland uteblir.
+   */
+  await arkiveraPublicering(admin, company.id)
+
+  return NextResponse.json({ ok: true })
 }

@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useLang } from '@/components/LanguageProvider'
+import { useNu } from '@/components/useNu'
 
 type Props = {
   lastSynced?: string | null
@@ -33,6 +34,7 @@ const T = {
 
 export function SyncButton({ lastSynced, endpoint = '/api/gbp/sync', label }: Props) {
   const { lang } = useLang()
+  const nu = useNu()
   const L = T[lang]
   const [state, setState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [syncedAt, setSyncedAt] = useState<Date | null>(
@@ -63,12 +65,17 @@ export function SyncButton({ lastSynced, endpoint = '/api/gbp/sync', label }: Pr
     error:   'bg-red-500/20 text-red-400',
   }
 
+  /* Datumet står sig utan klockan; "för 3 minuter sedan" gör det inte. Före
+     montering skrivs därför datumet ut, och den relativa tiden tar över när
+     webbläsaren kan svara på vad klockan är. */
   function fmt(date: Date) {
-    const diff = Math.floor((Date.now() - date.getTime()) / 1000)
+    const datum = date.toLocaleDateString(lang === 'sv' ? 'sv-SE' : 'en-SE')
+    if (nu === null) return datum
+    const diff = Math.floor((nu - date.getTime()) / 1000)
     if (diff < 60)    return L.justNow
     if (diff < 3600)  return L.minAgo(Math.floor(diff / 60))
     if (diff < 86400) return L.hoursAgo(Math.floor(diff / 3600))
-    return date.toLocaleDateString(lang === 'sv' ? 'sv-SE' : 'en-SE')
+    return datum
   }
 
   return (

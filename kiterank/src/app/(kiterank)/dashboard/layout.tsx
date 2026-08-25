@@ -8,7 +8,11 @@ import { TooltipProvider } from '@/components/TooltipProvider'
 import { PlanProvider } from '@/components/PlanProvider'
 import { LanguageProvider } from '@/components/LanguageProvider'
 import { DataCoverageProvider } from '@/components/DataCoverageProvider'
-import { VISA_EXEMPEL } from '@/lib/datalage'
+import { hämtaVy } from '@/lib/datalage.server'
+import { OsparatBand } from '@/components/dashboard/Osparat'
+import { AbonnemangsBand } from '@/components/dashboard/AbonnemangsBand'
+import { Betalvagg } from '@/components/dashboard/Betalvagg'
+import { hämtaAbonnemang } from '@/lib/abonnemang.server'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   /* Who is asking decides both which salon this is and how much of it they
@@ -54,7 +58,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
         .limit(1)
         .single()
     : { data: null }
-  const unanswered = VISA_EXEMPEL
+  /*
+   * Abonnemanget avgör två saker: om panelen är öppen alls, och om
+   * bokningssystemet finns. Läses här och skickas ned, så att varje sida
+   * slipper ställa samma fråga — och så att svaret aldrig kan bli olika på
+   * två ställen i samma vy.
+   */
+  const abonnemang = await hämtaAbonnemang(company.id)
+
+  const vy      = await hämtaVy()
+  const exempel = vy === 'mock'
+  const unanswered = exempel
     ? 28  // mock: 47 reviews, 19 responded
     : snapshot
       ? Math.max(0, (snapshot.review_count ?? 0) - (snapshot.reviews_responded ?? 0))
@@ -75,21 +89,46 @@ export default async function DashboardLayout({ children }: { children: React.Re
           __html: `addEventListener('pageshow',function(e){var n=performance.getEntriesByType('navigation')[0];if(e.persisted||(n&&n.type==='back_forward'))location.reload()})`,
         }}
       />
-    <PlanProvider>
+    {/* Bokningsupplägget följer vad kunden betalar för. Växeln i sidomenyn
+        finns kvar för plattformsadmin, men startläget kommer nu från
+        abonnemanget i stället för att alltid vara påslaget. */}
+    <PlanProvider start={abonnemang?.harBokning === false ? 'test' : 'testbok2'}>
       <LanguageProvider>
       <DataCoverageProvider>
       <TooltipProvider>
         <div className="min-h-screen bg-navy-950">
-          <div className="lg:flex w-full">
+          <div className="md:flex w-full">
             <Sidebar
               companyName={company?.name ?? 'Your business'}
               reviewBadge={unanswered}
               connectionStatus={!company ? 'disconnected' : !snapshot ? 'connected' : 'live'}
               role={access.role}
               isPlatformAdmin={!!(await platformAdmin())}
+              vy={vy}
             />
-            <main className="flex-1 overflow-auto pt-14 lg:pt-0">
-              {children}
+            <main className="flex-1 overflow-auto pt-14 md:pt-0">
+              {/* Bandet först på sidan, inte i en hörna. Det är det enda som
+                  skiljer en annan salongs siffror från kundens egna — och när
+                  något är osparat tar den varningen över platsen, eftersom ett
+                  arbete på väg att gå förlorat är det mer brådskande av de
+                  två. */}
+              <OsparatBand vy={vy} />
+              {abonnemang && <AbonnemangsBand tillgång={abonnemang.tillgång} />}
+              {/* Låst konto får paketen i stället för panelen. Sidomenyn står
+                  kvar med flit: den som stängts av ska se vad de förlorat, inte
+                  mötas av ett tomt fönster som ser trasigt ut. */}
+              {abonnemang?.tillgång.låst
+                ? <Betalvagg
+                    läge={abonnemang.läge}
+                    plan={abonnemang.plan}
+                    harBokning={abonnemang.harBokning}
+                    bokningTill={abonnemang.bokningTill}
+                    intervall={abonnemang.intervall}
+                    datum={abonnemang.datum}
+                    harStripeKund={abonnemang.harStripeKund}
+                    priser={abonnemang.priser}
+                  />
+                : children}
             </main>
           </div>
         </div>

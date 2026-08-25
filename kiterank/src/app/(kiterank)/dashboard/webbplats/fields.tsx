@@ -5,7 +5,16 @@ import { useEffect, useState } from 'react'
 
 /** True below the width where panel and preview no longer fit side by side.
  *  The editor then shows one of them at a time behind a toggle. */
-export function useNarrow(breakpoint = 900) {
+/*
+ * När panelen och sidan inte längre får plats bredvid varandra.
+ *
+ * Gränsen låg på 900 px från tiden då sidomenyn tog 224 px av samma rad. Den
+ * är borta i panelen nu, så samma fönster rymmer både redigeraren och en
+ * användbar förhandsvisning — och att se sin sida medan man ändrar den är
+ * hela poängen med panelen. Under 760 px turas de om i stället; en preview på
+ * 300 px är inte en preview, det är en avlång bild.
+ */
+export function useNarrow(breakpoint = 760) {
   const [narrow, setNarrow] = useState(false)
   useEffect(() => {
     const mq = window.matchMedia(`(max-width: ${breakpoint}px)`)

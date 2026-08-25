@@ -93,15 +93,7 @@ export async function zoneStatus(zoneId: string): Promise<string> {
   return z.status
 }
 
-export async function deleteZone(zoneId: string): Promise<void> {
-  await cf(`/zones/${zoneId}`, { method: 'DELETE' })
-}
-
 /* ── Posterna ───────────────────────────────────────────────────────────── */
-
-export async function listRecords(zoneId: string): Promise<DnsRecord[]> {
-  return cf<DnsRecord[]>(`/zones/${zoneId}/dns_records?per_page=200`)
-}
 
 /** Skriver posten. Finns den redan med samma typ och namn uppdateras den i
  *  stället för att läggas till — annars skulle en ny MX hamna vid sidan av den

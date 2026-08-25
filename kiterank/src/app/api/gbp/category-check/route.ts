@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient }      from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { currentCompany } from '@/lib/companyScope'
 import { getValidToken, fetchGoogleCategories } from '@/lib/google'
 import { sortForTrade } from '@/lib/gbpCategories'
 
@@ -20,13 +19,11 @@ import { sortForTrade } from '@/lib/gbpCategories'
  * question comes back for the new one.
  */
 export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-
-  const admin = createAdminClient()
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin = c.admin
   const { data: company } = await admin
-    .from('companies').select('id, industry, country').eq('user_id', user.id).single()
+    .from('companies').select('id, industry, country').eq('id', c.id).single()
   if (!company) return NextResponse.json({ error: 'No company' }, { status: 400 })
 
   const { data: conn } = await admin

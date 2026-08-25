@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient }      from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { currentCompany } from '@/lib/companyScope'
 import { getValidToken }     from '@/lib/google'
 
 const ADS_BASE = 'https://googleads.googleapis.com/v19'
@@ -137,16 +136,11 @@ async function linkLocationAssets(token: string, customerId: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-
-  const admin = createAdminClient()
-  const { data: company } = await admin
-    .from('companies').select('id').eq('user_id', user.id).single()
-  if (!company) return NextResponse.json({ error: 'No company' }, { status: 400 })
-
-  const body = await req.json() as Body
+  const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin   = c.admin
+  const company = { id: c.id }
+const body = await req.json() as Body
 
   const { data: conn } = await admin
     .from('google_connections').select('ads_customer_id').eq('company_id', company.id).single()

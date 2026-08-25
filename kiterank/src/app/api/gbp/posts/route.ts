@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { currentCompany } from '@/lib/companyScope'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { getValidToken, publishPost, PostCTAType } from '@/lib/google'
 
 // GET — list posts for the company
 export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin = c.admin
   const { data: company } = await admin
     .from('companies')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('id', c.id)
     .single()
   if (!company) return NextResponse.json({ posts: [] })
 
@@ -29,10 +27,8 @@ export async function GET() {
 
 // POST — publish a new post to GBP and record it
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
+    const c = await currentCompany()
+  if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
   const { text, imageUrl, ctaType, ctaUrl, scheduledAt } = body as {
     text:          string
@@ -46,11 +42,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Post text is required' }, { status: 400 })
   }
 
-  const admin = createAdminClient()
+  const admin = c.admin
   const { data: company } = await admin
     .from('companies')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('id', c.id)
     .single()
   if (!company) return NextResponse.json({ error: 'No company' }, { status: 404 })
 

@@ -4,10 +4,6 @@ export function fmtDuration(seconds: number): string {
   return `${m}m ${s}s`
 }
 
-export function fmtSaving(ms: number): string {
-  return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`
-}
-
 // Expected CTR by average rank position — Backlinko / Ahrefs industry benchmarks
 export function expectedCTR(position: number): number {
   if (position <= 1)  return 28

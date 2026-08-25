@@ -19,9 +19,22 @@ export async function GET(request: Request) {
         .eq('user_id', user.id)
         .single()
 
-      // New user — send to onboarding
+      /*
+       * Ny användare — vidare till registreringen.
+       *
+       * Paketvalet från startsidan följer med genom Google-inloggningen i
+       * `vidare`. Utan det tappas valet i det ögonblick någon loggar in med
+       * Google, och den som klickat på ett formgivet paket landar i mallflödet
+       * utan att förstå varför.
+       *
+       * Bara egna adresser accepteras. En vidarebefordran som tar vad som
+       * helst är en öppen omdirigering, och den syns aldrig förrän någon
+       * använder den i ett nätfiskemejl.
+       */
       if (!company) {
-        return NextResponse.redirect(`${origin}/onboarding`)
+        const vidare = searchParams.get('vidare') ?? ''
+        const säker = vidare.startsWith('/') && !vidare.startsWith('//')
+        return NextResponse.redirect(`${origin}${säker ? vidare : '/onboarding'}`)
       }
     }
   }

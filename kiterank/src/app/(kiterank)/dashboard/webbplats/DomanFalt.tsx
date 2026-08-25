@@ -24,10 +24,15 @@ import type { DomainRow } from './domanTypes'
  * ett felläge vi hjälper kunden ur är fortfarande ett felläge vi valt att ha.
  */
 
-export function DomanFalt({ namn }: { namn?: string }) {
-  const [rader,  setRader]  = useState<DomainRow[]>([])
-  const [zoner,  setZoner]  = useState(false)
-  const [loaded, setLoaded] = useState(false)
+export function DomanFalt({ namn, initial = null }: {
+  namn?: string
+  /* Sidan har oftast redan läst raderna. Då ritas fältet direkt i stället för
+     att blinka tomt medan ett anrop går. */
+  initial?: { domains: DomainRow[]; zones: boolean } | null
+}) {
+  const [rader,  setRader]  = useState<DomainRow[]>(initial?.domains ?? [])
+  const [zoner,  setZoner]  = useState(initial?.zones ?? false)
+  const [loaded, setLoaded] = useState(Boolean(initial))
   const [value,  setValue]  = useState('')
   const [busy,   setBusy]   = useState<'add' | string | null>(null)
   const [error,  setError]  = useState('')
@@ -44,7 +49,8 @@ export function DomanFalt({ namn }: { namn?: string }) {
     }
   }, [])
 
-  useEffect(() => { void load() }, [load])
+  /* Hämtas bara när sidan inte hann göra det. */
+  useEffect(() => { if (!initial) void load() }, [initial, load])
 
   async function add() {
     const domain = normaliseDomain(value)

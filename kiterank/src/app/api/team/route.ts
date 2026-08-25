@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { teamData } from '@/lib/teamData'
 import { currentAccess, canManageSalon } from '@/lib/access'
 
 /*
@@ -70,23 +71,12 @@ async function lockoutGuard(
   return null
 }
 
+/* Samma data som sidan serverrenderar. Rutten finns för omläsningen efter en
+   ändring — fliken behöver inte fråga vid öppning. */
 export async function GET() {
   const access = await currentAccess()
   if (!canManageSalon(access)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const admin = createAdminClient()
-  try {
-    const { data, error } = await admin
-      .from('company_members')
-      .select('id, user_id, email, name, role, staff_id, created_at')
-      .eq('company_id', access!.companyId)
-      .order('created_at')
-    if (error) throw error
-    return NextResponse.json({ members: data ?? [], owner: access!.email })
-  } catch {
-    // Pre-migration database — the salon simply has no extra accounts yet
-    return NextResponse.json({ members: [], owner: access!.email, migrated: false })
-  }
+  return NextResponse.json(await teamData(createAdminClient(), access!.companyId, access!.email))
 }
 
 export async function POST(req: NextRequest) {

@@ -1,9 +1,11 @@
 import { createClient }      from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { PaidSearchDashboard } from './PaidSearchDashboard'
+import { PaidSearchDashboardTest2 } from './PaidSearchDashboardTest2'
 import { type AdsData }        from './types'
 import { PageHeader } from '@/components/dashboard/PageHeader'
-import { VISA_EXEMPEL } from '@/lib/datalage'
+import { dataläge, harSiffror } from '@/lib/datalage'
+import { visaExempel } from '@/lib/datalage.server'
+import { TomtLage } from '@/components/dashboard/TomtLage'
 
 const now          = new Date()
 const daysInMonth  = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -243,7 +245,7 @@ export default async function PaidSearchPage() {
     : { data: null }
 
   const { data: conn } = company
-    ? await admin.from('google_connections').select('gbp_location_id').eq('company_id', company.id).maybeSingle()
+    ? await admin.from('google_connections').select('gbp_location_id, ads_customer_id').eq('company_id', company.id).maybeSingle()
     : { data: null }
   const gbpConnected = !!conn?.gbp_location_id
 
@@ -254,7 +256,26 @@ export default async function PaidSearchPage() {
     rating:  snap?.rating       ?? undefined,
     reviews: snap?.review_count ?? undefined,
   }
-  const isLive     = !VISA_EXEMPEL && !!campaigns?.length
+  /* Utan annonskonto och utan kampanjer visas ingenting. Att fylla vyn med
+     påhittade kampanjer för den som inte annonserar är att beskriva en
+     verksamhet som inte finns. */
+  const läge   = dataläge({ kopplat: !!conn?.ads_customer_id, harData: !!campaigns?.length, exempel: await visaExempel() })
+  const isLive     = läge === 'egen'
+
+  /* Rubriken står kvar även när det inte finns något att visa. En flik som
+     tappar sitt namn ser trasig ut; en som behåller det ser tom ut, vilket
+     är sanningen. */
+  if (!harSiffror(läge)) return (
+    <div className="px-4 sm:px-8 py-6 space-y-6">
+      <PageHeader
+        titleSv="Annonser"
+        titleEn="Google Ads"
+        subSv="Vad annonserna kostar och vad de ger tillbaka"
+        subEn="What your ads cost and what they bring back"
+      />
+      <TomtLage källa="ads" läge={läge} />
+    </div>
+  )
 
   return (
     <div className="px-4 sm:px-8 py-6 space-y-6">
@@ -266,7 +287,7 @@ export default async function PaidSearchPage() {
         sample={!isLive}
       />
 
-      <PaidSearchDashboard
+      <PaidSearchDashboardTest2
         data={mockData}
         companyIndustry={company?.industry ?? undefined}
         companyCity={company?.city     ?? undefined}

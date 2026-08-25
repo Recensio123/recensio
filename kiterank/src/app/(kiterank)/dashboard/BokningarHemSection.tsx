@@ -10,8 +10,10 @@ import { useLang } from '@/components/LanguageProvider'
  * salon owner can act on, and the reason the platform is one product rather
  * than a website tool next to a booking tool.
  *
- * Example numbers stand in until real bookings exist, same rule as the rest
- * of the page: what is shown may be an example, what is saved never is.
+ * Exempelsiffror hör till mockläget och ingen annanstans. En salong som loggar
+ * in på sitt eget konto ser sina egna tal, även när de är noll — en tom vecka
+ * är ett riktigt svar, och den som tror att åtta bokningar är hennes slutar
+ * lita på varenda siffra i produkten den dag hon förstår att de var påhittade.
  */
 
 type Summary = {
@@ -20,16 +22,23 @@ type Summary = {
   week:      number
   weekValue: number
   pending:   number
+  /** Avbokade tider den kommande veckan — luckor som gått att fylla. */
+  cancelled: number
   channels:  { channel: string; value: number }[]
 }
 
 const EXAMPLE: Summary = {
-  real: false, today: 6, week: 8, weekValue: 9700, pending: 2,
+  real: false, today: 6, week: 8, weekValue: 9700, pending: 2, cancelled: 1,
   channels: [
     { channel: 'google',    value: 4750 },
     { channel: 'instagram', value: 1900 },
     { channel: 'facebook',  value: 650  },
   ],
+}
+
+/* Kontot utan bokningar. Noll är ett svar, inte ett tomrum att fylla. */
+const TOM: Summary = {
+  real: false, today: 0, week: 0, weekValue: 0, pending: 0, cancelled: 0, channels: [],
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -39,7 +48,7 @@ const CHANNEL_LABEL: Record<string, string> = {
 const T = {
   sv: {
     title: 'Bokningar', open: 'Öppna bokningarna →',
-    today: 'idag', week: 'denna vecka', pending: 'väntar svar',
+    today: 'idag', week: 'denna vecka', pending: 'väntar svar', cancelled: 'avbokat',
     valueLabel: 'Bokat värde denna vecka',
     channelTitle: 'Bokade kronor per kanal, 30 dagar',
     channelSub: 'Det här är vad din marknadsföring ger tillbaka — bokningar som kom via varje kanal.',
@@ -47,7 +56,7 @@ const T = {
   },
   en: {
     title: 'Bookings', open: 'Open bookings →',
-    today: 'today', week: 'this week', pending: 'awaiting reply',
+    today: 'today', week: 'this week', pending: 'awaiting reply', cancelled: 'cancelled',
     valueLabel: 'Booked value this week',
     channelTitle: 'Booked kronor per channel, 30 days',
     channelSub: 'This is what your marketing brings back — bookings that arrived through each channel.',
@@ -55,17 +64,24 @@ const T = {
   },
 }
 
-export function BokningarHemSection() {
+export function BokningarHemSection({ exempel = false }: { exempel?: boolean }) {
   const { lang } = useLang()
   const L = T[lang]
-  const [data, setData] = useState<Summary>(EXAMPLE)
+  const [data, setData] = useState<Summary>(exempel ? EXAMPLE : TOM)
 
   useEffect(() => {
+    /* Mockläget hämtar ingenting. Exempelveckan är hela poängen med läget, och
+       ett svar från databasen hade skrivit över den. */
+    if (exempel) return
+    let aktiv = true
     fetch('/api/bookings')
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then((d: Summary) => { if (d.real) setData(d) })
+      /* Svaret gäller oavsett om det innehåller något. Villkoret `if (d.real)`
+         var det som lät exempelsiffrorna stå kvar på ett skarpt konto. */
+      .then((d: Summary) => { if (aktiv) setData(d) })
       .catch(() => {})
-  }, [])
+    return () => { aktiv = false }
+  }, [exempel])
 
   const maxChannel = Math.max(...data.channels.map(c => c.value), 1)
 
@@ -74,7 +90,7 @@ export function BokningarHemSection() {
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <h2 className="text-white font-semibold">
           {L.title}
-          {!data.real && (
+          {exempel && (
             <span className="ml-2 text-[10px] font-normal uppercase tracking-wider text-purple-300/80 bg-purple-500/10 px-1.5 py-0.5 rounded">
               {L.example}
             </span>
@@ -96,6 +112,11 @@ export function BokningarHemSection() {
           <span className="text-slate-300"><b className="text-white">{data.week}</b> {L.week}</span>
           {data.pending > 0 && (
             <span className="text-amber-400"><b>{data.pending}</b> {L.pending}</span>
+          )}
+          {/* Bara när det finns något att fylla. En nolla varje vecka blir en
+              siffra ögat slutar läsa, och då syns inte trean heller. */}
+          {data.cancelled > 0 && (
+            <span className="text-red-400"><b>{data.cancelled}</b> {L.cancelled}</span>
           )}
         </div>
       </div>

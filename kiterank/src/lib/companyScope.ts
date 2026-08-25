@@ -22,7 +22,25 @@ export async function currentCompany(): Promise<Scope | null> {
   if (!user) return null
 
   const admin = createAdminClient()
-  const { data } = await admin.from('companies').select('id').eq('user_id', user.id).single()
+  /*
+   * Ett företag per inloggning håller databasen numera (unikt index på
+   * user_id). Frågan ställs ändå deterministiskt och inte med .single():
+   *
+   * .single() svarar med ett fel så fort det finns mer än en rad, och felet
+   * blev här "ingen behörighet". En kund med en dubblett — vilket gick att få
+   * innan indexet fanns — blev alltså utelåst från varje rutt som går genom
+   * den här, utan att något sa varför.
+   *
+   * Samma ordning som currentAccess använder, så de två aldrig kan peka på
+   * olika företag för samma person.
+   */
+  const { data } = await admin
+    .from('companies')
+    .select('id')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
   if (!data) return null
 
   /* Avslutat avtal ger ingen behörighet. Samma svar som currentAccess ger, av

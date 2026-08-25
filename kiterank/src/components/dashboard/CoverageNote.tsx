@@ -86,9 +86,3 @@ export function MeasuringSince({ coverage, className = '' }: { coverage: Coverag
     </p>
   )
 }
-
-/** Heading suffix for a period we cannot fully cover yet. */
-export function periodHeading(coverage: Coverage, normal: string, lang: Lang): string {
-  if (coverage.state !== 'since-start') return normal
-  return lang === 'sv' ? 'sedan start' : 'since we started'
-}

@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { exchangeCode, fetchAccounts, fetchLocations, fetchSCSites, fetchAdsCustomers, fetchGA4Properties } from '@/lib/google'
+import { exchangeCode, fetchAccounts, fetchLocations, fetchSCSites, fetchAdsCustomers, fetchGA4Properties, type GBPLocation } from '@/lib/google'
+import { cookies } from 'next/headers'
+import { autofyllFrånGoogle } from '@/lib/gbpAutofyll'
+import { syncSearchConsole, syncAds, syncGA4 } from '@/lib/sync'
+import { OAUTH_STATE } from '../route'
 
 const APP = process.env.NEXT_PUBLIC_APP_URL!
+
+/* Återvändandet kör första hämtningen från tre Google-tjänster innan kunden
+ * släpps vidare. Vercels standardtak på tio sekunder hade klippt mitt i den,
+ * och kunden hade mötts av en felsida efter en lyckad koppling. */
+export const maxDuration = 60
 
 // Maps GBP storefrontAddress.regionCode → companies.country value
 const REGION_TO_COUNTRY: Record<string, string> = {
@@ -27,10 +36,20 @@ export async function GET(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.redirect(`${APP}/auth/login`)
 
-  // Verify state matches (CSRF protection)
-  if (state !== Buffer.from(user.id).toString('base64url')) {
-    return NextResponse.redirect(`${APP}/dashboard/connections?error=invalid_state`)
+  /*
+   * Tillståndssträngen måste vara den vi själva skickade i väg.
+   *
+   * Jämförs mot kakan och inte mot något härlett ur användarens id — se
+   * kommentaren i /api/auth/google. Kakan städas oavsett hur det går, så en
+   * sträng aldrig kan användas två gånger.
+   */
+  const väntad = (await cookies()).get(OAUTH_STATE)?.value
+  const svar = (ok: boolean, fel?: string) => {
+    const r = NextResponse.redirect(ok ? `${APP}/dashboard/settings?connected=true` : `${APP}/dashboard/connections?error=${fel}`)
+    r.cookies.delete(OAUTH_STATE)
+    return r
   }
+  if (!väntad || state !== väntad) return svar(false, 'invalid_state')
 
   // Exchange auth code for tokens
   let tokens: { access_token: string; refresh_token: string; expires_in: number }
@@ -49,6 +68,10 @@ export async function GET(request: NextRequest) {
   let gbpCountry    = ''
   let gbpIndustry   = ''
   let gbpWebsite    = ''
+  /* Hela platsen sparas undan, inte bara de fält som redan lästes ut. Telefon
+     och öppettider ska in på hemsidan, och de skrivs först när företaget finns
+     — vilket det inte alltid gör här uppe. */
+  let plats: GBPLocation | null = null
 
   try {
     const accounts = await fetchAccounts(tokens.access_token)
@@ -57,6 +80,7 @@ export async function GET(request: NextRequest) {
       const locations = await fetchLocations(tokens.access_token, gbpAccountId)
       if (locations.length > 0) {
         const loc     = locations[0]
+        plats         = loc
         gbpLocationId = loc.name
         businessName  = loc.title ?? ''
         gbpWebsite    = loc.websiteUri ?? ''
@@ -102,11 +126,17 @@ export async function GET(request: NextRequest) {
   // Use admin client for DB writes to avoid RLS issues in server-side routes
   const admin = createAdminClient()
 
+  /* maybeSingle och inte single. Med .single() blev två rader ett fel, felet
+     lästes som "kunden har inget företag", och nästa rad skapade ett tredje —
+     en dubblett som föder fler. Databasen hindrar det numera med ett unikt
+     index på user_id, men frågan ska inte vara den som lutar sig mot det. */
   const { data: existing } = await admin
     .from('companies')
     .select('id')
     .eq('user_id', user.id)
-    .single()
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
   // Country set at sign-up is stored in Supabase user metadata
   const signupCountry = (user.user_metadata?.country as string | undefined) ?? null
@@ -141,8 +171,7 @@ export async function GET(request: NextRequest) {
       .select('id')
       .single()
     if (createErr || !created) {
-      const msg = encodeURIComponent(createErr?.message ?? 'unknown')
-      return NextResponse.redirect(`${APP}/dashboard/connections?error=db&detail=${msg}`)
+      return svar(false, `db&detail=${encodeURIComponent(createErr?.message ?? 'unknown')}`)
     }
     companyId = created.id
   }
@@ -165,9 +194,32 @@ export async function GET(request: NextRequest) {
   )
 
   if (connErr) {
-    const msg = encodeURIComponent(connErr.message)
-    return NextResponse.redirect(`${APP}/dashboard/connections?error=db&detail=${msg}`)
+    return svar(false, `db&detail=${encodeURIComponent(connErr.message)}`)
   }
+
+  /* Telefon, öppettider och adress skrivs in på hemsidan — men bara i de fält
+     som står tomma. Det som kunden själv skrivit står kvar; Google-profilen är
+     inte alltid den sanna versionen. */
+  if (plats) await autofyllFrånGoogle(admin, companyId, plats)
+
+  /*
+   * Första hämtningen, här och nu.
+   *
+   * De schemalagda jobben går en gång per dygn, vilket är rätt takt — Google
+   * räknar om sin egen data lika sällan. Men det gjorde att en kund som
+   * kopplade på förmiddagen mötte tomma vyer till nästa morgon, utan att något
+   * sa att siffrorna var på väg. Första gången är det inte en takt som behövs
+   * utan ett svar.
+   *
+   * allSettled: en källa som fallerar ska inte hindra de andra, och ingen av
+   * dem får hindra att kunden kommer in. Det värsta som kan hända är att en
+   * vy står tom till natten, alltså precis som det var förut.
+   */
+  await Promise.allSettled([
+    syncSearchConsole(companyId),
+    syncAds(companyId),
+    syncGA4(companyId),
+  ])
 
   return NextResponse.redirect(`${APP}/dashboard/settings?connected=true`)
 }

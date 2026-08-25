@@ -10,22 +10,52 @@
 export const CONFIRM_MAX = 320
 
 /** Delarna av bokningen salongen kan väva in i sin formulering. */
-export const PLACEHOLDERS = ['{namn}', '{behandling}', '{datum}', '{tid}', '{medarbetare}', '{salong}'] as const
+export const PLACEHOLDERS = [
+  '{namn}', '{behandling}', '{datum}', '{tid}', '{medarbetare}', '{salong}',
+  /* Salongens sida för omdömen. Bara recensionsförfrågan har den, och där är
+     den obligatorisk: en fråga om omdöme utan väg dit är ett meddelande kunden
+     inte kan göra något med. Den ligger i texten och inte i ramen, så salongen
+     kan formulera meningen runt den — "Lämna gärna ett omdöme: {omdömeslänk}"
+     eller "Det tar tio sekunder: {omdömeslänk}". */
+  '{omdömeslänk}',
+] as const
 
 export type PlaceholderValues = Partial<Record<(typeof PLACEHOLDERS)[number], string>>
 
-/* Exempelbesöket i panelens förhandsvisning. Aldrig i ett riktigt mail. */
+/* Exempelbesöket i panelens förhandsvisning. Aldrig i ett riktigt mail.
+
+   Exporterat eftersom förhandsvisningen numera bygger hela meddelandet och
+   inte bara salongens mening — sammanställningen och länkraderna ska visa
+   samma påhittade besök som texten ovanför dem. */
+export const EXEMPEL = {
+  behandling:  'Klippning dam',
+  omdömeslänk: 'https://g.page/r/CdXaMpLe/review',
+  datum:       'torsdag 21 augusti',
+  tid:         '14:00',
+  medarbetare: 'Maria',
+  referens:    'A4X9KP',
+}
+
 const PREVIEW_VALUES: PlaceholderValues = {
   '{namn}':        'Anna',
-  '{behandling}':  'Klippning dam',
-  '{datum}':       'torsdag 21 augusti',
-  '{tid}':         '14:00',
-  '{medarbetare}': 'Maria',
+  '{behandling}':  EXEMPEL.behandling,
+  '{datum}':       EXEMPEL.datum,
+  '{tid}':         EXEMPEL.tid,
+  '{medarbetare}': EXEMPEL.medarbetare,
+  '{omdömeslänk}': EXEMPEL.omdömeslänk,
   '{salong}':      'Din salong',
 }
 
-export function previewOf(text: string): string {
-  return fill(text, PREVIEW_VALUES)
+/**
+ * Texten med exempelvärden isatta.
+ *
+ * `egna` går före exemplen och finns för de värden salongen faktiskt har.
+ * Omdömeslänken är den enda i dag: har de klistrat in sin riktiga länk ska
+ * förhandsvisningen visa den och inte en påhittad — annars räknar teckenräknaren
+ * på fel längd, och salongen granskar ett meddelande som inte är deras.
+ */
+export function previewOf(text: string, egna?: PlaceholderValues): string {
+  return fill(text, { ...PREVIEW_VALUES, ...egna })
 }
 
 /* Småorden som bara finns för platshållarens skull. Skriver salongen "hos

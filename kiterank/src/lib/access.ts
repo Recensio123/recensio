@@ -67,10 +67,21 @@ export async function currentAccess(): Promise<Access | null> {
   /* Not an owner — an account the salon created. The table is a later
    * migration, so a database without it simply has no such accounts. */
   try {
+    /*
+     * Äldsta medlemskapet, uttryckligen.
+     *
+     * En rad utan sorteringsordning är en rad Postgres får välja fritt, och
+     * valet behöver inte bli detsamma två gånger. Skulle någon någon gång ha
+     * konton hos två salonger — inbjudningsflödet hindrar det idag, men
+     * databasen gör det inte — betydde det att samma person kunde hamna i den
+     * ena salongen ena gången och i den andra nästa. Ingen läckt data, men
+     * ingen förklarlig vy heller.
+     */
     const { data: member, error } = await admin
       .from('company_members')
       .select('company_id, role, staff_id')
       .eq('user_id', user.id)
+      .order('created_at')
       .limit(1)
       .maybeSingle()
     if (error || !member) return null
@@ -176,16 +187,4 @@ export function seesWholeCalendar(a: Access | null): boolean {
 /** Takings are the owner's business. */
 export function seesRevenue(a: Access | null): boolean {
   return a?.role === 'admin'
-}
-
-/**
- * May this login act on a booking sitting on `staffId`?
- *
- * A staff account whose chair has not been linked yet touches nothing rather
- * than everything — the safe direction for a half-finished setup.
- */
-export function canEditBooking(a: Access | null, bookingStaffId: string | null): boolean {
-  if (!a) return false
-  if (canEditAnyChair(a)) return true
-  return Boolean(a.staffId) && bookingStaffId === a.staffId
 }

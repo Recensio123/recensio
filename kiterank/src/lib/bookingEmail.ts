@@ -13,11 +13,13 @@
  */
 
 import type { createAdminClient } from './supabase/admin'
-import { sendMessage, type MessageResult, type Channel } from './sendMessage'
+import { skickaOchLogga } from './utskickslogg'
+import type { MessageResult, Channel } from './sendMessage'
 import { fill, smsVärden, datumText, tidText } from './bookingText'
 import { fetchPolicy } from './bookingPolicy'
-import { templateSettings } from './messageTemplates'
-import { salonOrigin, salonPhone, svarsInfo, esc } from './mailParties'
+import { aktivMall } from './messageTemplates'
+import { salonOrigin, salonPhone, smsAvsandare, svarsInfo, kortAvboka, esc } from './mailParties'
+import { ramRader } from './meddelandeRam'
 
 /* Samma form som de övriga bokningsmodulerna använder. */
 type Admin = ReturnType<typeof createAdminClient>
@@ -37,6 +39,9 @@ export const TYSTA = [
 
 export type ConfirmationInput = {
   companyId:        string
+  /** Bokningen utskicket hör till. Bara för loggen — saknas den räknas
+   *  utskicket ändå, det går bara inte att spåra till en enskild tid. */
+  bookingId?:       string | null
   companyName:      string
   customerName:     string
   customerEmail:    string | null
@@ -47,9 +52,14 @@ export type ConfirmationInput = {
   reference:        string
   /** Relativ väg till avbokningen, eller null i äldre databaser. */
   cancelPath:       string | null
+  /** Kort kod till samma sida. SMS:et bär den i stället för den fullständiga
+   *  vägen — åttio tecken är halva meddelandet. */
+  cancelCode?:      string | null
   status:           'confirmed' | 'pending'
   /** Salongens egen text. Används bara när tiden är bekräftad. */
   confirmationText: string | null
+  /** Salongens ämnesrad, samma villkor. Tom vid SMS — där finns ingen. */
+  confirmationSubject?: string | null
   /** För SMS-kanalen. Utan nummer eller samtycke går bara mailet. */
   customerPhone:    string | null
   smsOptIn:         boolean
@@ -78,7 +88,7 @@ export async function sendConfirmationFor(admin: Admin, bookingId: string): Prom
   let stämpelFinns = true
   let { data: b } = await admin
     .from('bookings')
-    .select('id, company_id, customer_name, customer_email, customer_phone, service_name, booking_date, start_time, staff_id, status, booking_ref, cancel_token, confirmation_sent_at')
+    .select('id, company_id, customer_name, customer_email, customer_phone, service_name, booking_date, start_time, staff_id, status, booking_ref, cancel_token, cancel_code, confirmation_sent_at')
     .eq('id', bookingId)
     .maybeSingle()
 
@@ -86,7 +96,7 @@ export async function sendConfirmationFor(admin: Admin, bookingId: string): Prom
     stämpelFinns = false
     const igen = await admin
       .from('bookings')
-      .select('id, company_id, customer_name, customer_email, customer_phone, service_name, booking_date, start_time, staff_id, status, booking_ref, cancel_token')
+      .select('id, company_id, customer_name, customer_email, customer_phone, service_name, booking_date, start_time, staff_id, status, booking_ref, cancel_token, cancel_code')
       .eq('id', bookingId)
       .maybeSingle()
     b = igen.data as typeof b
@@ -110,7 +120,11 @@ export async function sendConfirmationFor(admin: Admin, bookingId: string): Prom
      kolumnen så länge den finns — en salong ska inte tappa sin formulering i
      glappet mellan driftsättning och migration. */
   const policy = await fetchPolicy(admin, b.company_id as string)
-  const mall   = await templateSettings(admin, b.company_id as string, 'confirmation')
+  const { mall, kanal } = await aktivMall(admin, b.company_id as string, 'confirmation')
+
+  /* Avslagen: salongen skickar ingen bekräftelse alls. Det är ett val de får
+     göra — bokningen syns ändå i kalendern. */
+  if (!kanal) return { sent: false, reason: 'disabled' }
 
   /* Kundens samtycke till SMS. Saknas kolumnen behandlas det som nej — att
      gissa ja vore att skicka utan tillstånd. */
@@ -134,6 +148,7 @@ export async function sendConfirmationFor(admin: Admin, bookingId: string): Prom
 
   const result = await sendBookingConfirmation(admin, {
     companyId:        b.company_id as string,
+    bookingId:        b.id as string,
     companyName:      (company?.name as string) || 'Din salong',
     customerName:     b.customer_name as string,
     customerEmail:    (b.customer_email as string) ?? null,
@@ -145,11 +160,13 @@ export async function sendConfirmationFor(admin: Admin, bookingId: string): Prom
     cancelPath:       b.cancel_token && company?.slug
       ? `/book/${company.slug}/avboka/${b.cancel_token}`
       : null,
+    cancelCode:       (b.cancel_code as string) ?? null,
     status:           'confirmed',
     confirmationText: mall.body.trim() || policy.confirmation_text || null,
+    confirmationSubject: mall.subject,
     customerPhone:    (b.customer_phone as string) ?? null,
     smsOptIn,
-    channel:          mall.channel,
+    channel:          kanal,
   })
 
   /* Stämpla bara när det gick fram. Ett misslyckat försök ska kunna göras om —
@@ -168,11 +185,16 @@ export async function sendBookingConfirmation(
   admin: Admin,
   b: ConfirmationInput,
 ): Promise<MessageResult> {
-  const [origin, phone] = await Promise.all([
+  const [origin, phone, avsändare] = await Promise.all([
     salonOrigin(admin, b.companyId),
     salonPhone(admin, b.companyId),
+    smsAvsandare(admin, b.companyId),
   ])
-  const svar = svarsInfo(phone)
+  /* SMS:et får den korta formen av avbokningslänken. Den räknas ut här uppe
+     eftersom svarsraden beror på den: bär meddelandet redan en länk behövs inte
+     telefonnumret i SMS:et, och de tecknen kostar. */
+  const kortUrl = kortAvboka(origin, b.cancelCode)
+  const svar    = svarsInfo(phone, 'bokning', Boolean(kortUrl))
 
   const datum = datumText(b.bookingDate)
   const tid   = tidText(b.startTime)
@@ -198,31 +220,42 @@ export async function sendBookingConfirmation(
     ? (b.confirmationText?.trim() ? fill(b.confirmationText, smsVärden(values)) : `Din tid hos ${b.companyName} är bokad.`)
     : `Tack ${smsVärden(values)['{namn}']}! Vi har tagit emot din förfrågan. ${b.companyName} bekräftar tiden så snart de sett den.`
 
-  const rader: [string, string][] = [
-    ['Behandling', b.serviceName],
-    ['Datum',      datum],
-    ['Tid',        tid],
-    ...(b.staffName ? [['Hos', b.staffName] as [string, string]] : []),
-    ['Bokningsnr', b.reference],
-  ]
+  const rader = ramRader('confirmation', {
+    behandling: b.serviceName, datum, tid,
+    medarbetare: b.staffName, referens: b.reference,
+  })
 
   const cancelUrl = b.cancelPath && origin ? `${origin}${b.cancelPath}` : null
 
+  /* Salongens ämnesrad när tiden är klar, vår neutrala när den väntar på
+     godkännande. Samma regel som brödtexten redan följer: deras formulering
+     lovar en bokad tid, och det löftet får inte ges innan någon sagt ja. */
   const subject = b.status === 'confirmed'
-    ? `Din tid ${datum} kl ${tid} — ${b.companyName}`
+    ? (b.confirmationSubject?.trim()
+        ? fill(b.confirmationSubject, values)
+        : `Din tid ${datum} kl ${tid} — ${b.companyName}`)
     : `Vi har tagit emot din bokning — ${b.companyName}`
 
-  return sendMessage({
+  return skickaOchLogga(admin, {
+    companyId: b.companyId, bookingId: b.bookingId ?? null, kind: 'confirmation',
+  }, {
     channel:  b.channel,
     salong:   b.companyName,
     email:    b.customerEmail,
     phone:    b.customerPhone,
     smsOptIn: b.smsOptIn,
+    smsFrom:  avsändare,
     subject,
     text:     textBody(lead, rader, cancelUrl, b.status, svar.text),
     html:     htmlBody(lead, rader, cancelUrl, b.status, b.companyName, svar.html),
-    /* SMS:et är beskedet plus tiden, inget mer. Varje tecken kostar. */
-    sms:      `${smsLead} ${datum} kl ${tid}. ${svar.sms}`.replace(/\s+/g, ' ').trim(),
+    /* SMS:et är beskedet, tiden och vägen ur bokningen. Avbokningslänken är
+       inte något salongen kan välja bort: en kund som inte kan avboka klockan
+       elva på kvällen uteblir i stället, och den tiden går inte att sälja om. */
+    /* Tiden står i salongens text, där {datum} och {tid} är obligatoriska och
+       inte går att spara bort. Bara vårt eget besked om en väntande förfrågan
+       saknar den, och där lägger vi till den. */
+    sms:      `${smsLead}${b.status === 'confirmed' ? '' : ` ${datum} kl ${tid}.`}${kortUrl ? ` Din bokning: ${kortUrl}` : ''} ${svar.sms}`
+                .replace(/\s+/g, ' ').trim(),
   })
 }
 

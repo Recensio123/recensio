@@ -40,7 +40,6 @@ const SURFACE: Record<string, string> = {
   workshop:  BACKDROPS.tra.src,
   sign:      BACKDROPS.tegel.src,
   foyer:     BACKDROPS.linne.src,
-  chemistry: BACKDROPS.betong.src,
 }
 
 function pageSurface(site: PublishedSite): CSSProperties {

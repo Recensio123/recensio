@@ -82,6 +82,12 @@ export type SiteContent = {
   heroImage?:        string
   featureImage?:     string
   aboutImage?:       string
+  /* Vad de tre bilderna föreställer. Egna fält eftersom de tidigare lånade
+     företagsnamnet respektive Om oss-rubriken — vilket beskriver sidan och
+     inte bilden, och därför säger Google ingenting om vad som syns. */
+  heroImageAlt?:     string
+  featureImageAlt?:  string
+  aboutImageAlt?:    string
   /** Search-result overrides. Empty = the auto-generated ones are used. */
   seo?: { title?: string; description?: string }
   /** Where the price list lives: on the site (own pages, one per service) or
@@ -574,20 +580,6 @@ function WallNav({ c, content, th, base, over, current }: SiteNavProps) {
   )
 }
 
-/** The name spaced out in the middle, the menu behind a button. */
-function ChemistryNav({ c, content, th, base, over }: SiteNavProps) {
-  const fg = over ? '#ffffff' : isDark(c.nav) ? '#ffffff' : c.h
-  return (
-    <nav data-edit="design" aria-label="Navigering" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 7%', background: over ? 'transparent' : c.nav, position: 'relative', zIndex: 3 }}>
-      <span style={{ width: 60 }} />
-      <Wordmark content={content} base={base}
-        style={{ fontSize: 20, fontWeight: 400, letterSpacing: 7, textTransform: 'uppercase' as const, color: fg, fontFamily: F }}
-        logoStyle={{ height: 28, display: 'block' }} />
-      <input type="checkbox" id={MENU_ID} className="kr-burger" aria-hidden />
-      <MenuOverlay c={c} content={content} th={th ?? ''} base={base ?? ''} fg={fg} />
-    </nav>
-  )
-}
 
 /*
  * The menu a design wears, wherever it is rendered.
@@ -603,7 +595,6 @@ export function SiteNav({ layout, ...rest }: SiteNavProps & { layout: string }) 
     case 'luxury':     return <LuxuryNav     {...rest} />
     case 'showcase':   return <OverlayNav    {...rest} />
     case 'workshop':   return <WallNav       {...rest} />
-    case 'chemistry':  return <ChemistryNav  {...rest} />
     case 'sign':       return <BurgerNav c={rest.c} content={rest.content} th={rest.th ?? ''} base={rest.base ?? ''} over={rest.over} />
     case 'foyer':      return <StackedNav c={rest.c} content={rest.content} th={rest.th ?? ''} base={rest.base ?? ''} />
     case 'heritage':   return <Nav {...rest} centered tjansterHref={rest.th} />
@@ -645,14 +636,25 @@ export function SiteNav({ layout, ...rest }: SiteNavProps & { layout: string }) 
  * `prislista` utelämnas där ett sådant mål vore ett självklick: på prissidan
  * själv, och när salongen inte har någon prissida.
  */
+/*
+ * Tom sträng betyder att knappen inte har någonstans att gå.
+ *
+ * Den föll tidigare tillbaka på "#kontakt" — ett hopp till kontaktrutan längre
+ * ned. Det ser ut som att knappen fungerar, och den som klickar på "Boka tid"
+ * och landar på en adressrad tror att sidan är trasig. Ett hopp är inte en
+ * bokning, och en fallback som döljer att något saknas gör att ingen åtgärdar
+ * det.
+ */
 export function ctaHrefFor(content: SiteContent, prislista?: string): string {
-  const boka = content.bookingUrl?.trim() || '#kontakt'
+  const boka = content.bookingUrl?.trim() ?? ''
+  /* Ingen prissida: knappen går till bokningen i stället. Det är samma sak
+     besökaren ville — se vad det kostar och boka — ett steg längre fram. */
   if (content.ctaTarget !== 'prislista') return boka
   return prislista?.trim() || boka
 }
 
 export function bookingHref(content: SiteContent): string {
-  return content.ctaHref?.trim() || content.bookingUrl?.trim() || '#kontakt'
+  return content.ctaHref?.trim() || content.bookingUrl?.trim() || ''
 }
 
 /** The button itself. Renders nothing when the customer has cleared its
@@ -670,8 +672,27 @@ export function BookButton({ content, style, as: As = 'a', label: own, children 
   const label = own?.trim() || content.ctaText?.trim()
   if (!label) return null
   if (As === 'span') return <span data-cta style={style}>{label}{children}</span>
+
+  /*
+   * Utan mål ritas knappen som en död knapp, inte som en länk.
+   *
+   * Alternativen var att dölja den — men då försvinner sidans tydligaste
+   * uppmaning utan att någon förstår varför — eller att låta den peka någonstans
+   * på måfå. En knapp som syns men inte går att trycka på är det ärligaste av
+   * de tre: besökaren ser vad sidan vill, och salongen ser i panelen vad som
+   * fattas.
+   */
+  const till = bookingHref(content)
+  if (!till) {
+    return (
+      <span data-cta aria-disabled="true" style={{ ...style, opacity: 0.45, cursor: 'not-allowed' }}>
+        {label}{children}
+      </span>
+    )
+  }
+
   return (
-    <a href={bookingHref(content)} data-cta style={style}>{label}{children}</a>
+    <a href={till} data-cta style={style}>{label}{children}</a>
   )
 }
 
@@ -1074,7 +1095,7 @@ export function PricelistSection({ c, content, th, industry }: { c: TemplateColo
    the editor's preview can open the right one. display:contents means this
    wrapper adds no box and cannot change a single pixel of any layout — it is
    pure labelling, invisible on the published site. */
-function Editable({ id, sec, children }: { id: string; sec?: string; children: ReactNode }) {
+export function Editable({ id, sec, children }: { id: string; sec?: string; children: ReactNode }) {
   /* data-edit → which panel section a click opens; data-sec → which movable
      page section this is, for the floating move/hide tools in the editor. */
   return <div data-edit={id} data-sec={sec} style={{ display: 'contents' }}>{children}</div>
@@ -1350,10 +1371,12 @@ export function Footer({ c, content, base }: { c: TemplateColors; content: SiteC
               </a>
             )}
           </div>
-          <div>
-            <Txt t={siteLabel(content.labels, 'hoursTitle')} style={{ fontSize: 11, fontWeight: 700, color: c.a, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12, fontFamily: F }} />
-            <Txt t={content.hours} style={{ fontSize: 13, color: fg, fontFamily: F }} />
-          </div>
+          {!!content.hours?.trim() && (
+            <div>
+              <Txt t={siteLabel(content.labels, 'hoursTitle')} style={{ fontSize: 11, fontWeight: 700, color: c.a, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12, fontFamily: F }} />
+              <Txt t={content.hours} style={{ fontSize: 13, color: fg, fontFamily: F }} />
+            </div>
+          )}
           {/* For a salon Instagram is the portfolio — the proof already exists */}
           {socials.length > 0 && (
             <div>
@@ -1523,7 +1546,7 @@ function SplitSite({ c, content, th, base, industry, care, siteBase }: { c: Temp
         </div>
         {/* Sharp-corner image — bold agency feel */}
         <div style={{ position: 'relative', overflow: 'hidden' }}>
-          <ImagePlaceholder c={c} height={580} radius={0} src={content.heroImage} alt={content.businessName} />
+          <ImagePlaceholder c={c} height={580} radius={0} src={content.heroImage} alt={content.heroImageAlt?.trim() || content.businessName} />
         </div>
       </section>
   )
@@ -1678,7 +1701,7 @@ function EditorialSite({ c, content, th, base, industry, care, siteBase }: { c: 
         <div data-split style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 64 }}>
           <Txt as="p" t={content.aboutBody} style={{ fontSize: 16, color: c.s, lineHeight: 1.9, fontFamily: F }} />
           <div>
-            <ImagePlaceholder c={c} height={280} radius={4} src={content.aboutImage} alt={content.aboutTitle} />
+            <ImagePlaceholder c={c} height={280} radius={4} src={content.aboutImage} alt={content.aboutImageAlt?.trim() || content.aboutTitle} />
             <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ fontSize: 14, color: c.a, fontWeight: 600, marginTop: 20, fontFamily: F, textDecoration: 'none', display: 'block' }}>{content.phone}</a>
             <Txt as="p" t={content.address} style={{ fontSize: 13, color: c.s, marginTop: 6, fontFamily: F }} />
           </div>
@@ -1776,10 +1799,12 @@ function HeritageSite({ c, content, th, base, industry, care, siteBase }: { c: T
                 <p style={{ fontSize: 11, color: c.a, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 6, fontFamily: F }}>Telefon</p>
                 <p style={{ fontSize: 14, color: c.h, fontFamily: F }}>{content.phone}</p>
               </div>
-              <div>
-                <p style={{ fontSize: 11, color: c.a, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 6, fontFamily: F }}>Öppettider</p>
-                <Txt as="p" t={content.hours} style={{ fontSize: 14, color: c.h, fontFamily: F }} />
-              </div>
+              {!!content.hours?.trim() && (
+                <div>
+                  <p style={{ fontSize: 11, color: c.a, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 6, fontFamily: F }}>Öppettider</p>
+                  <Txt as="p" t={content.hours} style={{ fontSize: 14, color: c.h, fontFamily: F }} />
+                </div>
+              )}
               <div style={{ gridColumn: '1 / -1' }}>
                 <p style={{ fontSize: 11, color: c.a, letterSpacing: 2, textTransform: 'uppercase' as const, marginBottom: 6, fontFamily: F }}>Adress</p>
                 <Txt as="p" t={content.address} style={{ fontSize: 14, color: c.h, fontFamily: F }} />
@@ -1797,7 +1822,7 @@ function HeritageSite({ c, content, th, base, industry, care, siteBase }: { c: T
             { label: 'Telefon',    val: content.phone   },
             { label: 'Öppettider', val: content.hours   },
             { label: 'Adress',     val: content.address },
-          ].map((item, i, arr) => (
+          ].filter(item => item.val?.trim()).map((item, i, arr) => (
             <div key={item.label} style={{ flex: 1, textAlign: 'center', borderRight: i < arr.length - 1 ? `1px solid ${isDark(c.a) ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'}` : 'none', padding: '8px 24px' }}>
               <p style={{ fontSize: 11, letterSpacing: 3, textTransform: 'uppercase' as const, color: isDark(c.a) ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)', marginBottom: 10, fontFamily: F }}>{item.label}</p>
               <p style={{ fontSize: 15, fontWeight: 600, color: isDark(c.a) ? '#ffffff' : '#0a0a0a', fontFamily: F }}>{item.val}</p>
@@ -2175,10 +2200,12 @@ function PoleSite({ c, content, th, base, industry, care, siteBase }: { c: Templ
         </div>
         {/* The two facts a walk-in customer needs, side by side */}
         <div style={{ display: 'flex', gap: 48, flexWrap: 'wrap' as const, borderTop: `1px solid ${sep}`, paddingTop: 22 }}>
-          <div>
-            <Txt t={siteLabel(content.labels, 'hoursTitle')} style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, marginBottom: 6, fontFamily: F }} />
-            <Txt t={content.hours} style={{ fontSize: 15, color: c.h, fontWeight: 600, fontFamily: F }} />
-          </div>
+          {!!content.hours?.trim() && (
+            <div>
+              <Txt t={siteLabel(content.labels, 'hoursTitle')} style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, marginBottom: 6, fontFamily: F }} />
+              <Txt t={content.hours} style={{ fontSize: 15, color: c.h, fontWeight: 600, fontFamily: F }} />
+            </div>
+          )}
           <div>
             <Txt t={siteLabel(content.labels, 'contactTitle')} style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, marginBottom: 6, fontFamily: F }} />
             <Txt t={content.address} style={{ fontSize: 15, color: c.h, fontWeight: 600, fontFamily: F }} />
@@ -2268,10 +2295,12 @@ function GridSite({ c, content, th, base, industry, care, siteBase }: { c: Templ
             <p style={{ fontSize: 22, fontWeight: 900, color: c.a, fontFamily: F }}>{top.price}</p>
           </div>
         )}
-        <div style={{ background: c.b, padding: '22px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <Txt t={siteLabel(content.labels, 'hoursTitle')} style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, fontFamily: F }} />
-          <Txt t={content.hours} style={{ fontSize: 14, color: c.h, fontWeight: 600, lineHeight: 1.5, fontFamily: F }} />
-        </div>
+        {!!content.hours?.trim() && (
+          <div style={{ background: c.b, padding: '22px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <Txt t={siteLabel(content.labels, 'hoursTitle')} style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, fontFamily: F }} />
+            <Txt t={content.hours} style={{ fontSize: 14, color: c.h, fontWeight: 600, lineHeight: 1.5, fontFamily: F }} />
+          </div>
+        )}
         <div style={{ background: c.b, padding: '22px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <Txt t={siteLabel(content.labels, 'contactTitle')} style={{ fontSize: 10, letterSpacing: 2.5, textTransform: 'uppercase' as const, color: c.a, fontFamily: F }} />
           <a href={`tel:${content.phone.replace(/\s/g, '')}`} style={{ fontSize: 14, color: c.h, fontWeight: 600, lineHeight: 1.5, fontFamily: F, textDecoration: 'none' }}>{content.address}<br/>{content.phone}</a>
@@ -2520,84 +2549,6 @@ function FoyerSite({ c, content, th, base, industry, care, siteBase }: { c: Temp
   )}
 }
 
-/* ── Kemi — set in a serif, and it changes everything ──────────────────────
-   The one theme whose voice is typographic rather than structural: a serif
-   headline that turns italic halfway through, a washed image behind it, and
-   a text link where every other template puts a button. */
-function ChemistrySite({ c, content, th, base, industry, care, siteBase }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string; care?: CareAnswer | null; siteBase?: string }) {
-  const cfg  = getIndConfig(industry)
-  const wash = backdropSrc(content, BACKDROPS.betong.src)
-  const sep  = isDark(c.bg) ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'
-
-  /* The headline breaks in two: the claim upright, the last few words in
-     italic. It reads as a thought finishing rather than a slogan ending. */
-  const words = content.heroHeading.trim().split(/\s+/)
-  const tail  = words.length > 3 ? words.slice(-2).join(' ') : ''
-  const head  = tail ? words.slice(0, -2).join(' ') : content.heroHeading
-
-  /* The wash: the accent colour laid over the surface so the opening reads as
-     a colour before it reads as a picture. It is what makes this theme
-     recognisable across the room, and it holds up over any photograph. */
-  const washed = backdropStyle(wash, 0.72, rgbOf(c.a))
-
-  return (
-    <div style={{ background: c.bg, minHeight: '100vh', fontFamily: F }}>
-      <PageSections blocks={{ hero: buildHero(), services: buildServices(), about: buildAbout() }} c={c} content={content} base={base} industry={industry} />
-      <JsonLD content={content} industry={industry} slug={slugFrom(base)} care={care} base={siteBase} />
-      <Footer c={c} content={content} base={base} />
-    </div>
-  )
-
-  function buildHero() { return (
-    <>
-      {/* Nav and headline share one washed field — the menu belongs to the
-          image here, not to a bar above it. */}
-      <section style={{ ...washed, position: 'relative' }}>
-        <SiteNav layout="chemistry" over c={c} content={content} th={th} base={base} />
-
-        <div style={{ minHeight: '62vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '48px 7% 60px' }}>
-          <h1 style={{ fontSize: 52, fontWeight: 400, color: '#ffffff', lineHeight: 1.22, maxWidth: 880, marginBottom: 24, fontFamily: F, textShadow: '0 3px 24px rgba(0,0,0,0.35)' }}>
-            {head}{tail && <> <em style={{ fontStyle: 'italic' }}>{tail}</em></>}
-          </h1>
-          <Txt as="p" t={content.heroBody} style={{ fontSize: 17, color: '#ffffff', opacity: 0.95, lineHeight: 1.8, maxWidth: 560, fontFamily: F, textShadow: '0 2px 14px rgba(0,0,0,0.4)' }} />
-        </div>
-
-        {/* The band the booking link sits on — a rule under a word, not a button */}
-        <div style={{ background: 'rgba(255,255,255,0.18)', padding: '22px 7%', textAlign: 'center' }}>
-          <BookButton content={content} style={{ color: '#ffffff', fontSize: 22, fontFamily: F, textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.9)', paddingBottom: 6 }} />
-        </div>
-      </section>
-      <StatsBar c={c} content={content} cfg={cfg} th={th} />
-    </>
-  )}
-
-  function buildServices() { return (
-      <section id="prislista" style={{ background: c.bg, padding: '76px 8%' }}>
-        <Txt as="p" kicker t={cfgLabel(content.labels, cfg.svcKicker, 'svcKicker')} style={{ fontSize: 12, color: c.a, letterSpacing: 3, textTransform: 'uppercase' as const, textAlign: 'center', marginBottom: 10, fontFamily: F }} />
-        <Txt as="h2" t={cfgLabel(content.labels, cfg.svcHeading, 'svcHeading')} style={{ fontSize: 36, fontWeight: 400, color: c.h, textAlign: 'center', marginBottom: 42, fontFamily: F }} />
-        <div data-grid="services" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 36, maxWidth: 1000, margin: '0 auto' }}>
-          {content.services.map(s => (
-            <div key={s.name} style={{ textAlign: 'center', paddingTop: 20, borderTop: `1px solid ${sep}` }}>
-              <h3 style={{ fontSize: 21, fontWeight: 400, color: c.h, marginBottom: 10, fontFamily: F }}>{s.name}</h3>
-              <p style={{ fontSize: 14, color: c.s, lineHeight: 1.75, marginBottom: 14, fontFamily: F }}>{s.desc}</p>
-              <p style={{ fontSize: 15, color: c.a, fontStyle: 'italic', fontFamily: F }}>{s.price}</p>
-            </div>
-          ))}
-        </div>
-        <div style={{ textAlign: 'center', marginTop: 40 }}>
-          {!!cfgLabel(content.labels, cfg.allLink, 'allLink') && (<a href={th} style={{ color: c.h, fontSize: 16, fontFamily: F, textDecoration: 'none', borderBottom: `1px solid ${c.a}`, paddingBottom: 3 }}>{cfgLabel(content.labels, cfg.allLink, 'allLink')}</a>)}
-        </div>
-      </section>
-  )}
-
-  function buildAbout() { return (
-      <section id="om-oss" style={{ background: c.b, padding: '76px 8%', textAlign: 'center' }}>
-        <Txt as="h2" t={content.aboutTitle} style={{ fontSize: 32, fontWeight: 400, color: c.h, marginBottom: 20, fontFamily: F }} />
-        <Txt as="p" t={content.aboutBody} style={{ fontSize: 17, color: c.s, lineHeight: 2, maxWidth: 640, margin: '0 auto', fontFamily: F }} />
-      </section>
-  )}
-}
-
 /* ── Export ─────────────────────────────────────────────────────────────── */
 
 export function PreviewSite({
@@ -2690,7 +2641,6 @@ export function PreviewSite({
       case 'workshop':  return <WorkshopSite  c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
       case 'sign':      return <SignSite      c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
       case 'foyer':     return <FoyerSite     c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'chemistry': return <ChemistrySite c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
       default:          return <CenteredSite  c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
     }
   })()

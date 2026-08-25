@@ -1,19 +1,28 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { Paketval, type Paketpriser } from './Paketval'
 import { SALON_TEMPLATES, TEMPLATES_BY_INDUSTRY } from '@/lib/templates'
 import { TRADES } from '@/lib/trades'
-import { AboutFields, type AboutBusiness } from './AboutFields'
 import { tradePack } from '@/lib/trades'
-import { stegKedja, STEG_NAMN, type Steg, type Vilja } from '@/lib/onboarding'
+import { DesignBriefFalt } from './DesignBriefFalt'
+import { EgenDesign } from './EgenDesign'
+import {
+  stegKedja, STEG_NAMN, TOM_BRIEF,
+  type Steg, type Vilja, type Paketväg, type DesignBrief,
+} from '@/lib/onboarding'
 
 /* ─── Stegen ────────────────────────────────────────────────────────────
  *
- * Registreringen frågar om tre saker och bygger sedan: vem är ni, vad vill ni
- * ha, och vad ska det handla om. Ordningen är inte godtycklig — vad de vill ha
- * avgör vilka steg som ens ska ställas. Den som inte ska ha en hemsida av oss
- * ska aldrig behöva välja mall eller berätta om sin verksamhet för att fylla en
- * sajt som inte skapas.
+ * Fyra steg för mallkunden, fyra för premiumkunden, och tre av dem är samma:
+ * vilka är ni, vilken bransch, och era egna ord om verksamheten. Först på det
+ * tredje skiljer det sig — välj en design, eller berätta hur er ska se ut.
+ *
+ * Domänen frågas inte här. Sidan publiceras på en adress hos oss direkt, och
+ * en egen webbadress kopplar man när sidan är färdig — inte det första någon
+ * vill fundera på.
  *
  * Stegens namn och kedjan bor i lib/onboarding, samma som servern läser. Två
  * listor över samma steg glider isär den dag en av dem ändras.                */
@@ -25,101 +34,121 @@ type Step = Steg | 'done'
 /* The trades we build sites for — the same six the content packs cover, so
    whichever door a customer comes in through, the site they get is written
    for their trade rather than approximated from a neighbouring one. */
-const INDUSTRIES = TRADES.map(t => ({ id: t.id, label: t.pick.label, desc: t.pick.desc, icon: t.pick.icon }))
+const INDUSTRIES = [
+  ...TRADES.map(t => ({ id: t.id, label: t.pick.label, desc: t.pick.desc, icon: t.pick.icon })),
+  /*
+   * Annat, sist i listan.
+   *
+   * Ingen egen innehållsuppsättning — sidan fylls med den bredaste vi har och
+   * skrivs om av kunden. Men Google får rätt besked: ett okänt id ger
+   * LocalBusiness i stället för ett påstående om att de är en frisörsalong,
+   * vilket är sant och därmed bättre än en gissning.
+   *
+   * Finns med för att alternativet är värre. Utan det väljer den som driver
+   * något vi inte listat närmaste grannen, och då bygger vi en sida för fel
+   * verksamhet utan att någonsin få veta det.
+   */
+  { id: 'other', label: 'Annat', desc: 'Något annat inom skönhet och välbefinnande', icon: '◌' },
+]
 
 /* Everything ships switched on. A new customer cannot judge which parts of a
    site they need before they have seen the site — the editor is where that
    choice belongs, with the real thing in front of them. */
 const ALL_FEATURES = { booking: true, pricelist: true, gallery: true, contact: true, blog: true, reviews: true }
 
-/* What the customer tells us about their business. Every answer becomes text
-   on the site — their words and their keywords, ready to edit instead of a
-   blank page or someone else's example copy. */
-
 /* ─── Progress bar ──────────────────────────────────────────────────── */
 
-/* Stegräknaren följer kundens egen kedja. Väljer de bort hemsidan krymper den
-   från fem steg till tre framför ögonen på dem, vilket är rätt besked: det
-   blev kortare, inte att två steg gick förlorade. */
-function Progress({ step, vill }: { step: Step; vill: Vilja }) {
-  const kedja = stegKedja(vill)
-  const idx   = kedja.indexOf(step as Steg)
+/* Stegräknaren följer kundens egen kedja, och de två vägarna har olika sista
+   steg — Design eller Er design.
+ *
+ * Listan står lodrätt vid sidan av innehållet och visar alla tre stegen från
+ * första skärmen. Den som ser "Konto" ensamt tror att kontot är hela ärendet;
+ * den som ser 1–3 vet att det är tre skärmar och att sidan står uppe efter
+ * den sista. Kommande steg är därför lika synliga som det man står på. */
+function Progress({ step, kedja }: { step: Step; kedja: Steg[] }) {
+  const idx = kedja.indexOf(step as Steg)
   return (
-    <div className="flex items-center gap-0">
+    <ol className="space-y-0">
       {kedja.map((s, i) => {
         const done   = i < idx
         const active = i === idx
         return (
-          <div key={s} className="flex items-center">
-            <div className="flex flex-col items-center gap-1.5">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all
+          <li key={s}>
+            <div className="flex items-center gap-3">
+              <div className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs font-bold transition-all
                 ${done   ? 'bg-mustard text-navy-950' :
                   active ? 'bg-mustard/20 text-mustard ring-2 ring-mustard/50' :
                            'bg-navy-800 text-slate-600'}`}>
                 {done ? '✓' : i + 1}
               </div>
-              <span className={`text-[10px] font-medium whitespace-nowrap
+              <span className={`text-sm font-medium transition-colors
                 ${active ? 'text-mustard' : done ? 'text-slate-400' : 'text-slate-600'}`}>
                 {STEG_NAMN[s]}
               </span>
             </div>
             {i < kedja.length - 1 && (
-              <div className={`w-16 h-0.5 mb-5 mx-1 transition-colors ${done ? 'bg-mustard' : 'bg-navy-700'}`} />
+              <div className={`ml-3.5 w-0.5 h-6 transition-colors ${done ? 'bg-mustard' : 'bg-navy-700'}`} />
             )}
-          </div>
+          </li>
         )
       })}
-    </div>
-  )
-}
-
-/* ─── Val ───────────────────────────────────────────────────────────── */
-
-/* Ett val beskrivs efter vad kunden får, inte efter vad det heter internt.
-   "Ja, bygg en åt oss" säger mer till en salongsägare än "webbplats: på". */
-function Fraga({ titel, children }: { titel: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-navy-900 border border-navy-700 rounded-2xl p-5">
-      <p className="text-white text-sm font-semibold mb-3">{titel}</p>
-      <div className="space-y-2">{children}</div>
-    </div>
-  )
-}
-
-function Val({ vald, titel, om, onClick }: {
-  vald: boolean; titel: string; om: string; onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left flex items-start gap-3 p-3.5 rounded-xl border-2 transition-all
-        ${vald ? 'border-mustard bg-mustard/10' : 'border-navy-700 hover:border-navy-500'}`}
-    >
-      <span className={`mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center
-        ${vald ? 'border-mustard' : 'border-navy-600'}`}>
-        {vald && <span className="w-2 h-2 rounded-full bg-mustard" />}
-      </span>
-      <span>
-        <span className={`block text-sm font-semibold ${vald ? 'text-mustard' : 'text-white'}`}>{titel}</span>
-        <span className="block text-xs text-slate-400 mt-0.5">{om}</span>
-      </span>
-    </button>
+    </ol>
   )
 }
 
 /* ─── Main wizard ───────────────────────────────────────────────────── */
 
-export function SetupWizard() {
+export function SetupWizard({
+  väg = 'mall', provTill = null, valtPaket = null,
+  inloggad = false, behöverVälja = false,
+  priser = { mall: null, design: null, fullservice: null },
+  förifyllt = { bizName: '', epost: '' },
+}: {
+  /** Paketvägen. Premium hoppar över mallvalet och frågar om designen i stället. */
+  väg?:      Paketväg
+  /** Provets slutdatum, färdigformaterat — sätts av servern. */
+  provTill?: string | null
+  /** Paketet från länken, för den som ännu inte har ett konto. */
+  valtPaket?: string | null
+  /** Har besökaren redan ett konto? Styr om steg 1 skapar ett. */
+  inloggad?: boolean
+  /** Visa paketvalet före guiden — de kom utan att ha valt något. */
+  behöverVälja?: boolean
+  /** Månadspriserna ur Stripes katalog, till paketvalet. */
+  priser?: Paketpriser
+  /** Det kunden redan lämnat vid registreringen. */
+  förifyllt?: { bizName: string; epost: string }
+}) {
   const router = useRouter()
 
+  /*
+   * Paketvalet, om det inte redan är gjort.
+   *
+   * Skärmen ligger före steg 1 och räknas inte som ett steg — den är en
+   * vägvisare, inte en fråga om verksamheten. Valet styr både vilken guide
+   * som visas och vad som skickas till servern som önskat paket.
+   */
+  const [väljer,      setVäljer]      = useState(behöverVälja)
+  const [nivå,        setNivå]        = useState<string | null>(valtPaket)
+  const [vägen,       setVägen]       = useState<Paketväg>(väg)
+
+  /* Kontot skapas i steg 1 om det inte redan finns. Flaggan följer med i
+     klienten, så att den som just registrerat sig inte möts av lösenordsfältet
+     igen när de backar tillbaka till första skärmen. */
+  const [harKonto,    setHarKonto]    = useState(inloggad)
+  const [losenord,    setLosenord]    = useState('')
+
   const [step,        setStep]        = useState<Step>('kontakt')
-  const [vill,        setVill]        = useState<Vilja>({ sajt: true, bokning: true })
-  /* De har redan en hemsida någon annanstans. Sparas separat från `vill.sajt`
-     eftersom svaren inte är samma fråga: en salong kan ha en hemsida de vill
-     byta ut, och en annan kan sakna hemsida utan att vilja ha en av oss. Det
-     avgör dessutom vad vi kan mäta — Google fyller inte i historik i efterhand. */
-  const [harSajt,     setHarSajt]     = useState(false)
-  const [epost,       setEpost]       = useState('')
+  /*
+   * Hemsidan är alltid med, bokningen aldrig.
+   *
+   * Sajten ingår i varje paket vi säljer, så det finns inget att fråga om.
+   * Bokningen är ett tillägg som köps i abonnemangsfliken där priset syns —
+   * inte något kunden råkar få med sig från registreringen utan att ha sett
+   * vad det kostar.
+   */
+  const [vill] = useState<Vilja>({ sajt: true, bokning: false })
+  const [epost,       setEpost]       = useState(förifyllt.epost)
   const [telefon,     setTelefon]     = useState('')
   const [industry,    setIndustry]    = useState<string | null>(null)
   const [template,    setTemplate]    = useState<string | null>(null)
@@ -129,21 +158,73 @@ export function SetupWizard() {
   const [care,        setCare]        = useState<'wellness' | 'care'>('wellness')
   /* Only the trades that genuinely straddle wellness and treatment ask. */
   const asksCare = !!tradePack(industry).askCare
-  const [about,       setAbout]       = useState<AboutBusiness>({ description: '', services: '', area: '', special: '', years: '', team: '' })
   const [lang,        setLang]        = useState<'sv' | 'en'>('sv')
-  const [bizName,     setBizName]     = useState('')
+  const [bizName,     setBizName]     = useState(förifyllt.bizName)
   const [slug,        setSlug]        = useState('')
   const [saving,      setSaving]      = useState(false)
   const [saveError,   setSaveError]   = useState<string | null>(null)
   const [previewId,   setPreviewId]   = useState<string | null>(null)
   const [previewName, setPreviewName] = useState('')
+  const [brief,       setBrief]       = useState<DesignBrief>(TOM_BRIEF)
 
   /* Kedjan styr riktningen, inte en trappa av if-satser. Ändras stegen på ett
      ställe följer fram, bak och stegräknaren med av sig själva. */
-  const kedja  = stegKedja(vill)
+  const kedja  = stegKedja(vägen)
   const sista  = kedja[kedja.length - 1]
 
+  /*
+   * Kontot skapas här, inte på en sida före.
+   *
+   * Adressen och företagsnamnet i steg 1 är samma uppgifter en separat
+   * registreringssida hade frågat om — att dela upp dem på två skärmar
+   * betydde att kunden skrev sitt namn två gånger och trodde att det första
+   * försöket gått förlorat.
+   *
+   * Lösenordet står bara här. Kommer de via Google finns kontot redan, och då
+   * ska ingen be dem hitta på ett lösenord de aldrig kommer att använda.
+   */
+  async function skapaKonto(): Promise<boolean> {
+    const supabase = createClient()
+    const { data, error } = await supabase.auth.signUp({
+      email:    epost.trim(),
+      password: losenord,
+      options:  { data: { biz_name: bizName.trim() || null } },
+    })
+
+    if (error) {
+      setSaveError(felPåSvenska(error.message))
+      return false
+    }
+
+    /*
+     * Konto men ingen session betyder att e-postbekräftelsen är påslagen i
+     * Supabase. Då kan guiden inte fortsätta — /api/setup skriver med kundens
+     * egen session, och den finns inte förrän adressen är bekräftad.
+     */
+    if (!data.session) {
+      setSaveError('Kolla din mejl och bekräfta adressen, så fortsätter vi här.')
+      return false
+    }
+
+    setHarKonto(true)
+    return true
+  }
+
   async function nextStep() {
+    setSaveError(null)
+
+    /* Steg 1 gör två saker för den utan konto: skapar det, och går vidare
+       först när det gick vägen. Ett misslyckat försök ska stanna kvar på
+       skärmen med fälten ifyllda. */
+    if (step === 'kontakt' && !harKonto) {
+      setSaving(true)
+      try {
+        if (!(await skapaKonto())) return
+      } finally {
+        setSaving(false)
+      }
+    }
+
     if (step !== sista) {
       const i = kedja.indexOf(step as Steg)
       if (i !== -1) setStep(kedja[i + 1])
@@ -157,13 +238,21 @@ export function SetupWizard() {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          industry, template, about, language: lang, bizName,
+          /* Inget `about` längre. Sidan byggs på branschens innehåll, och
+             kundens egna ord fylls i panelen där textfyllaren hjälper till
+             och sidan står bredvid att jämföra med. */
+          industry, template, language: lang, bizName,
           care: asksCare ? care : null,
-          /* Bokningen följer vad de svarat, inte ett förval. Att slå på ett
-             bokningssystem åt någon som sagt nej är att bygga en knapp de får
-             leta rätt på och stänga av. */
+          /* Sajten byggs utan bokningsknapp. Den tillkommer när kunden köper
+             tillägget, och sätts då av samma svar som öppnar kalendern. */
           features: { ...ALL_FEATURES, booking: vill.bokning },
-          vill, harSajt, epost, telefon,
+          vill, epost, telefon,
+          /* Designunderlaget bara för den som köpt en formgiven sida. */
+          brief: vägen === 'premium' ? brief : null,
+          /* Paketet kunden valt — från länken eller från paketskärmen. Servern
+             avgör om det får gälla; ett val i webbläsaren ska aldrig kunna
+             uppgradera någon gratis. */
+          valtPaket: nivå,
         }),
       })
       const json = await res.json()
@@ -183,11 +272,18 @@ export function SetupWizard() {
   }
 
   function canNext(): boolean {
-    if (step === 'kontakt') return bizName.trim().length > 0 && epost.trim().includes('@')
-    if (step === 'vilja')   return true
+    if (step === 'kontakt') {
+      const grunden = bizName.trim().length > 0 && epost.trim().includes('@')
+      /* Åtta tecken är Supabases minimum. Att låta knappen se ut att fungera
+         och sedan avvisa lösenordet är en omväg genom ett felmeddelande. */
+      return harKonto ? grunden : grunden && losenord.length >= 8
+    }
     if (step === 'bransch') return !!industry
+    /* Designfrågorna går att hoppa förbi. Tomma fält blir ett samtal, inte ett
+       hinder — och att låsa in någon i ett formulär är ett säkrare sätt att
+       förlora dem än att sakna ett svar. */
+    if (step === 'brief')   return true
     if (step === 'mall')    return !!template
-    if (step === 'om')      return true
     return false
   }
 
@@ -210,33 +306,73 @@ export function SetupWizard() {
           <div className="w-20 h-20 rounded-full bg-mustard/15 border-2 border-mustard/40 flex items-center justify-center mx-auto mb-6">
             <span className="text-mustard text-3xl">✓</span>
           </div>
-          {/* Klarsidan säger vad som faktiskt hänt. Den som valt bort hemsidan
-              ska inte mötas av "din hemsida är klar" och en knapp till en
-              redigerare för en sida som inte finns. */}
+          {/*
+            * Klarsidan säger vad som faktiskt händer härnäst, och det skiljer
+            * sig helt mellan vägarna.
+            *
+            * Mallkunden har en färdig sida att öppna. Premiumkunden har en
+            * beställning hos oss — att säga "din hemsida är klar" till någon
+            * vars sida ingen ritat än vore ett löfte vi bryter samma kväll.
+            */}
           <h2 className="text-3xl font-bold text-white mb-2">
-            {vill.sajt ? 'Din hemsida är klar!' : 'Kontot är klart!'}
+            {vägen === 'premium' ? 'Tack — nu tar vi över' : 'Din hemsida är klar!'}
           </h2>
           <p className="text-slate-400 mb-8">
-            {vill.sajt
-              ? 'Texterna är skrivna utifrån det du berättade — öppna redigeraren och gör dem till dina.'
-              : 'Nu sätter vi igång med din synlighet. Börja med att koppla din Google-profil.'}
+            {vägen === 'premium'
+              ? 'Vi ritar ert förslag utifrån svaren och hör av oss inom två arbetsdagar. Under tiden kan du koppla din Google-profil, så börjar mätningen samla data redan nu.'
+              : 'Texterna är skrivna utifrån det du berättade — öppna redigeraren och gör dem till dina.'}
           </p>
 
           <div className="bg-navy-900 border border-navy-700 rounded-2xl p-6 text-left space-y-4 mb-8">
             <Row label="Bransch"  value={industryLabel} />
-            {vill.sajt && <Row label="Design" value={templateLabel} />}
-            <Row label="Tidbokning" value={vill.bokning ? 'På' : 'Av'} />
+            {vägen === 'mall' && <Row label="Design" value={templateLabel} />}
             <Row label="Språk"    value={lang === 'sv' ? 'Svenska' : 'English'} />
-            {vill.sajt && <Row label="Adress" value={`kiterank.se/s/${slug}`} mono />}
+            <Row label="Adress" value={`kiterank.se/s/${slug}`} mono />
           </div>
 
           <button
-            onClick={() => router.push(vill.sajt ? '/dashboard/webbplats' : '/dashboard')}
+            onClick={() => router.push(vägen === 'premium' ? '/dashboard' : '/dashboard/webbplats')}
             className="w-full py-3.5 bg-mustard text-navy-950 font-bold rounded-xl text-base hover:bg-mustard/90 transition-colors"
           >
-            {vill.sajt ? 'Öppna din hemsida →' : 'Till din översikt →'}
+            {vägen === 'premium' ? 'Till din översikt →' : 'Öppna din hemsida →'}
           </button>
+
+          {/* Klockan, utskriven. Utan den upptäcker kunden att provet fanns
+              först den dag panelen är låst. */}
+          {provTill && (
+            <p className="text-xs text-slate-500 leading-relaxed mt-4">
+              Ditt prov gäller till {provTill}. Vi påminner dig innan det tar slut, och
+              ingenting dras utan att du sagt ja.
+            </p>
+          )}
         </div>
+      </div>
+    )
+  }
+
+  /* ── Paketvalet, före steg 1 ─────────────────────────────────────────
+     Egen skärm utan stegräknare. Den som inte valt paket har inte börjat
+     registrera sig än — de bestämmer vilken registrering det ska bli. */
+  if (väljer) {
+    return (
+      <div className="min-h-screen bg-navy-950 flex flex-col">
+        <header className="border-b border-navy-800 px-6 py-4 flex items-center justify-between">
+          <span className="text-white font-bold text-lg tracking-tight">Kiterank</span>
+          <span className="text-slate-500 text-sm">
+            Har du redan ett konto?{' '}
+            <Link href="/auth/login" className="text-mustard hover:text-mustard-light">Logga in</Link>
+          </span>
+        </header>
+        <main className="flex-1 flex items-center px-6 py-12">
+          <Paketval
+            priser={priser}
+            onVälj={n => {
+              setNivå(n)
+              setVägen(n === 'mall' ? 'mall' : 'premium')
+              setVäljer(false)
+            }}
+          />
+        </main>
       </div>
     )
   }
@@ -249,51 +385,28 @@ export function SetupWizard() {
         <span className="text-slate-500 text-sm">Konfigurera din webbplats</span>
       </header>
 
-      {/* Content */}
-      <main className="flex-1 flex flex-col items-center px-6 py-10">
-        {/* Progress */}
-        <div className="mb-10">
-          <Progress step={step} vill={vill} />
-        </div>
+      {/* Content — steglistan står lodrätt vid sidan av innehållet, så att alla
+          tre stegen syns under hela guiden och inte bara det man står på. */}
+      <main className="flex-1 w-full max-w-5xl mx-auto px-6 py-10 flex flex-col md:flex-row md:gap-14">
+        <aside className="shrink-0 mb-10 md:mb-0 md:w-44 md:pt-2">
+          <Progress step={step} kedja={kedja} />
+        </aside>
 
-        {/* ── Steg: Vad du vill ha ──────────────────────────────── */}
-        {step === 'vilja' && (
-          <div className="w-full max-w-xl space-y-6">
+        <div className="flex-1 min-w-0 flex flex-col items-center">
+
+        {/* ── Step: Er design ───────────────────────────────────────
+            Bara premium. De har betalat för att slippa välja mall, så här
+            frågar vi det vi behöver för att rita åt dem i stället. */}
+        {step === 'brief' && (
+          <div className="w-full max-w-2xl space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-white mb-1">Vad ska vi göra åt er?</h2>
+              <h2 className="text-2xl font-bold text-white mb-1">Hur ska sidan se ut?</h2>
               <p className="text-slate-400">
-                Svaren avgör vad du får se härnäst. Du kan lägga till det andra när som helst.
+                Vi designar den åt er. De här svaren är vad vi utgår från — hoppa över det du
+                är osäker på, vi tar resten i ett samtal.
               </p>
             </div>
-
-            {/* Hemsidan. Tre svar och inte två: den som redan har en sida och
-                vill behålla den är ett annat fall än den som inte har någon,
-                och skillnaden avgör vad vi kan mäta åt dem sedan. */}
-            <Fraga titel="Ska vi bygga er hemsida?">
-              {([
-                [true,  false, 'Ja, bygg en åt oss',        'Vi sätter ihop en färdig sida av det du berättar i nästa steg.'],
-                [true,  true,  'Ja, vi har en vi vill byta', 'Samma sak — och vi hjälper dig flytta din domän till den nya.'],
-                [false, true,  'Nej, vi har redan en',       'Vi lämnar sidan i fred och jobbar med din synlighet i stället.'],
-              ] as const).map(([sajt, redan, titel, om]) => {
-                const vald = vill.sajt === sajt && harSajt === redan
-                return (
-                  <Val key={titel} vald={vald} titel={titel} om={om}
-                       onClick={() => { setVill(v => ({ ...v, sajt })); setHarSajt(redan) }} />
-                )
-              })}
-            </Fraga>
-
-            {/* Bokningen frågas separat. En salong kan mycket väl vilja ha en
-                sida utan tidbokning — och tvärtom. */}
-            <Fraga titel="Ska kunder kunna boka tid själva?">
-              {([
-                [true,  'Ja, med tidbokning',  'Kunder bokar dygnet runt, du ser allt i en kalender.'],
-                [false, 'Nej, de ringer oss',  'Vi visar telefonnumret tydligt i stället.'],
-              ] as const).map(([b, titel, om]) => (
-                <Val key={titel} vald={vill.bokning === b} titel={titel} om={om}
-                     onClick={() => setVill(v => ({ ...v, bokning: b }))} />
-              ))}
-            </Fraga>
+            <DesignBriefFalt brief={brief} onChange={setBrief} />
           </div>
         )}
 
@@ -302,8 +415,8 @@ export function SetupWizard() {
           <div className="w-full max-w-2xl">
             <h2 className="text-2xl font-bold text-white mb-1">Vilken sorts salong driver du?</h2>
             <p className="text-slate-400 mb-8">
-              Alla designer är öppna för alla — valet fyller hemsidan med prislista, artiklar och texter
-              skrivna för just din bransch.
+              Valet säger till Google vilken typ av företag ni är samt fyller hemsidan med
+              innehåll relevant för er bransch.
             </p>
             <div className="grid sm:grid-cols-2 gap-3">
               {INDUSTRIES.map(ind => (
@@ -323,14 +436,52 @@ export function SetupWizard() {
                 </button>
               ))}
             </div>
+
+            {/* Vad slags behandlingar det rör sig om avgör vilken kategori
+                Google ska förstå verksamheten som — friskvård och behandling av
+                besvär hör till olika. Det är en fråga om branschen och inte om
+                texten, så den står här och inte hos textfyllaren. */}
+            {asksCare && (
+              <div className="mt-8 bg-navy-800 rounded-xl border border-navy-700 p-5">
+                <p className="text-white text-sm font-medium mb-1">Vad är det för slags behandlingar?</p>
+                <p className="text-slate-400 text-xs mb-4 leading-relaxed">
+                  Svaret avgör hur Google förstår din verksamhet. Friskvård och behandling av besvär hör till olika kategorier, och det går inte att läsa ut av branschnamnet.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ['wellness', 'Friskvård och avkoppling'],
+                    ['care',     'Behandling av besvär och skador'],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setCare(id)}
+                      className={`text-sm px-4 py-2 rounded-lg border transition-colors ${
+                        care === id
+                          ? 'bg-mustard text-navy-950 border-mustard font-semibold'
+                          : 'text-slate-300 border-navy-600 hover:border-navy-500'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* ── Step: Mall ────────────────────────────────────────── */}
         {step === 'mall' && (
           <div className="w-full max-w-2xl">
-            <h2 className="text-2xl font-bold text-white mb-1">Välj en mall</h2>
-            <p className="text-slate-400 mb-6">Du kan alltid byta mall och anpassa färger och text senare.</p>
+            <h2 className="text-2xl font-bold text-white mb-1">Välj en design</h2>
+            {/* Vad de faktiskt får kontroll över, utskrivet.
+                Den som tror att ett designval är slutgiltigt väljer försiktigt
+                och blir sällan nöjd — och den som tror att bara färger går att
+                ändra bygger aldrig om sin sida. */}
+            <p className="text-slate-400 mb-6">
+              Du kan byta design på din hemsida när du vill. Texter, bilder och färger ändrar
+              du själv och sektioner kan redigeras eller tas bort.
+            </p>
             <div className="grid grid-cols-2 gap-4 max-h-[560px] overflow-y-auto pr-1">
               {SALON_TEMPLATES.map(t => {
                 const active = template === t.id
@@ -384,55 +535,36 @@ export function SetupWizard() {
                 )
               })}
             </div>
-          </div>
-        )}
 
-        {/* ── Step: Om din verksamhet ───────────────────────────── */}
-        {step === 'om' && (
-          <div className="w-full max-w-xl">
-            <h2 className="text-2xl font-bold text-white mb-1">Berätta om din verksamhet</h2>
-            <p className="text-slate-400 mb-2">
-              Vi sätter ihop hela hemsidan av det du skriver här — dina ord, dina tjänster, din ort.
-            </p>
-            <p className="text-mustard text-sm font-medium mb-8">
-              Av dina svar bygger vi startsida, om oss, prislista och sex artiklar. Ju mer du berättar, desto mer blir dina egna ord. Allt går att ändra sen.
-            </p>
-            {asksCare && (
-              <div className="mb-8 bg-navy-800 rounded-xl border border-navy-700 p-5">
-                <p className="text-white text-sm font-medium mb-1">Vad är det för slags behandlingar?</p>
-                <p className="text-slate-400 text-xs mb-4 leading-relaxed">
-                  Svaret avgör hur Google förstår din verksamhet. Friskvård och behandling av besvär hör till olika kategorier, och det går inte att läsa ut av branschnamnet.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {([
-                    ['wellness', 'Friskvård och avkoppling'],
-                    ['care',     'Behandling av besvär och skador'],
-                  ] as const).map(([id, label]) => (
-                    <button
-                      key={id}
-                      onClick={() => setCare(id)}
-                      className={`text-sm px-4 py-2 rounded-lg border transition-colors ${
-                        care === id
-                          ? 'bg-mustard text-navy-950 border-mustard font-semibold'
-                          : 'text-slate-300 border-navy-600 hover:border-navy-500'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <AboutFields about={about} onChange={setAbout} />
+            {/* Erbjudandet ligger under mallarna, inte över dem.
+                Den som är nöjd med en mall väljer klart först; den som inte
+                hittar rätt har just konstaterat det och är då som mest
+                mottaglig. Premiumkunder ser det aldrig — de har redan köpt
+                det, och att sälja någon det de har är att verka ouppmärksam. */}
+            <div className="mt-5">
+              <EgenDesign
+                titel="Vill du hellre att vi designar den åt er?"
+                om="Ingen färdig design, utan en sida ritad kring ert varumärke — och vi bygger och fyller den åt er. Vi hör av oss med en offert."
+                cta="Ja, hör av er"
+                klar="Tack — vi hör av oss."
+              />
+            </div>
           </div>
         )}
 
         {/* ── Step: Inställningar ───────────────────────────────── */}
         {step === 'kontakt' && (
           <div className="w-full max-w-md">
-            <h2 className="text-2xl font-bold text-white mb-1">Vilka är ni?</h2>
-            <p className="text-slate-400 mb-8">Namnet blir rubriken på din sida, och e-posten är dit vi hör av oss.</p>
+            {/* Rubriken säger vad skärmen gör. Har de redan ett konto — via
+                Google eller ett tidigare försök — är det inget konto som
+                skapas, och då vore "Skapa ditt konto" ett löfte om en knapp
+                som inte finns. */}
+            <h2 className="text-2xl font-bold text-white mb-1">
+              {harKonto ? 'Vilka är ni?' : 'Skapa ditt konto'}
+            </h2>
+            <p className="text-slate-400 mb-8">
+              Namnet blir rubriken på din sida och e-post är dit vi vanligtvis hör av oss.
+            </p>
 
             <div className="space-y-6">
               {/* Business name */}
@@ -448,6 +580,7 @@ export function SetupWizard() {
                   }}
                   className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-mustard/50 focus:ring-1 focus:ring-mustard/30 transition-colors"
                 />
+                <p className="text-xs text-slate-500 mt-2">Kan ändras senare.</p>
               </div>
 
               {/* E-post. Obligatorisk, och det är inte en formalitet: hit går
@@ -463,8 +596,33 @@ export function SetupWizard() {
                   onChange={e => setEpost(e.target.value)}
                   className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-mustard/50 focus:ring-1 focus:ring-mustard/30 transition-colors"
                 />
-                <p className="text-slate-500 text-xs mt-1.5">Använd en adress du läser. Hit går viktiga besked om din sida.</p>
+                <p className="text-slate-500 text-xs mt-1.5">
+                  {harKonto
+                    ? 'Kontaktuppgifter för Kiterank, visas inte utåt.'
+                    : 'Det här blir också din inloggning. Visas inte utåt.'}
+                </p>
               </div>
+
+              {/* Lösenordet, bara för den som inte redan är inne.
+                  Kontot skapas när de trycker Nästa — därför står fältet mitt i
+                  guiden och inte på en sida före den. */}
+              {!harKonto && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Lösenord</label>
+                  <input
+                    type="password"
+                    value={losenord}
+                    placeholder="Minst 8 tecken"
+                    autoComplete="new-password"
+                    onChange={e => setLosenord(e.target.value)}
+                    className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-mustard/50 focus:ring-1 focus:ring-mustard/30 transition-colors"
+                  />
+                  <p className="text-slate-500 text-xs mt-1.5">
+                    Har du redan ett konto?{' '}
+                    <Link href="/auth/login" className="text-mustard hover:text-mustard-light">Logga in</Link>
+                  </p>
+                </div>
+              )}
 
               {/* Telefonen är frivillig här men hamnar på sidan om den fylls i —
                   därför står det, i stället för att den tyst dyker upp publikt. */}
@@ -479,7 +637,7 @@ export function SetupWizard() {
                   onChange={e => setTelefon(e.target.value)}
                   className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-mustard/50 focus:ring-1 focus:ring-mustard/30 transition-colors"
                 />
-                <p className="text-slate-500 text-xs mt-1.5">Visas på din hemsida så kunder kan ringa. Kan ändras senare.</p>
+                <p className="text-slate-500 text-xs mt-1.5">Kontaktuppgifter för Kiterank, visas inte utåt.</p>
               </div>
 
               {/* Adressen, som en uppgift och inte en fråga. Den är
@@ -530,13 +688,17 @@ export function SetupWizard() {
             <p className="text-red-400 text-sm text-center mb-4">{saveError}</p>
           )}
           <div className="flex items-center gap-4 justify-between">
-            {step !== kedja[0] ? (
+            {/* På steg 1 leder Tillbaka till paketvalet — men bara för den som
+                kom den vägen och ännu inte skapat sitt konto. Efter det är
+                paketet en beställning, och den ändras i abonnemangsfliken där
+                priset och villkoren står, inte med en bakåtknapp. */}
+            {step !== kedja[0] || (behöverVälja && !harKonto) ? (
               <button
-                onClick={prevStep}
+                onClick={() => (step === kedja[0] ? setVäljer(true) : prevStep())}
                 disabled={saving}
                 className="px-6 py-2.5 text-slate-400 hover:text-white border border-navy-700 hover:border-navy-500 rounded-xl text-sm transition-colors disabled:opacity-40"
               >
-                ← Tillbaka
+                {step === kedja[0] ? '← Byt paket' : '← Tillbaka'}
               </button>
             ) : <div />}
 
@@ -548,8 +710,17 @@ export function SetupWizard() {
                   ? 'bg-mustard text-navy-950 hover:bg-mustard/90'
                   : 'bg-navy-800 text-slate-600 cursor-not-allowed'}`}
             >
-              {saving ? 'Skapar…' : step === sista ? (vill.sajt ? 'Skapa webbplats →' : 'Skapa konto →') : 'Nästa →'}
+              {/* Knappen säger vad som händer, och det är två olika saker.
+                  Mallkunden får en sida i samma sekund; premiumkunden lämnar
+                  in ett underlag och får svar av oss. "Skapa webbplats" på den
+                  senare hade lovat något som inte fanns när de klickade. */}
+              {saving
+                ? (vägen === 'premium' ? 'Skickar…' : 'Skapar…')
+                : step === sista
+                  ? (vägen === 'premium' ? 'Begär design →' : vill.sajt ? 'Skapa webbplats →' : 'Skapa konto →')
+                  : 'Nästa →'}
             </button>
+            </div>
           </div>
         </div>
       </main>
@@ -579,7 +750,34 @@ export function SetupWizard() {
   )
 }
 
-/* ─── Helper ────────────────────────────────────────────────────────── */
+/* ─── Helpers ───────────────────────────────────────────────────────── */
+
+/*
+ * Inloggningstjänstens fel, på svenska.
+ *
+ * Meddelandena kommer på engelska och är skrivna för den som byggt systemet:
+ * "email rate limit exceeded" säger ingenting till en salongsägare, och att
+ * visa det mitt i en svensk registrering ser ut som ett haveri.
+ *
+ * Varje rad här nedan är ett fel en riktig kund kan råka ut för, och vart och
+ * ett säger vad de ska göra i stället för vad som gick fel i vår kod. Det som
+ * inte känns igen blir en neutral mening — hellre det än en engelsk teknisk
+ * rad, för den skickar dem till supporten utan att hjälpa någon av oss.
+ */
+function felPåSvenska(rått: string): string {
+  const m = rått.toLowerCase()
+  if (/already registered|already exists|user already/.test(m))
+    return 'Det finns redan ett konto på den adressen. Logga in så fortsätter vi där du var.'
+  if (/rate limit/.test(m))
+    return 'Vi kunde inte skapa kontot just nu. Vänta en minut och försök igen.'
+  if (/invalid|not valid/.test(m) && /email/.test(m))
+    return 'E-postadressen ser inte ut att fungera. Kontrollera stavningen.'
+  if (/password/.test(m) && /short|least|weak/.test(m))
+    return 'Lösenordet är för kort. Välj minst 8 tecken.'
+  if (/network|fetch failed/.test(m))
+    return 'Ingen kontakt med servern. Kontrollera uppkopplingen och försök igen.'
+  return 'Något gick fel när kontot skulle skapas. Försök igen om en stund.'
+}
 
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (

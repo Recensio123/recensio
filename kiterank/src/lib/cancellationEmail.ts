@@ -15,11 +15,13 @@
  */
 
 import type { createAdminClient } from './supabase/admin'
+import { skickaOchLogga } from './utskickslogg'
 import { sendMail, platformFrom, type MailResult } from './mailer'
-import { sendMessage, type MessageResult } from './sendMessage'
+import type { MessageResult } from './sendMessage'
 import { datumText, tidText, smsVärden } from './bookingText'
-import { templateSettings, renderTemplate } from './messageTemplates'
-import { salonReplyTo, salonOrigin, salonPhone, svarsInfo, esc } from './mailParties'
+import { aktivMall, renderTemplate } from './messageTemplates'
+import { salonReplyTo, salonOrigin, salonPhone, smsAvsandare, svarsInfo, esc } from './mailParties'
+import { ramRader } from './meddelandeRam'
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -98,8 +100,17 @@ export async function sendCancellationFor(
 
   /* Salongens omskrivning går före mallen, men bara för det här mailet — den
      sparas inte som ny mall. Nästa avbokning använder mallen igen. */
-  const inställning = await templateSettings(admin, b.company_id as string, 'cancellation')
-  const mall = opts.body?.trim() ? opts.body : inställning.body
+  const aktiv = await aktivMall(admin, b.company_id as string, 'cancellation')
+
+  /* Avslagen: salongen har valt bort avbokningsbeskedet, och det valet gäller
+     även när det är de själva som avbokar. */
+  if (!aktiv.kanal) {
+    return avisering.sent ? { sent: true, reason: 'salon_only' } : { sent: false, reason: 'disabled' }
+  }
+
+  /* Salongens omskrivning går före mallen, men bara för det här utskicket — den
+     sparas inte som ny mall. Nästa avbokning använder mallen igen. */
+  const mall = opts.body?.trim() ? opts.body : aktiv.mall.body
 
   /* Kundens samtycke till SMS. Saknas kolumnen behandlas det som nej. */
   let smsOptIn = false
@@ -127,23 +138,25 @@ export async function sendCancellationFor(
   const text    = renderTemplate(mall, värden)
   const smsText = renderTemplate(mall, smsVärden(värden))
 
-  const rader: [string, string][] = [
-    ['Behandling', b.service_name as string],
-    ['Datum',      datum],
-    ['Tid',        tid],
-    ...(b.booking_ref ? [['Bokningsnr', b.booking_ref as string] as [string, string]] : []),
-  ]
+  const rader = ramRader('cancellation', {
+    behandling: b.service_name as string, datum, tid,
+    referens: (b.booking_ref as string) ?? null,
+  })
 
   const origin  = await salonOrigin(admin, b.company_id as string)
   const bokaNy  = origin ? `${origin}` : null
 
-  const result = await sendMessage({
-    channel:  inställning.channel,
+  const result = await skickaOchLogga(admin, {
+    companyId: b.company_id as string, bookingId: (b.id as string) ?? null,
+    kind: 'cancellation',
+  }, {
+    channel:  aktiv.kanal,
     salong,
     email:    (b.customer_email as string) ?? null,
     phone:    (b.customer_phone as string) ?? null,
     smsOptIn,
-    subject:  `Avbokad tid ${datum} — ${salong}`,
+    smsFrom:  await smsAvsandare(admin, b.company_id as string),
+    subject:  renderTemplate(aktiv.mall.subject, värden),
     text:     textBody(text, rader, bokaNy, svar.text),
     html:     htmlBody(text, rader, bokaNy, salong, svar.html),
     sms:      `${smsText} ${svar.sms}`.replace(/\s+/g, ' ').trim(),

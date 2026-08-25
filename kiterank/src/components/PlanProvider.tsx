@@ -1,36 +1,18 @@
 'use client'
 import { createContext, useContext, useState } from 'react'
+import { type Plan } from '@/lib/plan'
 
 /*
- * Två upplägg, en produkt.
+ * Vilket upplägg som är aktivt, delat genom trädet.
  *
- *   testbok2  — verksamheten bokar tid. Salongen, kliniken, frisören: kunden
- *               väljer en tid själv och resultatet mäts i bokningar och kronor.
- *   test      — verksamheten tar emot förfrågningar. Hantverkaren, byrån: ingen
- *               tidbok, utan någon som hör av sig och ska ringas upp. Samma
- *               plattform i övrigt, men resultatet mäts i leads.
- *
- * Skillnaden är inte kosmetisk. En hantverkare som får "12 bokningar" på sin
- * översikt letar efter en kalender som inte finns; en salong som får "12 leads"
- * undrar varför deras kunder inte redan har en tid. Ordet måste följa hur
- * verksamheten faktiskt tar betalt.
- *
- * Det tredje läget, `testbok`, är borta. Det fanns för att kunna se en ändring
- * bredvid det den ersatte medan marknadsföringssidan förenklades — den
- * jämförelsen är gjord, och testbok2 är det som gäller.
+ * Typen och `hasBooking` bor i lib/plan och inte här. En 'use client'-modul
+ * exporterar klientreferenser, inte värden — den som importerar en funktion
+ * härifrån på servern får något som ser rätt ut tills det anropas. Kontexten
+ * och kroken behöver webbläsaren; regeln gör det inte.
  */
-export type Plan = 'test' | 'testbok2'
 
-/**
- * Bär det här läget bokningssystemet?
- *
- * Varje grind frågar det här i stället för att jämföra med en sträng. Ett nytt
- * bokningsläge tillagt som strängjämförelse hade tyst släckt kalendern i just
- * det läge som byggdes för att visa den.
- */
-export function hasBooking(plan: Plan): boolean {
-  return plan === 'testbok2'
-}
+export type { Plan }
+export { hasBooking } from '@/lib/plan'
 
 type PlanContextValue = {
   plan:    Plan
@@ -44,8 +26,12 @@ const PlanContext = createContext<PlanContextValue>({
   setPlan: () => {},
 })
 
-export function PlanProvider({ children }: { children: React.ReactNode }) {
-  const [plan, setPlan] = useState<Plan>('testbok2')
+export function PlanProvider({ start = 'testbok2', children }: {
+  /** Startläget, satt av servern utifrån vad kunden betalar för. */
+  start?: Plan
+  children: React.ReactNode
+}) {
+  const [plan, setPlan] = useState<Plan>(start)
   return (
     <PlanContext.Provider value={{ plan, setPlan }}>
       {children}

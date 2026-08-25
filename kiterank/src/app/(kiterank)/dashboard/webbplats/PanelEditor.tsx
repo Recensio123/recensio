@@ -1,17 +1,18 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SITE_LANGUAGES } from '@/lib/siteLanguages'
-import { getPalettesForIndustry, type Template } from '@/lib/templates'
-import { PreviewSite, templateImageSlots, getIndConfig, orderedIds, PAGE_SECTIONS, cfgLabel, CFG_LABEL_NAMES, promoServices, promoSlots, type CfgLabelKey, type SiteContent as PublicContent } from '@/components/site/PreviewSite'
+import { type Template } from '@/lib/templates'
+import { PreviewSite, getIndConfig, cfgLabel, CFG_LABEL_NAMES, type CfgLabelKey, type SiteContent as PublicContent } from '@/components/site/PreviewSite'
 import { SITE_LABELS, LABEL_NAMES, siteLabel, type LabelKey } from '@/lib/siteLabels'
+import { pageIntro } from '@/components/site/ServicePage'
 import { usePlan, hasBooking } from '@/components/PlanProvider'
-import { SOCIAL_FIELDS, type SocialKey } from '@/lib/siteSocial'
 import {
   SECTION_PAGES, SECTION_PAGE_IDS, sectionHasMaterial, sectionPageEnabled, sectionPageSuggestion,
-  sectionPageTitle,
-  type SectionPageId, type SectionPage as SectionPageConfig,
+  sectionPageTitle, sectionPageBlocks,
+  type SectionPageId,
 } from '@/lib/sectionPages'
 import { PageWorkspace } from './PageWorkspace'
+import { ÅngraPublicering } from './AngraPublicering'
 
 /* What each section already puts at the top of its own page — said in the
  * customer's terms, so nobody wonders whether they have to add it by hand. */
@@ -45,6 +46,7 @@ const LABEL_FORM: Record<string, { max: number; multiline?: boolean }> = {
   pricePageIntro: { max: 180, multiline: true },
   ctaBandBody:    { max: 160, multiline: true },
   contactIntro:   { max: 220, multiline: true },
+  contactDoBody:  { max: 260, multiline: true },
 }
 
 /* The bubble editor's knowledge of each clickable text: what to call it and
@@ -90,24 +92,31 @@ const PAGE_LABEL: Record<SectionPageId, string> = {
   blog:      'Artiklarnas sida',
   contact:   'Kontaktsidan',
 }
-import { SITE_FONTS } from '@/lib/siteFonts'
-import { uploadFont } from '@/lib/uploadImage'
-import type { ServiceEntry } from '@/lib/services-data'
 import { ExternalLink } from '@/components/ExternalLink'
-import { emptyArticle, type Article } from '@/lib/articles'
-import { withExamples, exampleArticles, isExampleImage } from '@/lib/exampleContent'
+import { exampleArticles, exampleTeam, isExampleImage } from '@/lib/exampleContent'
 import { StartChecklist, type ChecklistItem } from './StartChecklist'
 import { SwapImages, type Placeholder } from './SwapImages'
-import { MediaProvider, useMedia } from './MediaLibrary'
+import { MediaProvider } from './MediaLibrary'
+import { TeamPhoto, Kryss, Val, Section } from './panelDelar'
+import { useSajtInnehall, SajtProvider } from './sajtInnehall'
+import { KontaktSektion } from './KontaktSektion'
+import { BrandingSektion } from './BrandingSektion'
+import { TjanstEditor } from '@/components/tjanster/TjanstEditor'
+import { BristBand } from './BristBand'
+import { sidansBrister } from '@/lib/sidansBrister'
+import { BilderSektion, type BildPlats } from './BilderSektion'
+import { Textfyllare } from './Textfyllare'
+import type { Förslag } from '@/lib/textfyllare'
 import { SubpagePreview } from './SubpagePreview'
 import { DomanFalt } from './DomanFalt'
+import type { domänData } from '@/lib/domanData'
 import { Field, F, inputStyle, useNarrow } from './fields'
 import { ArticleList, ArticleWorkspace } from './ArticleEditor'
 import { CONTENT as SITE_DEFAULTS } from '@/lib/siteExampleContent'
 import {
   MOCK_REVIEWS,
-  MenuEditor, TestimonialEditor, ReviewPicker, GoogleSerpEditor,
-  type SiteContent, type Testimonial, type MockReview, type ServiceItem, type TeamMember,
+  TestimonialEditor, ReviewPicker, GoogleSerpEditor,
+  type SiteContent, type MockReview,
 } from './SiteEditor'
 
 /*
@@ -122,295 +131,9 @@ import {
 
 /* ── Small building blocks ─────────────────────────────────────────── */
 
-/* Color helpers for the palette derivation below */
-const hexLum = (hex: string) => {
-  const h = hex.replace('#', '')
-  if (h.length < 6) return 0
-  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16))
-  return (r * 299 + g * 587 + b * 114) / 1000
-}
-const hexIsDark = (hex: string) => hexLum(hex) < 128
-/** WCAG contrast ratio between two hex colors — 1 (none) to 21 (max). */
-const contrastRatio = (hexA: string, hexB: string) => {
-  const rel = (hex: string) => {
-    const h = hex.replace('#', '')
-    if (h.length < 6) return 0
-    const [r, g, b] = [0, 2, 4]
-      .map(i => parseInt(h.slice(i, i + 2), 16) / 255)
-      .map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-  }
-  const [hi, lo] = [rel(hexA), rel(hexB)].sort((m, n) => n - m)
-  return (hi + 0.05) / (lo + 0.05)
-}
-const shade = (hex: string, amount: number) => {
-  const h = hex.replace('#', '')
-  const ch = [0, 2, 4].map(i => Math.min(255, Math.max(0, parseInt(h.slice(i, i + 2), 16) + amount)))
-  return '#' + ch.map(v => v.toString(16).padStart(2, '0')).join('')
-}
-/** Blend two hex colors — t is the weight of the second. */
-const mix = (hexA: string, hexB: string, t: number) => {
-  const a = hexA.replace('#', ''), b = hexB.replace('#', '')
-  const ch = [0, 2, 4].map(i => Math.round(
-    parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t
-  ))
-  return '#' + ch.map(v => v.toString(16).padStart(2, '0')).join('')
-}
 
-/** A whole readable palette from one background choice. Text and section
- *  colors follow along, so no combination the customer picks can produce
- *  white text on a white page. */
-function paletteFromBg(bg: string) {
-  const dark = hexIsDark(bg)
-  return {
-    bg,
-    nav: bg,
-    b:   dark ? shade(bg, 16) : shade(bg, -10),
-    h:   dark ? '#ffffff' : '#131313',
-    s:   dark ? '#9a9a9a' : '#666666',
-  }
-}
 
-/* The layout's own picture. Stored as a file, not inside the page content, so
-   a big photo doesn't end up embedded in the HTML of every visit. */
-function SlotImage({ label, hint, value, onChange }: {
-  label: string; hint: string; value: string; onChange: (url: string) => void
-}) {
-  const media = useMedia()
-  return (
-    <div>
-      <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', fontFamily: F, margin: '0 0 5px' }}>{label}</p>
-      <button
-        onClick={async () => { const url = await media?.pickImage(); if (url) onChange(url) }}
-        style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: 'none', border: 'none', padding: 0, textAlign: 'left' }}
-      >
-        {value ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={value} alt="" style={{ width: 84, height: 60, objectFit: 'cover', borderRadius: 8 }} />
-        ) : (
-          <span style={{ width: 84, height: 60, borderRadius: 8, border: '2px dashed #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 20 }}>+</span>
-        )}
-        <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: F, lineHeight: 1.5 }}>
-          {value ? 'Byt bild' : hint}
-        </span>
-      </button>
-      {value && (
-        <button onClick={() => onChange('')} style={{ marginTop: 6, fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: F, padding: 0 }}>
-          Ta bort bilden
-        </button>
-      )}
-    </div>
-  )
-}
-
-/* Logo and team photos. Stored as files like every other picture — inline
-   image data would ride along in the HTML of every single page view. */
-/* Bild med etikett bredvid — loggan och sidornas bilder. Runda porträtt hade
-   ett eget läge här tills teamet fick sina egna rader; det togs bort samtidigt
-   så ingen ärver ett val som inte längre används någonstans. */
-function ImageUpload({ value, onChange, label }: {
-  value: string; onChange: (url: string) => void; label: string
-}) {
-  const media = useMedia()
-  return (
-    <button
-      onClick={async () => { const url = await media?.pickImage(); if (url) onChange(url) }}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: 'none', border: 'none', padding: 0, textAlign: 'left' }}
-    >
-      {value ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={value} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover' }} />
-      ) : (
-        <span style={{ width: 56, height: 56, borderRadius: 8, border: '2px dashed #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 20 }}>+</span>
-      )}
-      <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: F }}>{label}</span>
-    </button>
-  )
-}
-
-/* Personens foto som en knapp i radens vänsterkant. Samma bildbibliotek som
-   allt annat, men utan etikett bredvid — raden har ingen plats för ord som
-   säger vad en bild är. */
-function TeamPhoto({ value, onChange }: { value: string; onChange: (url: string) => void }) {
-  const media = useMedia()
-  return (
-    <button
-      onClick={async () => { const url = await media?.pickImage(); if (url) onChange(url) }}
-      title={value ? 'Byt foto' : 'Välj foto'}
-      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, lineHeight: 0 }}
-    >
-      {value ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={value} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} />
-      ) : (
-        <span style={{ width: 44, height: 44, borderRadius: '50%', border: '2px dashed #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', fontSize: 18 }}>+</span>
-      )}
-    </button>
-  )
-}
-
-/* Ett kryss med en mening bredvid.
- *
- * Reglagen i panelen svarar på "på eller av" men aldrig på "av vad" — den som
- * inte byggt en hemsida förut vet inte vad reglaget i en rubrik gäller. Ett
- * kryss med en rad text under gör frågan läsbar utan att ta mer plats. */
-function Kryss({ on, onChange, title, hint, disabled }: {
-  on: boolean; onChange: (v: boolean) => void
-  title: string; hint?: string; disabled?: boolean
-}) {
-  return (
-    <button
-      onClick={() => { if (!disabled) onChange(!on) }}
-      disabled={disabled}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left',
-        background: 'none', border: 'none', padding: 0, cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      <span style={{
-        width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 1,
-        border: `1px solid ${on ? '#eab308' : '#334155'}`,
-        background: on ? '#eab308' : 'transparent',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#0f172a', fontSize: 12, fontWeight: 900, lineHeight: 1,
-      }}>{on ? '✓' : ''}</span>
-      <span style={{ flex: 1 }}>
-        <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#e2e8f0', fontFamily: F }}>{title}</span>
-        {hint && <span style={{ display: 'block', fontSize: 11, color: '#64748b', fontFamily: F, lineHeight: 1.5, marginTop: 2 }}>{hint}</span>}
-      </span>
-    </button>
-  )
-}
-
-/* Samma rad som Kryss, men rund — och därmed "välj en" i stället för "på
- * eller av".
- *
- * Formen är hela skillnaden, och den är värd att hålla isär: en fyrkant är ett
- * val som står för sig självt, en cirkel ett som utesluter de andra. Blandas de
- * ihop blir varje ruta en gissning om vad ett klick gör med resten. */
-function Val({ on, onChange, title, hint, märke }: {
-  on: boolean; onChange: () => void
-  title: string; hint?: string
-  /** "Vanligast" — det de flesta väljer, för den som inte kan gissa. */
-  märke?: string
-}) {
-  return (
-    <button
-      onClick={() => { if (!on) onChange() }}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left',
-        background: 'none', border: 'none', padding: 0, cursor: on ? 'default' : 'pointer',
-      }}
-    >
-      <span style={{
-        width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 1,
-        border: `1px solid ${on ? '#eab308' : '#334155'}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        {on && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#eab308' }} />}
-      </span>
-      <span style={{ flex: 1 }}>
-        <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: on ? '#eab308' : '#e2e8f0', fontFamily: F }}>
-          {title}
-          {märke && (
-            <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', fontFamily: F, marginLeft: 6 }}>
-              ({märke})
-            </span>
-          )}
-        </span>
-        {hint && <span style={{ display: 'block', fontSize: 11, color: '#64748b', fontFamily: F, lineHeight: 1.5, marginTop: 2 }}>{hint}</span>}
-      </span>
-    </button>
-  )
-}
-
-/* One collapsible part of the page. Open one at a time keeps the panel calm. */
-function Section({ id, title, hint, open, onToggle, children, enabled, onEnabledChange, onMoveUp, onMoveDown, flash }: {
-  id: string; title: string; hint?: string
-  open: boolean; onToggle: () => void
-  children: React.ReactNode
-  enabled?: boolean; onEnabledChange?: (v: boolean) => void
-  /** Movable sections: up/down here moves the section on the page itself. */
-  onMoveUp?: () => void; onMoveDown?: () => void
-  /** Just arrived here from a click on the page — mark it briefly. */
-  flash?: boolean
-}) {
-  const arrow = (dir: '↑' | '↓', fn?: () => void) => (
-    <button
-      onClick={e => { e.stopPropagation(); fn?.() }}
-      disabled={!fn}
-      title={fn ? (dir === '↑' ? 'Flytta upp på sidan' : 'Flytta ner på sidan') : undefined}
-      style={{ background: 'none', border: 'none', padding: '0 2px', fontSize: 13, lineHeight: 1, cursor: fn ? 'pointer' : 'default', color: fn ? '#64748b' : '#1e293b' }}
-    >
-      {dir}
-    </button>
-  )
-  return (
-    // flexShrink 0: the panel is a fixed-height flex column — without this,
-    // overflowing sections get squeezed and clipped instead of scrolling.
-    // data-panel-section is how goTo() finds this to scroll it into view.
-    <div
-      data-panel-section={id}
-      style={{
-        border: `1px solid ${flash ? '#eab308' : '#1e293b'}`,
-        boxShadow: flash ? '0 0 0 3px rgba(234,179,8,0.15)' : 'none',
-        transition: 'border-color 0.25s, box-shadow 0.25s',
-        borderRadius: 12, overflow: 'hidden', background: '#0f172a', flexShrink: 0, scrollMarginTop: 8,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', cursor: 'pointer' }} onClick={onToggle}>
-        <span style={{ flex: 1 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, fontWeight: 700, color: '#f1f5f9', fontFamily: F }}>
-            {title}
-            {/* Names the connection out loud: this is the piece you clicked */}
-            {flash && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#0f172a', background: '#eab308', borderRadius: 999, padding: '2px 8px', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
-                Vald på sidan
-              </span>
-            )}
-          </span>
-          {hint && <span style={{ display: 'block', fontSize: 11, color: '#64748b', fontFamily: F, marginTop: 2 }}>{hint}</span>}
-        </span>
-        {(onMoveUp || onMoveDown) && (
-          <span style={{ display: 'flex', alignItems: 'center' }}>
-            {arrow('↑', onMoveUp)}
-            {arrow('↓', onMoveDown)}
-          </span>
-        )}
-        {onEnabledChange && (
-          <button
-            onClick={e => { e.stopPropagation(); onEnabledChange(!enabled) }}
-            title={enabled ? 'Visas på sidan — klicka för att dölja' : 'Dold — klicka för att visa'}
-            style={{
-              width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: enabled ? '#eab308' : '#334155', position: 'relative', transition: 'background 0.15s',
-            }}
-          >
-            <span style={{ position: 'absolute', top: 2, left: enabled ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
-          </button>
-        )}
-        <span style={{ color: '#64748b', fontSize: 12 }}>{open ? '▲' : '▼'}</span>
-      </div>
-      {open && (
-        <div style={{ padding: '4px 16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }} data-section={id}>
-          {/* The arrows in the header are two small glyphs; a rookie has no
-              reason to guess what they move. Say it once, while it is open. */}
-          {(onMoveUp || onMoveDown) && (
-            <p style={{ fontSize: 11, color: '#64748b', fontFamily: F, margin: 0 }}>
-              Pilarna ↑↓ högst upp flyttar den här delen på sidan.
-            </p>
-          )}
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── The editor ────────────────────────────────────────────────────── */
-
-export function PanelEditor({ template, industry, initialContent, siteSlug, templates }: {
+export function PanelEditor({ template, industry, initialContent, siteSlug, templates, domäner = null, googleKopplat = false }: {
   template:       Template
   industry:       string
   initialContent: Partial<SiteContent>
@@ -418,45 +141,43 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
   /** Every design available for this industry — the customer can change
    *  their mind after onboarding without starting over. */
   templates?:     Template[]
+  /** Salongens domäner, lästa av sidan. Utan dem hämtar domänfältet själv. */
+  domäner?:       Awaited<ReturnType<typeof domänData>> | null
+  /** Är Google kopplat. Avgör en post i kom igång-listan. */
+  googleKopplat?: boolean
 }) {
   const { plan } = usePlan()
   const defaults = SITE_DEFAULTS[industry] ?? SITE_DEFAULTS.other
-  /* A site that has never been given a team or articles opens with the
-   * examples in place — the customer rewrites rather than starts blank. */
-  const [content, setContent] = useState<SiteContent>(
-    withExamples({ ...defaults, ...initialContent } as SiteContent, industry)
-  )
-  const [images,  setImages]  = useState<string[]>((initialContent as SiteContent).gallery_images ?? Array(6).fill(''))
-  const [alts,    setAlts]    = useState<string[]>((initialContent as SiteContent).gallery_alts ?? Array(6).fill(''))
-  const [logo,    setLogo]    = useState<string>((initialContent as SiteContent).logo ?? '')
-  const [featuredReviews, setFeaturedReviews] = useState<Testimonial[]>(
-    ((initialContent as SiteContent).featured_reviews ?? []) as Testimonial[]
-  )
-  const [siteFeatures, setSiteFeatures] = useState<Record<string, boolean>>({
-    booking: true, pricelist: true, gallery: true, contact: true, blog: false, reviews: true, about: true,
-    ...((initialContent as SiteContent).siteFeatures ?? {}),
-  })
-  /* The whole page's order — every section except the footer. Older saves
-   * that only ordered three sections merge in without moving anything else. */
-  const [sectionOrder, setSectionOrder] = useState<string[]>(() =>
-    orderedIds(PAGE_SECTIONS, (initialContent as SiteContent).sectionOrder)
-  )
-  const [articles,  setArticles]  = useState<Article[]>(
-    (initialContent as SiteContent).articles ?? exampleArticles(industry)
-  )
+  /* Mallen står först: hooken nedanför behöver dess layout och färger.
+     Vilken mall som är vald är panelens sak, innehållet är hookens. */
+  const [design,    setDesign]    = useState<Template>(template)
+
+  /* Innehållet och dess ändringar ligger i en egen hook — se sajtInnehall.
+     Namnen packas upp här så att resten av filen är oförändrad, och samma
+     objekt går vidare till sektionerna genom kontexten. */
+  const sajt = useSajtInnehall(initialContent as Partial<SiteContent>, industry, design)
+  const {
+    content, setContent, images, setImages,
+    alts, setAlts, logo, setLogo,
+    featuredReviews, setFeaturedReviews, siteFeatures, setSiteFeatures,
+    sectionOrder, setSectionOrder, articles, setArticles,
+    dirty, setDirty, saved, setSaved,
+    touch, patch, patchLabel,
+    patchStat, visadeTjanster, taBortUtvald, toggleFeatured,
+    moveFeatured, patchPromo, toggleFeaturedReview, addTestimonial,
+    removeTestimonial, patchTeam, moveSection, swapGallery,
+    changeArticles, addArticle, addTeamMember, removeTeamMember,
+    patchPage,
+    PROMO_MAX, PLATSORD, urvalFullt, urvalRef,
+  } = sajt
   const [editingId, setEditingId] = useState<string | null>(null)
   /** Which section's own page is open in the big workspace, if any. */
   const [editingPage, setEditingPage] = useState<SectionPageId | null>(null)
   /** The picture-swapping workspace, opened from the kom igång list. */
   const [swapping, setSwapping] = useState(false)
-  const [design,    setDesign]    = useState<Template>(template)
-  const [fontBusy,  setFontBusy]  = useState(false)
-  const [fontError, setFontError] = useState('')
 
   const [open,      setOpen]      = useState<string>('hero')
-  const [dirty,     setDirty]     = useState(false)
   const [saving,    setSaving]    = useState(false)
-  const [saved,     setSaved]     = useState(false)
   const [saveError, setSaveError] = useState(false)
   /* The site's address — editable, since the URL is part of how the customer
    * gets indexed. Old addresses keep redirecting after a change. */
@@ -509,273 +230,6 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
       .finally(() => setReviewsLoading(false))
   }, [])
 
-  function touch() { setDirty(true); setSaved(false) }
-  function patch(k: keyof SiteContent, v: string) { setContent(p => ({ ...p, [k]: v })); touch() }
-  /* The site's own headings. Empty = the default (shown as placeholder), so a
-   * customer writing in French just types over every heading they see. */
-  function patchLabel(key: string, v: string) {
-    setContent(p => ({ ...p, labels: { ...(p.labels ?? {}), [key]: v } })); touch()
-  }
-  function patchSocial(key: SocialKey, v: string) {
-    setContent(p => ({ ...p, social: { ...(p.social ?? {}), [key]: v } })); touch()
-  }
-  /* Colors: the accent stands alone; a background choice brings its whole
-   * derived palette so the page always stays readable. */
-  function setAccent(hex: string) {
-    setContent(p => ({ ...p, colorOverrides: { ...(p.colorOverrides ?? {}), a: hex } })); touch()
-  }
-  /* Background: menu and section tones always follow. Text follows too —
-   * but only until the customer has picked a text color of their own. A made
-   * choice is never silently overwritten; body text is still re-softened
-   * toward the new background so the pair keeps fitting together. */
-  function setBackground(hex: string) {
-    setContent(p => {
-      const palette: Partial<typeof design.colors> = paletteFromBg(hex)
-      if (p.textColorPicked && p.colorOverrides?.h) {
-        delete palette.h
-        palette.s = mix(p.colorOverrides.h, hex, 0.35)
-      }
-      return { ...p, colorOverrides: { ...(p.colorOverrides ?? {}), ...palette } }
-    }); touch()
-  }
-  /* One text color choice sets both voices: headings take it straight,
-   * body text gets it softened toward the background. */
-  function setTextColor(hex: string) {
-    setContent(p => {
-      const bg = p.colorOverrides?.bg ?? design.colors.bg
-      return { ...p, textColorPicked: true, colorOverrides: { ...(p.colorOverrides ?? {}), h: hex, s: mix(hex, bg, 0.35) } }
-    }); touch()
-  }
-  function resetColors() {
-    setContent(p => ({ ...p, colorOverrides: {}, textColorPicked: false })); touch()
-  }
-
-  /* Switching design starts the new one from scratch.
-   *
-   * Carrying the old choices over sounds generous and is not: a heading colour
-   * picked to read on a dark theme disappears on a cream one, and a photograph
-   * uploaded into a slot the new design does not have simply vanishes with no
-   * explanation. Each design is drawn as a whole, so the customer gets it whole
-   * and adjusts from there. Nothing is destroyed — every picture they have
-   * uploaded stays in Dina bilder, and Ångra brings the old design back until
-   * they save. */
-  function switchDesign(t: Template) {
-    setDesign(t)
-    setContent(p => ({
-      ...p,
-      colorOverrides:  {},
-      textColorPicked: false,
-      // The three layout picture slots and the surface. The gallery, the logo
-      // and the team portraits look the same in every design, so they stay.
-      heroImage:     undefined,
-      featureImage:  undefined,
-      aboutImage:    undefined,
-      backdropImage: undefined,
-      backdrop:      undefined,
-    }))
-    touch()
-  }
-  /* The customer's own figures. Blank rows simply don't appear on the site —
-   * that is how the templates' example numbers stop being published as fact. */
-  function patchStat(i: number, field: 'num' | 'label', v: string) {
-    setContent(p => {
-      const stats = [...(p.stats ?? [])]
-      while (stats.length < 4) stats.push({ num: '', label: '' })
-      stats[i] = { ...stats[i], [field]: v }
-      return { ...p, stats }
-    }); touch()
-  }
-
-  /*
-   * Hur många tjänster startsidan har plats för — mallens svar, inte panelens.
-   *
-   * Talet stod tidigare som en fyra här och en fyra i renderaren. En mall som
-   * visar sex hade då fått sex på sidan och fyra stjärnor i panelen. Nu frågar
-   * båda samma funktion, och den frågar mallen kunden valt.
-   */
-  const PROMO_MAX = promoSlots(design.layout)
-  /** Samma tal i löpande text, så panelen inte säger "4 platser". */
-  const PLATSORD = ['noll', 'en', 'två', 'tre', 'fyra', 'fem', 'sex', 'sju', 'åtta', 'nio'][PROMO_MAX] ?? String(PROMO_MAX)
-
-  /*
-   * De fyra som faktiskt står på startsidan, som en lista att ändra i.
-   *
-   * Stjärnorna räckte inte alltid till fyra, och då fylldes platserna på ur
-   * prislistan när sidan renderades. Panelen visade stjärnorna, sidan visade
-   * påfyllningen, och de gick isär: fyra tjänster på sidan, en stjärna i
-   * listan. Samma funktion som sidan renderar ur svarar nu åt båda, och varje
-   * ändring utgår från det svaret — så det som är stjärnmärkt är det som syns.
-   */
-  function visadeTjanster(c: SiteContent): ServiceItem[] {
-    return promoServices(c as unknown as PublicContent, industry, PROMO_MAX) as ServiceItem[]
-  }
-
-  /** Alla fyra platser tagna och kunden försökte lägga till en till. */
-  const [urvalFullt, setUrvalFullt] = useState(false)
-  /** Rutan med de fyra, dit spärren skickar dem. */
-  const urvalRef = useRef<HTMLDivElement | null>(null)
-
-  function taBortUtvald(namn: string) {
-    setContent(p => ({ ...p, services: visadeTjanster(p).filter(s => s.name !== namn) }))
-    setUrvalFullt(false); touch()
-  }
-
-  function toggleFeatured(item: ServiceEntry) {
-    const nu = visadeTjanster(content)
-    if (nu.some(s => s.name === item.name)) { taBortUtvald(item.name); return }
-
-    /*
-     * Fullt. Tidigare knuffades den äldsta tyst ut för att ge plats — kunden
-     * bad om en tjänst till och fick en borttagen på köpet, utan att se
-     * vilken. Nu står valet still och panelen visar var man tar bort.
-     */
-    if (nu.length >= PROMO_MAX) {
-      setUrvalFullt(true)
-      urvalRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      return
-    }
-    const next: ServiceItem = { name: item.name, desc: item.desc, price: item.hidePrice ? '' : item.price }
-    setContent(p => ({ ...p, services: [...visadeTjanster(p), next] }))
-    setUrvalFullt(false); touch()
-  }
-
-  /* Ordningen på startsidan. Den första visas stor med tre under, så vilken
-     som står först är ett verkligt val och inte en detalj. */
-  function moveFeatured(i: number, dir: -1 | 1) {
-    setContent(p => {
-      /* Pilarna står vid den upplösta listan, så platsnumren gäller den —
-         inte den sparade, som kan vara kortare. */
-      const next = visadeTjanster(p)
-      const j = i + dir
-      if (j < 0 || j >= next.length) return p
-      ;[next[i], next[j]] = [next[j], next[i]]
-      return { ...p, services: next }
-    }); touch()
-  }
-
-  /* Booking-page customers keep their prices in one place — theirs. What we
-   * edit here is the shop window: four services, the first one large. */
-  function patchPromo(i: number, f: keyof ServiceItem, v: string) {
-    setContent(p => {
-      const next = [...(p.services ?? [])]
-      while (next.length <= i) next.push({ name: '', desc: '', price: '' })
-      next[i] = { ...next[i], [f]: v }
-      return { ...p, services: next }
-    }); touch()
-  }
-
-  /* Price list */
-  function patchCatName(ci: number, v: string) {
-    setContent(p => ({ ...p, menuCategories: p.menuCategories.map((c, i) => i === ci ? { ...c, category: v } : c) })); touch()
-  }
-  function patchItemField(ci: number, ii: number, f: keyof ServiceEntry, v: string) {
-    setContent(p => ({
-      ...p,
-      menuCategories: p.menuCategories.map((cat, i) => i !== ci ? cat : {
-        ...cat, items: cat.items.map((item, j) => j === ii ? { ...item, [f]: v } : item),
-      }),
-    })); touch()
-  }
-  function toggleItemBool(ci: number, ii: number, f: 'hidePrice' | 'hideDuration') {
-    setContent(p => ({
-      ...p,
-      menuCategories: p.menuCategories.map((cat, i) => i !== ci ? cat : {
-        ...cat, items: cat.items.map((item, j) => j === ii ? { ...item, [f]: !item[f] } : item),
-      }),
-    })); touch()
-  }
-  function toggleAllBool(f: 'hidePrice' | 'hideDuration') {
-    setContent(p => {
-      const allHidden = p.menuCategories.every(cat => cat.items.every(item => item[f]))
-      return {
-        ...p,
-        menuCategories: p.menuCategories.map(cat => ({
-          ...cat, items: cat.items.map(item => ({ ...item, [f]: !allHidden })),
-        })),
-      }
-    }); touch()
-  }
-  function addCategory() {
-    setContent(p => ({ ...p, menuCategories: [...p.menuCategories, { category: 'Ny kategori', items: [] }] })); touch()
-  }
-  function removeCategory(ci: number) {
-    setContent(p => ({ ...p, menuCategories: p.menuCategories.filter((_, i) => i !== ci) })); touch()
-  }
-  function addItem(ci: number) {
-    setContent(p => ({
-      ...p,
-      menuCategories: p.menuCategories.map((cat, i) => i !== ci ? cat : {
-        ...cat, items: [...cat.items, { name: 'Ny tjänst', desc: '', price: '0 kr' }],
-      }),
-    })); touch()
-  }
-  function removeItem(ci: number, ii: number) {
-    setContent(p => ({
-      ...p,
-      menuCategories: p.menuCategories.map((cat, i) => i !== ci ? cat : {
-        ...cat, items: cat.items.filter((_, j) => j !== ii),
-      }),
-    })); touch()
-  }
-
-  /* Reviews */
-  function toggleFeaturedReview(r: MockReview) {
-    setFeaturedReviews(prev => {
-      const on = prev.some(x => x.author === r.author && x.text === r.text)
-      return on ? prev.filter(x => !(x.author === r.author && x.text === r.text)) : [...prev, { ...r, source: 'google' as const }]
-    }); touch()
-  }
-  function addTestimonial(t: Testimonial) { setFeaturedReviews(p => [...p, t]); touch() }
-  function removeTestimonial(i: number)   { setFeaturedReviews(p => p.filter((_, j) => j !== i)); touch() }
-
-  /* Team */
-  function patchTeam(i: number, f: keyof TeamMember, v: string) {
-    setContent(p => ({ ...p, team: (p.team ?? []).map((m, j) => j === i ? { ...m, [f]: v } : m) })); touch()
-  }
-  /* Section order: up/down in the panel = up/down on the page */
-  function moveSection(id: string, dir: -1 | 1) {
-    setSectionOrder(prev => {
-      const i = prev.indexOf(id)
-      const j = i + dir
-      if (i < 0 || j < 0 || j >= prev.length) return prev
-      const next = [...prev]
-      ;[next[i], next[j]] = [next[j], next[i]]
-      return next
-    })
-    touch()
-  }
-
-  /* Gallery order: the best picture belongs first, not wherever it was
-   * uploaded. Image and its description move together. */
-  function swapGallery(i: number, j: number) {
-    const swap = (arr: string[]) => { const n = [...arr]; [n[i], n[j]] = [n[j], n[i]]; return n }
-    setImages(swap); setAlts(swap); touch()
-  }
-
-  /* Articles. Publishing the first one switches the section on — nobody
-   * writes an article intending to keep it off their own site. */
-  function changeArticles(next: Article[]) {
-    setArticles(next)
-    if (next.some(a => a.published) && !siteFeatures.blog) {
-      setSiteFeatures(p => ({ ...p, blog: true }))
-    }
-    touch()
-  }
-  function addArticle() {
-    const id = `a${Date.now()}${Math.random().toString(36).slice(2, 6)}`
-    changeArticles([emptyArticle(id, new Date().toISOString().slice(0, 10)), ...articles])
-    setEditingId(id)
-  }
-
-  function addTeamMember()      { setContent(p => ({ ...p, team: [...(p.team ?? []), { name: '', title: '', image: '' }] })); touch() }
-  function removeTeamMember(i: number) { setContent(p => ({ ...p, team: (p.team ?? []).filter((_, j) => j !== i) })); touch() }
-
-  /* Own pages: the section stays on the start page, or gets a page of its
-   * own — a menu button, its own name, and room for more content. */
-  function patchPage(id: SectionPageId, part: Partial<SectionPageConfig>) {
-    setContent(p => ({ ...p, sectionPages: { ...(p.sectionPages ?? {}), [id]: { ...(p.sectionPages?.[id] ?? {}), ...part } } }))
-    touch()
-  }
 
   /* Every either/or in the panel wears the same clothes: two cards that say
    * plainly what the visitor gets. A customer who has never built a website
@@ -899,6 +353,22 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
   })()
   const placeholdersLeft = placeholders.length
 
+  /*
+   * Galleriet på startsidan, och ingenting annat.
+   *
+   * Posten räknade tidigare varje exempelbild på hela sajten — artiklarnas
+   * omslag, bilderna inne i texterna, allt — och landade på tjugotre. Ett tal
+   * i den storleken läser som en anklagelse och inte som en uppgift, och det
+   * mesta av det gällde sidor besökaren sällan når. Galleriet på startsidan är
+   * det som faktiskt syns, och det är en kväll med telefonen att fixa.
+   *
+   * Ingen räknare kvar heller. Antalet ändrar bara känslan av hur långt det är
+   * kvar, aldrig vad man ska göra.
+   */
+  const galleriBilder = images.slice(0, content.galleryCount ?? 6)
+  const galleriKlart  = galleriBilder.length > 0
+    && galleriBilder.every(u => !!u && !isExampleImage(u))
+
   /* Where the prices live, and whether the list has a page of its own — one
    * question with three answers, asked in the Prislista panel. */
   const externalPricelist = content.pricelistMode === 'booking' && !!content.bookingUrl?.trim()
@@ -943,8 +413,43 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
   ].filter(Boolean).join(' ')
 
   const checklist: ChecklistItem[] = [
-    { id: 'name',    label: 'Namn och stora rubriken',   done: !!content.businessName.trim() && !!content.heroHeading.trim(), section: 'hero',
-      hint: 'Det första besökaren läser' },
+    /*
+     * Texten först, för att den lär ut greppet.
+     *
+     * Resten av listan förutsätter att man vet att man redigerar genom att
+     * klicka i förhandsvisningen. Den som inte gjort det letar efter ett
+     * formulär som inte finns, och en sida står halvfärdig av ett skäl som
+     * inte har med skrivandet att göra.
+     *
+     * Bocken sätts av samma två fält som posterna Namn och Om oss — de är de
+     * enda på sidan som är skrivna och inte valda eller uppladdade.
+     */
+    { id: 'text', label: 'Fyll din hemsida med text',
+      done: !!content.businessName.trim() && !!content.heroHeading.trim()
+         && content.aboutBody.trim() !== (defaults.aboutBody ?? '').trim(),
+      section: 'hero',
+      hint: 'Klicka på det fält du vill redigera i förhandsvisningen, eller ta hjälp av vår AI-fyllare.',
+      bredvid: { text: 'Öppna AI-fyllare', action: 'fyllare' } },
+    /*
+     * Kopplingen står tvåa för att den gör flera av posterna under sig
+     * onödiga. Telefon, öppettider och adress skrivs in av sig själva när den
+     * görs, och salongens egna foton och omdömen blir åtkomliga. Att lägga
+     * den sist hade betytt att kunden först skrev in för hand det som sedan
+     * kom gratis.
+     */
+    { id: 'google', label: 'Koppla din Google-profil',
+      done: googleKopplat,
+      section: 'hero',
+      href: '/dashboard/connections',
+      hint: 'Fyller i telefon, öppettider och adress åt dig, och gör dina foton och omdömen tillgängliga.' },
+    /* Omdömena först av innehållet. Andras ord om salongen väger tyngre än
+       salongens egna, och de är det enda på sidan som besökaren inte misstänker
+       är skrivet för att sälja. Våra exempelomdömen bockar inte av posten — de
+       publiceras aldrig, så en sajt som bara har dem har en tom sektion live. */
+    { id: 'reviews', label: 'Välj omdömen som visas',
+      done: featuredReviews.some(r => r.source !== 'example'),
+      section: 'reviews',
+      hint: 'Plocka de omdömen du vill lyfta fram. Har du kopplat Google finns dina riktiga att välja bland.' },
     { id: 'price',
       label: externalPricelist ? `${PLATSORD.charAt(0).toUpperCase()}${PLATSORD.slice(1)} tjänster att lyfta fram` : 'Prislista med dina priser',
       // With the prices on the booking page there is no list here to fill in;
@@ -953,7 +458,7 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
         ? (content.services ?? []).filter(s => s.name?.trim()).length >= PROMO_MAX
         : (content.menuCategories?.length ?? 0) > 0,
       section: 'pricelist',
-      hint: 'Priserna är det besökarna söker efter' },
+      hint: 'Det besökaren letar efter först, och det som avgör om de hör av sig eller lämnar sidan.' },
     /* Utan bokningsväg är sidan färdig men obrukbar: varje boka-knapp leder
        till en tom sida. Salonger med bokningssystemet här har alltid en väg, så
        för dem finns posten inte — den skulle vara en uppgift utan innehåll. */
@@ -964,30 +469,186 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
       section: 'pricelist' as const,
       hint: 'Utan den leder varje boka-knapp till en tom sida',
     }]),
-    { id: 'logo',    label: 'Ladda upp din logga',       done: !!logo, section: 'design',
-      hint: 'Syns överst på varje sida' },
-    { id: 'photos',  label: placeholdersLeft > 0 ? `Byt ut exempelbilderna (${placeholdersLeft} kvar)` : 'Byt ut exempelbilderna',
-      done: placeholdersLeft === 0, section: SWAP_IMAGES,
-      hint: 'Dina egna foton är det som får någon att boka' },
-    /* Our example reviews do not tick this off — they never publish, so a
-       site that still shows only them has an empty reviews section live. */
-    { id: 'reviews', label: 'Välj omdömen som visas',    done: featuredReviews.some(r => r.source !== 'example'), section: 'reviews',
-      hint: 'Andras ord väger tyngre än dina egna' },
-    { id: 'about',   label: 'Skriv om Om oss-texten',    done: content.aboutBody.trim() !== (defaults.aboutBody ?? '').trim(), section: 'about',
-      hint: 'Exempeltexten ligger kvar tills du gjort den till din' },
+    { id: 'photos',  label: 'Lägg egna bilder i galleriet',
+      done: galleriKlart, section: 'gallery',
+      hint: 'Dina egna rum och ditt eget arbete. Exempelbilderna är vackra men de är inte dina, och det märks.' },
+    /* Artiklarna sist av innehållet, för att de är det enda som inte behövs för
+       att sidan ska fungera. De sex vi genererat ligger publicerade från start
+       så att bloggen inte gapar tom — men de är våra ord, och posten bockas
+       därför av först när salongen lagt in en egen. Samma regel som omdömena. */
+    /*
+     * Branding sist, och som ett steg i stället för fyra.
+     *
+     * Loggan, namnet, Om oss-texten och artiklarna stod tidigare var för sig.
+     * De tre första bockades dessutom av på samma fält som posten om text, så
+     * tre rader svarade på samma fråga — och artiklarna är det enda på sajten
+     * som inte behövs för att den ska fungera.
+     *
+     * Kvar är det som gör sidan till deras: loggan, färgerna, typsnittet. En
+     * enda av dem räcker för att bocka av — posten ber dem titta på avsnittet,
+     * inte att ändra allt i det.
+     */
+    { id: 'branding', label: 'Gå igenom branding',
+      done: !!logo
+         || Object.keys(content.colorOverrides ?? {}).length > 0
+         || !!content.fontPreset
+         || !!content.customFont?.url,
+      section: 'design',
+      hint: 'Logga, färger och typsnitt — det som gör att sidan ser ut som ditt företag och inte som mallen.' },
   ]
 
   /* Dina bilder: everything ever uploaded plus everything already in use on
    * the site — so the library is full the first time anyone opens it. */
-  const mediaLibrary = (() => {
-    const used = [
-      ...images, logo, content.heroImage, content.featureImage, content.aboutImage,
-      ...(content.team ?? []).map(m => m.image),
-      ...articles.flatMap(a => [a.cover, ...a.blocks.flatMap(b => b.type === 'images' ? b.images.map(im => im.src) : [])]),
-    ]
-    return [...new Set([...(content.mediaLibrary ?? []), ...used])]
-      .filter((u): u is string => !!u && !isExampleImage(u))
+  const bildPlatser = (() => {
+    const karta = new Map<string, BildPlats[]>()
+    const lägg = (url: string | undefined | null, plats: BildPlats) => {
+      if (!url) return
+      karta.set(url, [...(karta.get(url) ?? []), plats])
+    }
+
+    /*
+     * Grupperingen följer sajtens sidor, och namnen kommer ur menyn.
+     *
+     * Filtret listade tidigare varje artikel för sig, med rubriken som namn.
+     * Sex artiklar gav sex knappar med fyrtio tecken var, och ingen av dem
+     * motsvarade något kunden kan klicka på ute på sajten. Nu är grupperna de
+     * sidor som faktiskt finns — och de heter det menyn kallar dem, så att
+     * "Tjänster" här är samma "Tjänster" som besökaren ser.
+     *
+     * Döper kunden om en sida följer filtret med. Det är hela poängen med att
+     * läsa namnet i stället för att skriva ett eget.
+     */
+    const START = 'Startsidan'
+    const sidnamn = (id: SectionPageId) => sectionPageTitle(content, id)
+
+    /* Vägen till platsen som en beskrivning, inte som en funktion. Att bygga
+       återanropen här hade betytt att de skapas om vid varje rendering, och
+       att navigeringen står i den del av filen som räknar fram data i stället
+       för i den som ritar. Sektionen får beskrivningen och panelen utför den. */
+    const gå = (panel: string, sida: 'start' | SectionPageId = 'start') => ({ panel, sida })
+
+    lägg(content.heroImage, {
+      sida: START, namn: 'Toppbilden', till: gå('hero'),
+      alt: content.heroImageAlt ?? '', sättAlt: v => patch('heroImageAlt', v),
+    })
+    lägg(content.featureImage, {
+      sida: START, namn: 'Bilden i mittensektionen', till: gå('hero'),
+      alt: content.featureImageAlt ?? '', sättAlt: v => patch('featureImageAlt', v),
+    })
+    /* Om oss-bilden och personalbilderna hör till Om oss-sektionen, inte till
+       startsidan. Har sektionen en egen sida är det där besökaren möter dem,
+       och då ska de stå under det namnet — annars låg sex bilder under
+       "Startsidan" medan sidan de faktiskt syns på saknades i filtret. */
+    const omOssSida = sectionPageEnabled(content, 'about') ? sidnamn('about') : START
+    const omOssTill = sectionPageEnabled(content, 'about') ? gå('about', 'about') : gå('about')
+
+    lägg(content.aboutImage, {
+      sida: omOssSida, namn: 'Bilden vid Om oss', till: omOssTill,
+      alt: content.aboutImageAlt ?? '', sättAlt: v => patch('aboutImageAlt', v),
+    })
+
+    /* Loggan och personalbilderna beskriver sig själva — företagsnamnet
+       respektive personens namn — och ska inte ha ett fält som frestar någon
+       att skriva något annat. */
+    lägg(logo, { sida: START, namn: 'Loggan', alt: '', sättAlt: null, till: gå('design') })
+    for (const [i, m] of (content.team ?? []).entries()) {
+      lägg(m.image, {
+        sida: omOssSida, namn: m.name?.trim() || `Medarbetare ${i + 1}`,
+        alt: '', sättAlt: null, till: sectionPageEnabled(content, 'about') ? gå('team', 'about') : gå('team'),
+      })
+    }
+
+    for (const [i, u] of images.entries()) {
+      lägg(u, {
+        sida: START, namn: `Galleriet, bild ${i + 1}`, till: gå('gallery'),
+        alt: alts[i] ?? '',
+        sättAlt: v => { setAlts(prev => { const n = [...prev]; n[i] = v; return n }); touch() },
+      })
+    }
+
+    /* Alla artiklar hör till artikelsidan. Vilken artikel bilden sitter i står
+       i `namn` — det är precisionen man vill ha när man öppnat rutan, inte den
+       man vill filtrera på. */
+    const artikelSida = sidnamn('blog')
+    for (const [ai, a] of articles.entries()) {
+      const rubrik = a.title?.trim() || 'Artikel utan namn'
+      lägg(a.cover, {
+        sida: artikelSida, namn: `${rubrik} — huvudbild`, till: gå('blog', 'blog'),
+        alt: a.coverAlt ?? '',
+        sättAlt: v => setArticles(prev => prev.map((x, j) => j === ai ? { ...x, coverAlt: v } : x)),
+      })
+      for (const [bi, b] of a.blocks.entries()) {
+        if (b.type !== 'images') continue
+        for (const [ii, im] of b.images.entries()) {
+          lägg(im.src, {
+            sida: artikelSida, namn: `${rubrik} — bild ${ii + 1}`, till: gå('blog', 'blog'),
+            alt: im.alt ?? '',
+            sättAlt: v => setArticles(prev => prev.map((x, j) => j !== ai ? x : {
+              ...x,
+              blocks: x.blocks.map((bb, k) => k !== bi || bb.type !== 'images' ? bb
+                : { ...bb, images: bb.images.map((y, l) => l === ii ? { ...y, alt: v } : y) }),
+            })),
+          })
+        }
+      }
+    }
+
+    /* Undersidornas egna bilder. De lästes inte alls förut, så en bild som
+       kunden lagt in på Tjänster eller Kontakt saknades i vyn — och räknades
+       som oanvänd trots att den låg ute. */
+    for (const id of SECTION_PAGE_IDS) {
+      if (id === 'blog') continue
+      const sida   = sidnamn(id)
+      const blocks = sectionPageBlocks(content, id, industry)
+      for (const [bi, b] of blocks.entries()) {
+        if (b.type !== 'images') continue
+        for (const [ii, im] of b.images.entries()) {
+          lägg(im.src, {
+            sida, namn: `Bild ${ii + 1} på sidan`, till: gå(id, id),
+            alt: im.alt ?? '',
+            sättAlt: v => { setContent(prev => {
+              const sidor = { ...(prev.sectionPages ?? {}) }
+              const bas   = sectionPageBlocks(prev, id, industry)
+              sidor[id] = {
+                ...(sidor[id] ?? {}),
+                blocks: bas.map((bb, k) => k !== bi || bb.type !== 'images' ? bb
+                  : { ...bb, images: bb.images.map((y, l) => l === ii ? { ...y, alt: v } : y) }),
+              }
+              return { ...prev, sectionPages: sidor }
+            }); touch() },
+          })
+        }
+      }
+    }
+
+    return karta
   })()
+
+  const iBruk = new Set(bildPlatser.keys())
+
+  /*
+   * Två listor, med olika frågor att svara på.
+   *
+   * Väljaren erbjuder bilder att återanvända — där hör bara kundens egna hemma.
+   * Att bläddra fram en av våra platshållare när man letar efter ett foto av
+   * salongen är brus.
+   *
+   * Bildsektionen visar vad som ligger på sidan. Där måste exempelbilderna vara
+   * med, annars påstår vyn att Om oss-bilden och artiklarnas omslag inte finns
+   * — och siffran längst ned blir fel på samma sätt.
+   */
+  const mediaLibrary = [...new Set([...(content.mediaLibrary ?? []), ...iBruk])]
+    .filter((u): u is string => !!u && !isExampleImage(u))
+
+  const allaBilder = [...new Set([...mediaLibrary, ...iBruk])]
+  /* Bara ur listan. Filen ligger kvar i lagringen — en bild som råkat tas bort
+     ska inte vara borta för gott, och en radering härifrån hade också kunnat
+     släcka en bild på en sida som ingen tittar på just nu. */
+  function removeFromLibrary(url: string) {
+    setContent(p => ({ ...p, mediaLibrary: (p.mediaLibrary ?? []).filter(u => u !== url) }))
+    touch()
+  }
+
   function addToLibrary(url: string) {
     setContent(p => ({ ...p, mediaLibrary: [...new Set([...(p.mediaLibrary ?? []), url])] }))
     touch()
@@ -1008,6 +669,7 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
   }
   const [savedState, setSavedState] = useState(takeSnapshot)
   const [confirmUndo, setConfirmUndo] = useState(false)
+
   function restoreSaved() {
     setDesign(savedState.design)
     setContent(savedState.content)
@@ -1212,6 +874,69 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
   /* Clicking a part of the page that is not a text opens the settings behind
    * it. Texts never come this way any more — they are written in the bubble,
    * where they stand. */
+  /*
+   * Textfyllaren.
+   *
+   * Förslagen skrivs in i utkastet precis som om kunden skrivit dem själv —
+   * inget sparas härifrån, och Spara-knappen gäller som vanligt. Det är också
+   * varför fälten tas ett i taget: en knapp som byter ut hela sidan trycker man
+   * på en gång och ångrar utan väg tillbaka.
+   */
+  const [fyllare, setFyllare] = useState(false)
+  function öppnaFyllare() { setFyllare(true) }
+
+  function användText(nyckel: keyof Förslag, text: string) {
+    if (nyckel === 'tjänster') return
+    if (nyckel === 'seoTitle') {
+      setContent(prev => ({ ...prev, seo: { ...(prev.seo ?? {}), title: text } })); touch(); return
+    }
+    if (nyckel === 'seoDescription') {
+      setContent(prev => ({ ...prev, seo: { ...(prev.seo ?? {}), description: text } })); touch(); return
+    }
+    patch(nyckel as keyof SiteContent, text)
+  }
+
+  /* Beskrivningen matchas på tjänstens namn och skrivs på båda ställen namnet
+     förekommer — de fyra som lyfts fram på startsidan och raden i prislistan.
+     Att bara röra det ena hade betytt två beskrivningar av samma behandling. */
+  /*
+   * Platser åt personalen, så många som salongen sagt att de är.
+   *
+   * Bara påfyllning. Har de redan fler än de uppgav rörs ingenting — en
+   * siffra i ett frivilligt fält ska aldrig kunna radera en medarbetare som
+   * någon lagt in med namn och bild.
+   *
+   * De nya platserna får samma platshållarnamn som sidan redan levereras med.
+   * Ett tomt kort renderas som ett tomt kort på den publicerade sidan, medan
+   * ett med platshållare syns i checklistan som något att byta ut.
+   */
+  function sättTeam(antal: number) {
+    setContent(prev => {
+      const nu = prev.team ?? []
+      if (nu.length >= antal) return prev
+      const mall = exampleTeam(industry)
+      const extra = Array.from({ length: antal - nu.length }, (_, i) => {
+        const m = mall[(nu.length + i) % mall.length]
+        return { name: m.name, title: m.title, image: m.image }
+      })
+      return { ...prev, team: [...nu, ...extra] }
+    })
+    touch()
+  }
+
+  function användTjänst(namn: string, beskrivning: string) {
+    const lika = (a?: string) => (a ?? '').trim().toLowerCase() === namn.trim().toLowerCase()
+    setContent(prev => ({
+      ...prev,
+      services: (prev.services ?? []).map(t => lika(t.name) ? { ...t, desc: beskrivning } : t),
+      menuCategories: (prev.menuCategories ?? []).map(kat => ({
+        ...kat,
+        items: kat.items.map(rad => lika(rad.name) ? { ...rad, desc: beskrivning } : rad),
+      })),
+    }))
+    touch()
+  }
+
   function goTo(sectionId: string, fromPage = false) {
     setOpen(sectionId)
     setMobilePane('edit')
@@ -1265,14 +990,34 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
          klicket landa på företagsnamnet, inte på sidans namn. */
       ...SECTION_PAGE_IDS.map((id): [string, string] =>
         [`${PAGE_PREFIX}${id}`, sectionPageTitle(content as unknown as PublicContent, id)]),
+      /* Prislistans ingress som den faktiskt står på sidan.
+       *
+       * Den är den enda texten vi bygger ihop vid rendering: vår mening plus
+       * adressen, så länge kunden inte skrivit en egen. Jämförelsen här är
+       * exakt, så den sparade halvan matchade aldrig det som stod på skärmen —
+       * och texten gick därför inte att klicka på. Sammansättningen hämtas från
+       * samma funktion som sidan använder, så de två inte kan glida isär. */
+      [`${LABEL_PREFIX}pricePageIntro`,
+       pageIntro(content as unknown as PublicContent).förklaring],
     ]
+    /*
+     * Jämförelsen tål radbrytningar och dubbla mellanslag.
+     *
+     * Texten på skärmen är inte alltid tecken för tecken den som är sparad.
+     * Rubriken delas i två element för att sätta de sista orden i kursiv, och
+     * en text som står på flera rader i koden får radbrytningarna med sig i
+     * textContent. Utan normalisering blir följden inte ett litet fel utan ett
+     * totalt: fältet hittas inte, och texten går inte att klicka på alls.
+     */
+    const norm = (v: string) => v.replace(/\s+/g, ' ').trim()
+
     // Walk out from the click: the innermost element holding exactly one
     // value is the one the customer pointed at.
     let node: HTMLElement | null = el
     for (let i = 0; i < 4 && node; i++) {
-      const text = node.textContent?.trim()
+      const text = norm(node.textContent ?? '')
       if (text) {
-        const found = named.find(([, value]) => value?.trim() && value.trim() === text)
+        const found = named.find(([, value]) => value && norm(value) && norm(value) === text)
         if (found) return found[0]
       }
       node = node.parentElement
@@ -1281,22 +1026,6 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
   }
   const editing = articles.find(a => a.id === editingId) ?? null
 
-  /* Which picture the chosen design uses, and what it does with it.
-   *
-   * The panel asks for one picture whatever the design; only the sentence
-   * under it changes. A design that stands on a surface writes to the surface
-   * instead of to a slot in a section — same field, same place, different job.
-   * That is what keeps the panel still when a customer tries another card. */
-  const designImageSlot: 'heroImage' | 'featureImage' | 'aboutImage' | 'backdropImage' =
-    design.backdrop ? 'backdropImage'
-    : (templateImageSlots(design.layout)[0] ?? 'heroImage')
-
-  const designImageHint = {
-    backdropImage: 'Ytan hela sidan står på — ett foto av ert rum slår vår textur',
-    heroImage:     'Visas bredvid rubriken högst upp',
-    featureImage:  'Visas bredvid den framlyfta tjänsten',
-    aboutImage:    'Visas i Om oss-delen',
-  }[designImageSlot]
 
   /** Vilken persons borttagning som väntar på en bekräftelse. */
   const [teamArmed, setTeamArmed] = useState<number | null>(null)
@@ -1408,8 +1137,31 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
   return (
     // The dashboard's mobile top bar is 3.5rem (pt-14); on lg the sidebar sits
     // beside us instead, so the editor gets the full viewport height there.
+    <SajtProvider värde={sajt}>
     <MediaProvider library={mediaLibrary} onAdd={addToLibrary} controlRef={mediaRef}>
     <div className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-dvh" style={{ background: '#020617' }}>
+
+      {/* Textfyllaren ligger över redigeraren, som varningsrutan nedanför.
+          Fristående och inte i någon av ternärerna: den ska kunna öppnas
+          oavsett om en artikel redigeras eller bilder byts. */}
+      {fyllare && (
+        <Textfyllare
+          nuvarande={{
+            heroHeading:    content.heroHeading,
+            heroBody:       content.heroBody,
+            tagline:        content.tagline,
+            ctaText:        content.ctaText,
+            aboutTitle:     content.aboutTitle,
+            aboutBody:      content.aboutBody,
+            seoTitle:       content.seo?.title ?? '',
+            seoDescription: content.seo?.description ?? '',
+          }}
+          onStäng={() => setFyllare(false)}
+          onAnvänd={användText}
+          onAnvändTjänst={användTjänst}
+          onSättTeam={sättTeam}
+        />
+      )}
 
       {/* Our own leave-warning — browser dialogs can be silently suppressed */}
       {leaveTarget && (
@@ -1487,44 +1239,82 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
           </div>
           {/* The live page shows what is SAVED — sending someone there with
               unsaved edits reads as "my changes are gone". */}
-          {currentSlug && (dirty
-            ? <span style={{ fontSize: 12, color: '#64748b', fontFamily: F }}>Spara för att se ändringarna live</span>
-            : <ExternalLink href={liveUrl} className="panel-live-link">
-                <span style={{ fontSize: 13, color: '#eab308', fontFamily: F }}>Se min sida live →</span>
-              </ExternalLink>
+          {currentSlug && !dirty && (
+            <ExternalLink href={liveUrl} className="panel-live-link">
+              <span style={{ fontSize: 13, color: '#eab308', fontFamily: F }}>Se min sida live →</span>
+            </ExternalLink>
           )}
-          {saveError && <span style={{ fontSize: 13, color: '#f87171', fontFamily: F }}>Kunde inte spara — försök igen</span>}
+          {saved && !dirty && <span style={{ fontSize: 13, color: '#4ade80', fontFamily: F }}>Sparat ✓</span>}
+          {!dirty && <ÅngraPublicering />}
+        </div>
+      </div>
+
+      {/*
+       * Raden som dyker upp när något ändrats.
+       *
+       * Spara och Ångra låg tidigare som små knappar till höger i topraden —
+       * lätta att missa, och den som redigerade långt ned i panelen visste inte
+       * ens att de fanns. Nu bor de här: en egen rad direkt under topraden som
+       * dyker upp i samma ögonblick något ändras och står kvar tills det är
+       * sparat eller ångrat.
+       *
+       * Att den alltid syns är ingen skroll-mekanik utan layoutens förtjänst:
+       * panelen och förhandsvisningen skrollar inuti sina egna kolumner, så
+       * allt som ligger ovanför dem står stilla hur långt ned man än arbetat.
+       */}
+      {dirty && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '8px 16px', background: 'rgba(234,179,8,0.08)',
+          borderBottom: '1px solid rgba(234,179,8,0.35)',
+        }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: '#eab308', fontFamily: F }}>
+            Du har osparade ändringar
+          </span>
+          {saveError && <span style={{ fontSize: 12.5, color: '#f87171', fontFamily: F }}>Kunde inte spara — försök igen</span>}
+          <span style={{ flex: 1 }} />
+          <button
+            onClick={() => {
+              /* Förhandsvisningen börjar högst upp — och på en smal skärm
+                 ligger den i en egen flik som först måste fram. */
+              if (narrow) setMobilePane('preview')
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+            }}
+            style={{
+              padding: '7px 12px', fontSize: 12, fontWeight: 600, fontFamily: F,
+              background: 'none', color: '#94a3b8', border: '1px solid #334155',
+              borderRadius: 8, cursor: 'pointer',
+            }}
+          >
+            Förhandsvisning
+          </button>
           {/* The way back. Knowing it exists is what makes the panel safe to
               poke around in — fear of breaking things keeps rookies from
               touching anything at all. */}
-          {dirty && (
-            <button
-              onClick={() => {
-                if (!confirmUndo) { setConfirmUndo(true); return }
-                restoreSaved()
-              }}
-              onBlur={() => setConfirmUndo(false)}
-              title="Backa alla ändringar sedan du senast sparade"
-              style={{
-                padding: '8px 12px', fontSize: 12, fontWeight: 600, fontFamily: F, background: 'none',
-                color: confirmUndo ? '#f87171' : '#94a3b8',
-                border: `1px solid ${confirmUndo ? 'rgba(239,68,68,0.45)' : '#334155'}`, borderRadius: 8, cursor: 'pointer',
-              }}
-            >
-              {confirmUndo ? 'Säker? Klicka igen' : 'Ångra ändringar'}
-            </button>
-          )}
-          {dirty && (
-            <button onClick={save} disabled={saving} style={{
-              padding: '8px 20px', fontSize: 13, fontWeight: 700, fontFamily: F,
-              background: '#eab308', color: '#0f172a', border: 'none', borderRadius: 8, cursor: 'pointer',
-            }}>
-              {saving ? 'Sparar…' : 'Spara'}
-            </button>
-          )}
-          {saved && !dirty && <span style={{ fontSize: 13, color: '#4ade80', fontFamily: F }}>Sparat ✓</span>}
+          <button
+            onClick={() => {
+              if (!confirmUndo) { setConfirmUndo(true); return }
+              restoreSaved()
+            }}
+            onBlur={() => setConfirmUndo(false)}
+            title="Backa alla ändringar sedan du senast sparade"
+            style={{
+              padding: '7px 12px', fontSize: 12, fontWeight: 600, fontFamily: F, background: 'none',
+              color: confirmUndo ? '#f87171' : '#94a3b8',
+              border: `1px solid ${confirmUndo ? 'rgba(239,68,68,0.45)' : '#334155'}`,
+              borderRadius: 8, cursor: 'pointer',
+            }}
+          >
+            {confirmUndo ? 'Säker? Klicka igen' : 'Ångra ändringar'}
+          </button>
+          <button onClick={save} disabled={saving} style={{
+            padding: '7px 18px', fontSize: 13, fontWeight: 700, fontFamily: F,
+            background: '#eab308', color: '#0f172a', border: 'none', borderRadius: 8, cursor: 'pointer',
+          }}>
+            {saving ? 'Sparar…' : 'Spara'}
+          </button>
         </div>
-      </div>
+      )}
 
       {/* Adressen står i huvudet nu. Kvar här är det enda raden tillförde:
           varför sajten ännu inte syns på Google — och den försvinner så fort
@@ -1609,7 +1399,21 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
 
           {/* The path through everything below — what to do next, not just
               what is possible */}
-          <StartChecklist items={checklist} onGo={id => id === SWAP_IMAGES ? setSwapping(true) : goTo(id)} />
+          {/* Brister före checklista. Den ena säger att något är trasigt för
+              besökaren, den andra vad som återstår för att sidan ska bli bra —
+              och det som är trasigt ska inte ligga under sju rader annat. */}
+          <BristBand brister={sidansBrister({
+            menuCategories: content.menuCategories,
+            bransch:        industry,
+            bookingUrl:     content.bookingUrl,
+            harBokning:     siteFeatures.booking !== false,
+          })} />
+
+          <StartChecklist
+            items={checklist}
+            onGo={id => id === SWAP_IMAGES ? setSwapping(true) : goTo(id)}
+            onAction={a => { if (a === 'fyllare') öppnaFyllare() }}
+          />
 
           {Zone('Hela sajten', 'Gäller alla sidor')}
           {/* Thirteen sections in one run is past what anyone holds in their
@@ -1625,255 +1429,32 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
             * färgerna, där den som byter det ena oftast vill se det andra.
             */}
           <Section id="design" title="Branding" hint="Logga, färger och design" open={open === 'design'} onToggle={() => toggle('design')} flash={flashed === 'design'}>
-            <ImageUpload value={logo} onChange={url => { setLogo(url); touch() }} label={logo ? 'Byt logga (visas i stället för namnet)' : 'Ladda upp logga (annars visas namnet)'} />
-            {logo && <button onClick={() => { setLogo(''); touch() }} style={{ alignSelf: 'flex-start', fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: F }}>Ta bort loggan</button>}
-            {/* The one text kept in the panel. With a logo uploaded the name
-                is gone from the top of the page, and what is left of it sits
-                small in the footer — too little to find by clicking. It also
-                travels further than the page: the browser tab, the search
-                result and the business card Google keeps all read from here. */}
-            <Field label="Företagsnamn" value={content.businessName} onChange={v => patch('businessName', v)} max={40} />
-            {/* Båda lägena sägs, inte bara det ena. Utan logga är namnet det
-                besökaren möter högst upp, och det gäller varje design — namn
-                och logga ritas av samma del i alla fjorton. Att bara nämna
-                saken när en logga finns lämnar den vanligaste kunden utan
-                svar på varför deras namn står i toppen. */}
-            <p style={{ fontSize: 11, color: '#64748b', fontFamily: F, lineHeight: 1.5, margin: '-8px 0 0' }}>
-              {logo
-                ? 'Syns inte högst upp så länge loggan ligger kvar — men står kvar i sidfoten, i webbläsarfliken och på Google.'
-                : 'Visas högst upp på sidan i alla designer tills du laddar upp en logga.'}
-            </p>
-              {/* The design's own picture.
-                *
-                * Every layout has at most one, and where it lands is the
-                * layout's business: beside the heading, next to the featured
-                * service, in the about block, or as the surface the whole
-                * opening stands on. It sits here rather than in the section it
-                * happens to appear in, so switching design never moves a field
-                * around in the panel — the picture belongs to the design, and
-                * this is where the design is chosen. */}
-              <p style={{ fontSize: 10, color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: F, margin: 0 }}>Designens bild</p>
-              <SlotImage
-                label=""
-                hint={designImageHint}
-                value={content[designImageSlot] ?? ''}
-                onChange={v => patch(designImageSlot, v)}
-              />
+            <BrandingSektion design={design} templates={templates ?? []} />
+          </Section>
 
-              <div style={{ height: 1, background: '#1e293b' }} />
-              <p style={{ fontSize: 10, color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: F, margin: 0 }}>Färger</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {([
-                  ['Accentfärg', 'Knappar, länkar och detaljer', content.colorOverrides?.a ?? design.colors.a, setAccent],
-                  ['Bakgrund', content.textColorPicked ? 'Din valda textfärg behålls' : 'Textfärgen anpassas tills du valt en egen', content.colorOverrides?.bg ?? design.colors.bg, setBackground],
-                  ['Textfärg', 'Rubriker — brödtexten följer med, mjukare', content.colorOverrides?.h ?? design.colors.h, setTextColor],
-                ] as const).map(([label, hint, value, onPick]) => (
-                  <div key={label}>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', fontFamily: F, margin: '0 0 5px' }}>{label}</p>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: '1px solid #334155', borderRadius: 8, padding: '7px 10px', background: '#1e293b' }}>
-                      <input
-                        type="color"
-                        value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000'}
-                        onChange={e => onPick(e.target.value)}
-                        style={{ width: 26, height: 26, border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}
-                      />
-                      <span style={{ fontSize: 12, color: '#f1f5f9', fontFamily: F }}>{value}</span>
-                    </label>
-                    <p style={{ fontSize: 10, color: '#64748b', fontFamily: F, margin: '4px 0 0', lineHeight: 1.4 }}>{hint}</p>
-                  </div>
-                ))}
-              </div>
-              {/* One-click looks — the retired color-twin templates live on
-                  here, where they always belonged */}
-              {getPalettesForIndustry(industry).length > 0 && (
-                <div>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', fontFamily: F, margin: '0 0 6px' }}>Färdiga paletter</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {getPalettesForIndustry(industry).map(preset => (
-                      <button
-                        key={preset.name}
-                        onClick={() => { setContent(p => ({ ...p, colorOverrides: { ...preset.colors }, textColorPicked: false })); touch() }}
-                        title={`Använd paletten ${preset.name}`}
-                        style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', background: '#1e293b', border: '1px solid #334155' }}
-                      >
-                        <span style={{ display: 'flex', gap: 3 }}>
-                          {[preset.colors.bg, preset.colors.a, preset.colors.b].map((col, i) => (
-                            <span key={i} style={{ width: 12, height: 12, borderRadius: 3, background: col, border: '1px solid rgba(255,255,255,0.15)' }} />
-                          ))}
-                        </span>
-                        <span style={{ fontSize: 12, color: '#f1f5f9', fontFamily: F }}>{preset.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* A pale accent on a pale page means pale buttons — say it here,
-                  while both pickers are in view, instead of changing their
-                  brand color behind their back */}
-              {contrastRatio(
-                content.colorOverrides?.a ?? design.colors.a,
-                content.colorOverrides?.bg ?? design.colors.bg
-              ) < 2.5 && (
-                <p style={{ fontSize: 11, color: '#eab308', fontFamily: F, lineHeight: 1.5, margin: 0 }}>
-                  Accentfärgen syns dåligt mot bakgrunden — knappar och länkar blir otydliga. Välj en {hexIsDark(content.colorOverrides?.bg ?? design.colors.bg) ? 'ljusare' : 'mörkare'} accentfärg.
-                </p>
-              )}
-              {/* A kept text choice can collide with a new background — the
-                  customer decides, but never without being told */}
-              {contrastRatio(
-                content.colorOverrides?.h ?? design.colors.h,
-                content.colorOverrides?.bg ?? design.colors.bg
-              ) < 2.5 && (
-                <p style={{ fontSize: 11, color: '#eab308', fontFamily: F, lineHeight: 1.5, margin: 0 }}>
-                  Textfärgen syns dåligt mot bakgrunden — rubrikerna blir svårlästa. Välj en {hexIsDark(content.colorOverrides?.bg ?? design.colors.bg) ? 'ljusare' : 'mörkare'} textfärg.
-                </p>
-              )}
-              {content.colorOverrides && Object.keys(content.colorOverrides).length > 0 && (
-                <button onClick={resetColors} style={{ alignSelf: 'flex-start', fontSize: 12, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: F, padding: 0 }}>
-                  Återställ mallens färger
-                </button>
-              )}
-
-              <div style={{ height: 1, background: '#1e293b' }} />
-              <p style={{ fontSize: 10, color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: F, margin: 0 }}>Typsnitt</p>
-              {!content.customFont?.url && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  {[['', 'Geist', 'Mallens standard', undefined] as const,
-                    ...Object.entries(SITE_FONTS).map(([id, f]) => [id, f.name, f.hint, f.family] as const)
-                  ].map(([id, name, hint, family]) => {
-                    const active = (content.fontPreset ?? '') === id
-                    return (
-                      <button
-                        key={id || 'default'}
-                        onClick={() => { patch('fontPreset', id); }}
-                        style={{
-                          textAlign: 'left', padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
-                          background: active ? 'rgba(234,179,8,0.08)' : '#1e293b',
-                          border: `1px solid ${active ? '#eab308' : '#334155'}`,
-                        }}
-                      >
-                        {/* The name set in its own face — the picker is the preview */}
-                        <span style={{ display: 'block', fontSize: 14, color: '#f1f5f9', fontFamily: family ?? F }}>{name}</span>
-                        <span style={{ display: 'block', fontSize: 10, color: '#94a3b8', fontFamily: F, marginTop: 2 }}>{hint}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-              <p style={{ fontSize: 11, color: '#64748b', fontFamily: F, lineHeight: 1.5, margin: 0 }}>
-                Ladda upp ett eget typsnitt. Kontrollera att licensen tillåter användning på webben.
-              </p>
-              {content.customFont?.url ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ flex: 1, fontSize: 13, color: '#f1f5f9', fontFamily: F, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {content.customFont.name}
-                  </span>
-                  <button
-                    onClick={() => { setContent(p => ({ ...p, customFont: undefined })); touch() }}
-                    style={{ fontSize: 12, color: '#f87171', background: 'none', border: 'none', cursor: 'pointer', fontFamily: F }}
-                  >
-                    Ta bort — använd mallens
-                  </button>
-                </div>
-              ) : (
-                <label style={{ display: 'block', textAlign: 'center', border: '1px dashed #334155', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: fontBusy ? '#64748b' : '#eab308', cursor: 'pointer', fontFamily: F }}>
-                  {fontBusy ? 'Laddar upp…' : '+ Ladda upp typsnitt (WOFF2, TTF eller OTF)'}
-                  <input type="file" accept=".woff2,.woff,.ttf,.otf" style={{ display: 'none' }} onChange={async e => {
-                    const file = e.target.files?.[0]
-                    e.target.value = ''
-                    if (!file) return
-                    setFontError(''); setFontBusy(true)
-                    try {
-                      const url = await uploadFont(file)
-                      setContent(p => ({ ...p, customFont: { url, name: file.name } })); touch()
-                    } catch (err) {
-                      setFontError(err instanceof Error ? err.message : 'Uppladdningen misslyckades')
-                    } finally {
-                      setFontBusy(false)
-                    }
-                  }} />
-                </label>
-              )}
-              {fontError && <p style={{ fontSize: 11, color: '#f87171', fontFamily: F, margin: 0 }}>{fontError}</p>}
-
-              {templates && templates.length > 1 && (<>
-              <div style={{ height: 1, background: '#1e293b' }} />
-              <p style={{ fontSize: 10, color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: F, margin: 0 }}>Tema</p>
-              <p style={{ fontSize: 11, color: '#64748b', fontFamily: F, lineHeight: 1.5, margin: '-8px 0 0' }}>
-                Byter sidans layout. Texter, priser, bilder och artiklar följer med — färger och bakgrund börjar om från den nya designen.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {templates.map(t => {
-                  const active = t.id === design.id
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => { switchDesign(t) }}
-                      style={{
-                        textAlign: 'left', padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
-                        background: active ? 'rgba(234,179,8,0.08)' : '#1e293b',
-                        border: `1px solid ${active ? '#eab308' : '#334155'}`,
-                      }}
-                    >
-                      <span style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
-                        {[t.colors.bg, t.colors.a, t.colors.b].map((col, i) => (
-                          <span key={i} style={{ width: 14, height: 14, borderRadius: 3, background: col, border: '1px solid rgba(255,255,255,0.12)' }} />
-                        ))}
-                      </span>
-                      <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#f1f5f9', fontFamily: F }}>{t.name}</span>
-                      <span style={{ display: 'block', fontSize: 10, color: '#94a3b8', fontFamily: F, marginTop: 2 }}>{t.tagline}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              </>)}
-            </Section>
-
-          {/* A salon on the booking track has its booking page set up already,
-              and every button on the site resolves to it. Asking them where
-              the buttons should lead is a question with one answer. The
-              section belongs to the salons who book somewhere else. */}
-          {/* Bokning har ingen egen sektion längre. Frågan "vart leder
-              boka-knappen" var samma fråga som prislistevalet redan ställer, och
-              två fält för samma sak är två fält som kan säga emot varandra.
-              Länken efterfrågas nu i prislistan, där valet som kräver den görs. */}
+        {/* A salon on the booking track has its booking page set up already,
+            and every button on the site resolves to it. Asking them where
+            the buttons should lead is a question with one answer. The
+            section belongs to the salons who book somewhere else. */}
+        {/* Bokning har ingen egen sektion längre. Frågan "vart leder
+            boka-knappen" var samma fråga som prislistevalet redan ställer, och
+            två fält för samma sak är två fält som kan säga emot varandra.
+            Länken efterfrågas nu i prislistan, där valet som kräver den görs. */}
 
 
+
+        <Section id="bilder" title="Bilder" hint="Allt du laddat upp" open={open === 'bilder'} onToggle={() => toggle('bilder')} flash={flashed === 'bilder'}>
+          <BilderSektion
+            bilder={allaBilder}
+            platser={bildPlatser}
+            onAdd={addToLibrary}
+            onRemove={removeFromLibrary}
+            onGåTill={t => { setPreviewPage(t.sida as 'start' | SectionPageId); goTo(t.panel) }}
+          />
+          </Section>
 
           <Section id="contact" title="Kontakt & öppettider" hint="Visas längst ner på varje sida" open={open === 'contact'} onToggle={() => toggle('contact')} flash={flashed === 'contact'}>
-            {/*
-              * Uppgifterna skrivs här, inte i sidfoten.
-              *
-              * De stod tidigare bara att ändra genom att klicka i
-              * förhandsvisningen — men de gäller varje sida, inte platsen de
-              * råkar visas på. Och den som letar efter sitt telefonnummer i en
-              * panel som heter Kontakt & öppettider ska hitta det där.
-              */}
-            <p style={{ fontSize: 11, color: '#64748b', fontFamily: F, lineHeight: 1.5, margin: 0 }}>
-              Visas i sidfoten på varje sida{content.address?.trim() ? ', med en "Hitta hit"-länk till kartan' : ''}.
-            </p>
-            <Field label="Telefon" value={content.phone} onChange={v => patch('phone', v)} placeholder="070 123 45 67" max={20} />
-            <Field label="E-post" value={content.email ?? ''} onChange={v => patch('email', v)} placeholder="hej@dinsalong.se" max={60} />
-            <Field label="Adress" value={content.address} onChange={v => patch('address', v)} placeholder="Södermalm, Stockholm" max={60} />
-            <Field label="Öppettider" value={content.hours} onChange={v => patch('hours', v)} placeholder="Mån–Fre 09–19 · Lör 10–17" max={80} />
-
-            <div style={{ height: 1, background: '#1e293b' }} />
-            <p style={{ fontSize: 10, color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: F, margin: 0 }}>Sociala medier</p>
-            <p style={{ fontSize: 11, color: '#64748b', fontFamily: F, lineHeight: 1.5, margin: '-8px 0 0' }}>
-              De du fyller i visas under galleriet, i menyn och längst ner på varje sida.
-            </p>
-            {/* Adressen städas när den renderas, så "@dinsalong" räcker. */}
-            {SOCIAL_FIELDS.map(f => (
-              <Field
-                key={f.key}
-                label={f.name}
-                value={content.social?.[f.key] ?? ''}
-                onChange={v => patchSocial(f.key, v)}
-                placeholder={f.placeholder}
-              />
-            ))}
-            {visasVar('contact', 'Kontaktsidan', true)}
+            <KontaktSektion visasVar={() => visasVar('contact', 'Kontaktsidan', true)} />
           </Section>
 
 
@@ -1893,7 +1474,7 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
             * förbättrar något men kan bryta länkar de redan delat. Den står i
             * toppen av panelen så de vet var sajten ligger — det räcker. */}
           <Section id="domain" title="Din domän" hint="Krävs för att synas på Google" open={open === 'domain'} onToggle={() => toggle('domain')} flash={flashed === 'domain'}>
-            <DomanFalt namn={content.businessName} />
+            <DomanFalt namn={content.businessName} initial={domäner} />
           </Section>
 
           <Section id="google" title="Inställningar" hint="Sökresultat och språk" open={open === 'google'} onToggle={() => toggle('google')} flash={flashed === 'google'}>
@@ -1992,20 +1573,27 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
                 })}
               </>
             ) : (
-              <MenuEditor
-                compact
-                featuredNames={visadeTjanster(content).map(s => s.name)}
-                onToggleFeatured={toggleFeatured}
-                categories={content.menuCategories}
-                patchCatName={patchCatName}
-                patchItemField={patchItemField}
-                toggleItemBool={toggleItemBool}
-                toggleAllBool={toggleAllBool}
-                addCategory={addCategory}
-                removeCategory={removeCategory}
-                addItem={addItem}
-                removeItem={removeItem}
+              <>
+              {/*
+                Samma redigerare som i bokningssystemet, samma rader i databasen.
+                Det var uppdelningen i två listor — en här som text, en i
+                bokningens tabell — som gjorde att en prishöjning på hemsidan
+                aldrig nådde kalendern.
+
+                Bokningsfälten ritas inte här när salongen saknar bokningssystem.
+                Bufferttid och max per dag betyder ingenting för den som bara har
+                en hemsida.
+
+                Sparas direkt mot sin egen rutt, inte genom panelens
+                spara-knapp: tjänsterna är en egen tabell och inte ett fält i
+                sidans innehåll.
+              */}
+              <TjanstEditor
+                harBokning={hasBooking(plan)}
+                utvalda={visadeTjanster(content).map(s => s.name)}
+                onStjärna={toggleFeatured}
               />
+              </>
             )}
 
             {/* Vilka fyra startsidan visar, och i vilken ordning.
@@ -2245,6 +1833,18 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
             open={open === 'gallery'} onToggle={() => toggle('gallery')} flash={flashed === 'gallery'}
             {...moveProps}
           >
+            {/* Genomgången av varje exempelbild på sajten — även artiklarnas
+                omslag och bilderna inne i texterna. Den låg tidigare i kom
+                igång-listan, men den posten handlar nu bara om galleriet på
+                startsidan. Verktyget hör ändå hemma här, där bilder hanteras. */}
+            {placeholdersLeft > 0 && (
+              <button
+                onClick={() => setSwapping(true)}
+                style={{ alignSelf: 'flex-start', fontSize: 12, color: '#eab308', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: F, padding: 0, textAlign: 'left' }}
+              >
+                Gå igenom alla exempelbilder på sajten ({placeholdersLeft} kvar)
+              </button>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               {images.slice(0, content.galleryCount ?? 6).map((img, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2299,7 +1899,7 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
             open={open === 'articles'} onToggle={() => toggle('articles')} flash={flashed === 'articles'}
             {...moveProps}
           >
-            <ArticleList articles={articles} onEdit={setEditingId} onAdd={addArticle} />
+            <ArticleList articles={articles} onEdit={setEditingId} onAdd={() => setEditingId(addArticle())} />
             {/* A blog with one post reads as abandoned. Six gives the section
                 somewhere to breathe — and each one is a page Google can rank. */}
             {articles.length < 4 && (
@@ -2634,5 +2234,6 @@ export function PanelEditor({ template, industry, initialContent, siteSlug, temp
       )}
     </div>
     </MediaProvider>
+    </SajtProvider>
   )
 }

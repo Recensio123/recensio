@@ -148,6 +148,10 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
    * first — the receipt must not promise a time nobody has accepted. */
   const [awaitingOk,   setAwaitingOk]   = useState(false)
   const [cancelHours,  setCancelHours]  = useState(0)
+  /* Vad salongen kräver av kunden, räknat på servern. Kanalvalet sätter golvet
+     — skickas bekräftelsen som mail behövs adressen — och salongen kan lägga
+     till därutöver. Här hämtas svaret, inte regeln. */
+  const [krav,         setKrav]         = useState({ epost: true, telefon: false })
   const [confirmText,  setConfirmText]  = useState<string | null>(null)
 
   // Booking values. Several services combine into one visit — the slot is
@@ -183,6 +187,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
       .then(d => {
         setServices(d.services ?? []); setStaff(d.staff ?? [])
         setCancelHours(d.cancel_hours ?? 0); setConfirmText(d.confirmation_text ?? null)
+        if (d.required) setKrav({ epost: Boolean(d.required.epost), telefon: Boolean(d.required.telefon) })
       })
   }, [slug])
 
@@ -230,7 +235,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
         booking_date:    selectedDate,
         start_time:      selectedTime,
         customer_name:   name,
-        customer_phone:  phone,
+        customer_phone:  telefonEllerTomt,
         customer_email:  email,
         customer_note:   note,
         sms_opt_in:      true,
@@ -258,6 +263,13 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
     setSubmitting(false)
   }
 
+  /* Rutan står förifylld med landsnumret, så ett orört fält innehåller '+46 '.
+     Skickas det vidare hamnar ett nummer utan siffror i kundregistret, och
+     kunden blir en ny person vid varje besök. */
+  const telefonEllerTomt = phone.replace(/D/g, '').length >= 8 ? phone.trim() : ''
+  const behöverTelefon = krav.telefon
+  const behöverEpost   = krav.epost
+
   // Step navigation helpers
   const stepIndex = STEP_LIST.findIndex(s => s.key === step)
 
@@ -265,7 +277,11 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
     if (step === 'service')  return selectedServices.length > 0
     if (step === 'staff')    return selectedStaff !== null
     if (step === 'datetime') return !!selectedDate && !!selectedTime
-    if (step === 'details')  return name.trim().length > 0 && phone.trim().length > 4
+    if (step === 'details') {
+      return name.trim().length > 0
+        && (!behöverTelefon || telefonEllerTomt !== '')
+        && (!behöverEpost   || /^S+@S+.S+$/.test(email.trim()))
+    }
     return true
   }
 
@@ -594,7 +610,10 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#555', marginBottom: '6px' }}>
-                    Mobilnummer <span style={{ color: '#e53e3e' }}>*</span>
+                    Mobilnummer{' '}
+                    {behöverTelefon
+                      ? <span style={{ color: '#e53e3e' }}>*</span>
+                      : <span style={{ fontSize: '12px', color: '#bbb', fontWeight: 400 }}>(valfritt)</span>}
                   </label>
                   <input
                     value={phone}
@@ -607,12 +626,15 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                     onBlur={focusOut}
                   />
                   <p style={{ fontSize: '12px', color: '#bbb', marginTop: '5px' }}>
-                    Så salongen kan nå dig om något ändras
+                    {behöverTelefon ? 'Hit skickas din bekräftelse, och hit hör salongen av sig om något ändras' : 'Så salongen kan nå dig om något ändras'}
                   </p>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#555', marginBottom: '6px' }}>
-                    E-post <span style={{ fontSize: '12px', color: '#bbb', fontWeight: 400 }}>(valfritt)</span>
+                    E-post{' '}
+                    {behöverEpost
+                      ? <span style={{ color: '#e53e3e' }}>*</span>
+                      : <span style={{ fontSize: '12px', color: '#bbb', fontWeight: 400 }}>(valfritt)</span>}
                   </label>
                   <input
                     value={email}
@@ -676,7 +698,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                 {/* Customer info */}
                 <div style={{ padding: '16px 20px', background: '#fafafa' }}>
                   <div style={{ fontSize: '15px', fontWeight: 600, color: '#111', marginBottom: '3px' }}>{name}</div>
-                  <div style={{ fontSize: '14px', color: '#777' }}>{phone}</div>
+                  {telefonEllerTomt && <div style={{ fontSize: '14px', color: '#777' }}>{telefonEllerTomt}</div>}
                   {email && <div style={{ fontSize: '14px', color: '#777' }}>{email}</div>}
                   {note && (
                     <div style={{ fontSize: '13px', color: '#aaa', marginTop: '8px', fontStyle: 'italic' }}>

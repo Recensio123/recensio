@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isClosed } from '@/lib/accountStatus'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { bookingSeedsFrom, bookingServices } from '@/lib/trades'
 import { fetchStaff } from '@/lib/staffQuery'
 import { fetchPolicy } from '@/lib/bookingPolicy'
 import { sendBookingConfirmation, sendConfirmationFor, TYSTA } from '@/lib/bookingEmail'
-import { templateSettings } from '@/lib/messageTemplates'
+import { aktivMall } from '@/lib/messageTemplates'
+import { hämtaKontaktsätt } from '@/lib/kontaktsatt'
+import { hämtaKrav } from '@/lib/bokningskrav'
 import {
   addMinutes, assignStaff, staffFree, timeToMins, defaultAvailability,
   autoConfirmFor, leadFor, leadRuleFor, salonNow, tooSoon,
@@ -43,30 +44,31 @@ export async function GET(_req: NextRequest, { params }: Params) {
   /* The salon's own rules, so the flow shows exactly what it decided. */
   const policy = await fetchPolicy(admin, company.id)
 
-  let { data: services } = await admin
-    .from('booking_services')
-    .select('id, name, description, duration_minutes, price_sek')
+  /*
+   * Tjänsterna, ur den enda lista som finns.
+   *
+   * Här stod tidigare en reserv: fanns inga bokningsbara tjänster hämtades
+   * hemsidans prislista, och fanns inte den heller branschens exempelpaket. Den
+   * fanns för att en bokningssida inte skulle gapa tom bredvid en sajt full av
+   * priser — ett rimligt skäl med två listor, och fel så snart det bara finns
+   * en. Reserven bokade in riktiga kunder på våra exempelpriser: salongen såg
+   * en bokning på 650 kr för en klippning de tar 750 för, och fick veta det
+   * först när kunden stod vid stolen.
+   *
+   * Tom lista betyder numera att salongen inte lagt upp sina tjänster. Då säger
+   * bokningssidan det, och det är ett bättre besked än ett påhittat pris.
+   *
+   * bokningsbar filtreras här och inte i flödet: en behandling som kräver
+   * konsultation ska synas i prislistan på hemsidan men inte gå att välja i
+   * kalendern.
+   */
+  const { data: services } = await admin
+    .from('services')
+    .select('id, namn, beskrivning, minuter, pris_kr, pris_fran, forberedelse, max_per_dag, avbokning_timmar')
     .eq('company_id', company.id)
-    .eq('is_active', true)
+    .eq('aktiv', true)
+    .eq('bokningsbar', true)
     .order('sort_order')
-
-  /* No bookable services configured — the salon's price list is the truth,
-   * so it steps in: first the list they edited on their website, then their
-   * trade's example list. A booking page must never stand empty next to a
-   * site full of prices. */
-  if (!services?.length) {
-    const { data: cfg } = await admin
-      .from('site_config')
-      .select('content')
-      .eq('company_id', company.id)
-      .maybeSingle()
-    const cats = (cfg?.content as { menuCategories?: { items: { name: string; desc?: string; duration?: string; price?: string }[] }[] } | null)?.menuCategories
-    const seeds = cats?.length ? bookingSeedsFrom(cats) : bookingServices(company.industry)
-    services = seeds.map((s, i) => ({
-      id: `pris-${i}`, name: s.name, description: s.description,
-      duration_minutes: s.duration_minutes, price_sek: s.price_sek,
-    }))
-  }
 
   // Staff is a later migration — an older database just has none, and the
   // flow then skips the person step on its own.
@@ -79,6 +81,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     staff,
     cancel_hours:      policy.cancel_hours,
     confirmation_text: policy.confirmation_text,
+    /* Vilka uppgifter kunden måste lämna, färdigräknat. Formuläret ska visa
+       kravet, inte härleda det — två uträkningar av samma regel är två som kan
+       glida isär. */
+    required:          (await hämtaKrav(admin, company.id)).krav,
   })
 }
 
@@ -101,7 +107,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   } = await req.json()
 
   const list = Array.isArray(services) ? services.filter(s => s?.name) : []
-  if (!list.length || !booking_date || !start_time || !customer_name || !customer_phone) {
+  if (!list.length || !booking_date || !start_time || !customer_name) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -124,20 +130,78 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
 
-  /* One visit, one row: the services combine into a single appointment whose
-   * length is their sum. "Klippning + skägg" is one slot in the calendar,
-   * not two bookings the salon has to piece together. */
-  const totalDuration = list.reduce((s: number, x: { duration_minutes?: number }) => s + Number(x.duration_minutes ?? 0), 0)
-  const totalPrice    = list.reduce((s: number, x: { price_sek?: number | null }) => s + Number(x.price_sek ?? 0), 0)
-  const serviceName   = list.map((x: { name: string }) => x.name).join(' + ')
-  const end_time      = addMinutes(start_time, totalDuration)
+  /* Kontaktuppgiften salongen faktiskt använder måste finnas. Vilken det är
+     avgörs av hur de håller kontakt, inte av formuläret: skickar de SMS behövs
+     numret, skickar de mail behövs adressen. Kontrollen görs här och inte bara
+     i formuläret — en bokning kan komma från vilken klient som helst, och en
+     bekräftelse utan mottagare är ett utskick som ser lyckat ut i loggen och
+     aldrig når kunden. */
+  const { krav } = await hämtaKrav(admin, company.id)
+  if ((krav.telefon && !String(customer_phone ?? '').trim()) ||
+      (krav.epost   && !String(customer_email ?? '').trim())) {
+    return NextResponse.json({ error: 'missing_contact', requires: krav }, { status: 400 })
+  }
+
+  /*
+   * Tjänsterna läses ur databasen, inte ur begäran.
+   *
+   * Här summerades tidigare namn, tid och pris rakt ur det klienten skickade.
+   * En bokningssida är öppen för vem som helst, och den som får bestämma
+   * priset bestämmer vad salongen får betalt: `{ name: 'Klippning',
+   * duration_minutes: 5, price_sek: 1 }` var en giltig bokning.
+   *
+   * Klienten får säga vilka tjänster besöket gäller. Vad de heter, hur lång tid
+   * de tar och vad de kostar avgör salongen.
+   */
+  const önskade = list
+    .map((x: { id?: unknown }) => String(x?.id ?? '').trim())
+    .filter(Boolean)
+
+  const { data: valda } = önskade.length
+    ? await admin.from('services')
+        .select('id, namn, minuter, pris_kr, max_per_dag')
+        .eq('company_id', company.id).eq('aktiv', true).eq('bokningsbar', true)
+        .in('id', önskade)
+    : { data: null }
+
+  if (!valda?.length) {
+    return NextResponse.json({ error: 'unknown_service' }, { status: 400 })
+  }
+
+  /* Klientens ordning, salongens uppgifter — namnet på bekräftelsen ska stå i
+     den ordning kunden valde. */
+  const ordnade = önskade
+    .map(id => valda.find(t => t.id === id))
+    .filter((t): t is NonNullable<typeof t> => !!t)
+
+  /* Salongens regler hämtas här och inte längre ner: städtiden behövs redan
+     när sluttiden räknas ut. */
+  const policy = await fetchPolicy(admin, company.id)
+
+  const totalDuration = ordnade.reduce((s, t) => s + Number(t.minuter ?? 0), 0)
+  const totalPrice    = ordnade.reduce((s, t) => s + Number(t.pris_kr ?? 0), 0)
+  const serviceName   = ordnade.map(t => t.namn as string).join(' + ')
+
+  /*
+   * Städtiden ligger i end_time men inte i service_duration_minutes.
+   *
+   * Kunden har bokat en klippning på 45 minuter och ska se 45 — men stolen är
+   * upptagen tills den är avtorkad. Alla krockkontroller läser end_time, så
+   * det är den raden som håller nästa kund ute ur städningen.
+   */
+  const buffert  = policy.buffer_minutes
+  const end_time = addMinutes(start_time, totalDuration + buffert)
+
+  /* Krockkontrollerna nedan måste räkna med städtiden, precis som rutnätet
+     gjorde när tiden visades. Gör de inte det säljer skrivningen en tid
+     visningen redan spärrat, och de två svaren skulle vara olika. */
+  const upptagen = totalDuration + buffert
 
   /* Re-check the slot at write time — two visitors can be staring at the
    * same free 14:00, and the second one to press the button must be told
    * no rather than double-booking the chair. The same goes for the notice
    * rule: a page left open since this morning must not book 10:00 at noon. */
-  const policy = await fetchPolicy(admin, company.id)
-  const lead   = leadRuleFor(booking_date, policy.lead_minutes)
+  const lead = leadRuleFor(booking_date, policy.lead_minutes)
   const TOO_SOON = 'Den tiden ligger för nära inpå. Välj en senare tid, eller ring salongen.'
 
   if (booking_date < salonNow().date) {
@@ -186,7 +250,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   let assigned: StaffRow | null = null
 
   const startM = timeToMins(start_time)
-  const common = { startMins: startM, duration: totalDuration, dow, salon: hours as Availability, bookings, blocked, lead }
+  const common = { startMins: startM, duration: upptagen, dow, salon: hours as Availability, bookings, blocked, lead }
 
   if (staff.length > 0) {
     if (staff_id) {
@@ -204,7 +268,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
       assigned = chosen
     } else {
-      const pick = { staff, startTime: start_time, duration: totalDuration, dow, salon: hours as Availability, bookings, blocked }
+      const pick = { staff, startTime: start_time, duration: upptagen, dow, salon: hours as Availability, bookings, blocked }
       assigned = assignStaff({ ...pick, lead })
       if (!assigned) {
         // Would anyone have been free if the notice rule were lifted?
@@ -218,7 +282,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: TOO_SOON }, { status: 409 })
     }
     const taken = bookings.some(b =>
-      timeToMins(b.start_time) < startM + totalDuration && timeToMins(b.end_time) > startM)
+      timeToMins(b.start_time) < startM + upptagen && timeToMins(b.end_time) > startM)
     if (taken) {
       return NextResponse.json({ error: 'Tiden är inte längre ledig' }, { status: 409 })
     }
@@ -233,27 +297,34 @@ export async function POST(req: NextRequest, { params }: Params) {
    * unique index on (company_id, phone) is partial (WHERE phone IS NOT NULL)
    * and ON CONFLICT cannot target it — the upsert failed silently on every
    * booking and no customer was ever registered. Select-then-write instead. */
-  const { data: existingCustomer } = await admin
-    .from('customers')
-    .select('id')
-    .eq('company_id', company.id)
-    .eq('phone', customer_phone)
-    .maybeSingle()
+  /* Numret känner igen kunden när det finns; mailet när det inte gör det. En
+     salong som bara använder e-post har kunder utan nummer, och en uppslagning
+     på ett tomt fält hade gjort varje besök till en ny kund — och därmed
+     kundhistoriken oläsbar. */
+  const telefon = String(customer_phone ?? '').trim()
+  const epost   = String(customer_email ?? '').trim()
+
+  let existingCustomer: { id: string } | null = null
+  if (telefon || epost) {
+    const fråga = admin.from('customers').select('id').eq('company_id', company.id)
+    const { data } = await (telefon ? fråga.eq('phone', telefon) : fråga.eq('email', epost)).maybeSingle()
+    existingCustomer = (data as { id: string } | null) ?? null
+  }
 
   let customer = existingCustomer
   if (existingCustomer) {
     await admin
       .from('customers')
-      .update({ name: customer_name, email: customer_email || null, sms_opt_in: sms_opt_in ?? true, updated_at: new Date().toISOString() })
+      .update({ name: customer_name, email: epost || null, sms_opt_in: sms_opt_in ?? true, updated_at: new Date().toISOString() })
       .eq('id', existingCustomer.id)
-  } else {
+  } else if (telefon || epost) {
     const { data: created } = await admin
       .from('customers')
       .insert({
         company_id: company.id,
         name:       customer_name,
-        phone:      customer_phone,
-        email:      customer_email || null,
+        phone:      telefon || null,
+        email:      epost || null,
         sms_opt_in: sms_opt_in ?? true,
         updated_at: new Date().toISOString(),
       })
@@ -266,7 +337,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const base = {
     company_id:               company.id,
     customer_id:              customer?.id ?? null,
-    service_id:               /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(list[0]?.id ?? '') ? list[0].id : null,
+    service_id:               ordnade[0].id,
     service_name:             serviceName,
     service_duration_minutes: totalDuration,
     service_price_sek:        totalPrice || null,
@@ -329,6 +400,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     ? await sendConfirmationFor(admin, bookingId)
     : await sendBookingConfirmation(admin, {
         companyId:        company.id,
+        bookingId:        bookingId ?? null,
         companyName:      company.name || 'Din salong',
         customerName:     customer_name,
         customerEmail:    customer_email || null,
@@ -346,7 +418,11 @@ export async function POST(req: NextRequest, { params }: Params) {
            skapats i samma anrop. */
         customerPhone:    customer_phone || null,
         smsOptIn:         sms_opt_in ?? true,
-        channel:          (await templateSettings(admin, company.id, 'confirmation')).channel,
+        /* Kanalen bekräftelsen går på. Beskedet att förfrågan kommit fram är
+           hela poängen med det här utskicket, så det går även när salongen
+           slagit av själva bekräftelsen. */
+        channel:          (await aktivMall(admin, company.id, 'confirmation')).kanal
+                            ?? (await hämtaKontaktsätt(admin, company.id)),
       })
 
   /* Tystade skäl är inte fel: kunden lämnade ingen adress, eller utskicken är

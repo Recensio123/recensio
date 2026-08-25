@@ -57,7 +57,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const { data: existing } = await admin
     .from('bookings')
-    .select('staff_id, start_time, end_time')
+    .select('staff_id, start_time, end_time, service_id')
     .eq('company_id', company.id)
     .eq('booking_date', date)
     .neq('status', 'cancelled')
@@ -79,13 +79,78 @@ export async function GET(req: NextRequest, { params }: Params) {
     blocked = (bl ?? []) as BlockedRow[]
   } catch { /* pre-migration database */ }
 
+  /*
+   * Tiden och stolarna avgörs av tjänsterna, inte av webbläsaren.
+   *
+   * Rutten tog tidigare emot `duration` som en siffra i adressen. Det räckte
+   * när en tjänst bara hade en längd, men tre saker hänger numera på vilka
+   * tjänster besöket gäller — städtiden efter, vilka som kan utföra dem, och
+   * taket per dag — och ingen av dem ska en klient få bestämma.
+   *
+   * `duration` finns kvar som reserv för äldre anrop.
+   */
+  const valda = (searchParams.get('services') ?? '')
+    .split(',').map(s => s.trim()).filter(Boolean)
+
+  let upptagen = duration
+  let kanUtföra = staff
+
+  if (valda.length) {
+    const { data: tjänster } = await admin
+      .from('services')
+      .select('id, minuter, max_per_dag')
+      .eq('company_id', company.id)
+      .eq('aktiv', true)
+      .eq('bokningsbar', true)
+      .in('id', valda)
+
+    if (tjänster?.length) {
+      /* Behandlingarna läggs efter varandra; städningen sker en gång, efteråt.
+         Den är salongens regel och inte tjänstens — den som vill ha en kvart
+         mellan kunderna vill ha det mellan alla kunder. */
+      upptagen = tjänster.reduce((s, t) => s + Number(t.minuter ?? 0), 0) + policy.buffer_minutes
+
+      /* Taket per dag. Är det fullt finns inga tider att visa — och det är ett
+         ärligare besked än en kalender full av tider salongen inte hinner. */
+      for (const t of tjänster) {
+        const tak = t.max_per_dag === null ? null : Number(t.max_per_dag)
+        if (!tak) continue
+        const idag = (existing ?? []).filter(b => b.service_id === t.id).length
+        if (idag >= tak) return NextResponse.json({ slots: [], fullt: true })
+      }
+
+      /* Bara stolar som kan utföra hela besöket. En tjänst utan koppling kan
+         alla — tom lista betyder alla, inte ingen. */
+      try {
+        const { data: koppl } = await admin
+          .from('service_staff').select('service_id, staff_id').in('service_id', valda)
+        const per = new Map<string, Set<string>>()
+        for (const k of koppl ?? []) {
+          const s = per.get(k.service_id as string) ?? new Set<string>()
+          s.add(k.staff_id as string)
+          per.set(k.service_id as string, s)
+        }
+        if (per.size) {
+          kanUtföra = staff.filter(s =>
+            valda.every(id => !per.has(id) || per.get(id)!.has(s.id)))
+        }
+      } catch { /* kopplingstabellen inte migrerad — alla kan allt */ }
+    }
+  }
+
+  /* Ingen stol klarar kombinationen. Att då visa salongens öppettider som
+     lediga vore att sälja en tid ingen kan ta. */
+  if (staff.length && !kanUtföra.length) {
+    return NextResponse.json({ slots: [], ingenSomKan: true })
+  }
+
   const slots = slotsForDay({
     salon:    hours,
     dow,
-    duration,
-    staff,
+    duration: upptagen,
+    staff:    kanUtföra,
     staffId:  staffId || null,
-    bookings: (existing ?? []) as BookingRow[],
+    bookings: (existing ?? []) as unknown as BookingRow[],
     blocked,
     lead,
   })

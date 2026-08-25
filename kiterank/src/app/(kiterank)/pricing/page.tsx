@@ -8,7 +8,6 @@ const STARTER_FEATURES = [
   'Website analytics (GA4 + Search Console)',
   'Weekly action plan — 3 tasks every Monday',
   'Local pack competitor tracking',
-  'Citation health check',
   '1 business location',
 ]
 
@@ -30,7 +29,6 @@ const COMPARISON = [
   { feature: 'Website analytics (GA4 / SC)',       starter: true,  pro: true  },
   { feature: 'Weekly action plan',                 starter: true,  pro: true  },
   { feature: 'Local pack rankings',                starter: true,  pro: true  },
-  { feature: 'Citation health check',              starter: true,  pro: true  },
   { feature: 'Google Ads tracking',                starter: false, pro: true  },
   { feature: 'Facebook & Instagram analytics',     starter: false, pro: true  },
   { feature: 'AI search visibility',               starter: false, pro: true  },

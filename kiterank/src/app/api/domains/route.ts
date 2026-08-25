@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { normaliseDomain, domainLooksValid } from '@/lib/domainTarget'
 import { clearSiteCache, clearSiteAddress } from '@/app/s/[slug]/site-data'
 import { currentCompany } from '@/lib/companyScope'
-import { cfConfigured } from '@/lib/cloudflare'
+import { domänData } from '@/lib/domanData'
 import { removeHostDomain } from '@/lib/hosting'
 
 /*
@@ -16,23 +16,12 @@ import { removeHostDomain } from '@/lib/hosting'
  * the first salon to verify owns it.
  */
 
+/* Samma data som sidan serverrenderar. Rutten finns för omläsningen efter en
+   ändring — fältet behöver inte fråga vid öppning. */
 export async function GET() {
   const c = await currentCompany()
   if (!c) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data } = await c.admin
-    .from('custom_domains')
-    .select('domain, verified_at, is_primary, mode, nameservers, imported_zone, imported_at, ' +
-            'mail_mode, mail_forward_to, mail_verified_at')
-    .eq('company_id', c.id)
-    .order('created_at')
-
-  /* Zonläget visas bara när leverantören faktiskt är uppsatt. Annars vore det
-     ett val kunden kan göra som inte leder någonstans. */
-  return NextResponse.json({
-    domains: data ?? [],
-    zones:   cfConfigured(),
-  })
+  return NextResponse.json(await domänData(c.admin, c.id))
 }
 
 export async function POST(req: Request) {

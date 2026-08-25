@@ -58,10 +58,14 @@ const TEAM_DEFAULT = ['Grundare', 'Medarbetare', 'Medarbetare']
 
 export function exampleTeam(industry?: string): Member[] {
   const titles = TEAM_TITLES[industry ?? ''] ?? TEAM_DEFAULT
+  /* Namnen är uttalade platshållare och inte påhittade personer.
+     "Maria Lindqvist" på en publicerad sida är ett påstående om att någon
+     jobbar där; "Exempel namn" är en uppgift som återstår, och det syns
+     direkt i förhandsvisningen vilket som är vilket. */
   return [
-    { name: 'Maria Lindqvist', title: titles[0], image: PORTRAITS[0] },
-    { name: 'Johan Berg',      title: titles[1], image: PORTRAITS[1] },
-    { name: 'Sara Nyström',    title: titles[2], image: PORTRAITS[2] },
+    { name: 'Exempel namn', title: titles[0], image: PORTRAITS[0] },
+    { name: 'Exempel namn', title: titles[1], image: PORTRAITS[1] },
+    { name: 'Exempel namn', title: titles[2], image: PORTRAITS[2] },
   ]
 }
 

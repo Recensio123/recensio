@@ -168,26 +168,34 @@ export function weekNumber(date: string): number {
  * Staffed time, not opening hours. A day the salon is shut, a chair that is
  * off, a week of holiday — none of it counts as capacity nobody filled.
  */
-export function weekOccupancy(opts: {
+/**
+ * The staffed minutes in a stretch of days — the denominator occupancy is
+ * measured against.
+ *
+ * Its own function because two views need the same answer: the calendar's
+ * occupancy tile for the week on screen, and the history's monthly bars for a
+ * year back. Two implementations of "how much time did we have to sell" would
+ * eventually disagree, and then the same salon would read as 60% full on one
+ * page and 75% on another.
+ */
+export function staffedMinutes(opts: {
   /** First day, inclusive. */
   from:     string
   days:     number
-  bookings: Booking[]
   staff:    StaffMember[]
+  /** Empty is a legitimate answer, not a missing one — see the history stats,
+   *  which have no record of who was off last November. */
   absences: Absence[]
   hours:    WeekHours
-}): { pct: number; freeHours: number; openMin: number } {
-  const { from, days, bookings, staff, absences, hours } = opts
+}): number {
+  const { from, days, staff, absences, hours } = opts
   const active = staff.filter(s => s.is_active)
-
   let openMin = 0
-  const dates: string[] = []
 
   for (let i = 0; i < days; i++) {
     const d = new Date(from + 'T12:00:00')
     d.setDate(d.getDate() + i)
     const iso = isoDate(d)
-    dates.push(iso)
 
     const dow   = d.getDay()
     const salon = hours[dow]
@@ -219,10 +227,27 @@ export function weekOccupancy(opts: {
     }
   }
 
-  const first = dates[0] ?? from
-  const last  = dates[dates.length - 1] ?? from
+  return openMin
+}
+
+export function weekOccupancy(opts: {
+  /** First day, inclusive. */
+  from:     string
+  days:     number
+  bookings: Booking[]
+  staff:    StaffMember[]
+  absences: Absence[]
+  hours:    WeekHours
+}): { pct: number; freeHours: number; openMin: number } {
+  const { from, days, bookings } = opts
+  const openMin = staffedMinutes(opts)
+
+  const sista = new Date(from + 'T12:00:00')
+  sista.setDate(sista.getDate() + days - 1)
+  const last = isoDate(sista)
+
   const bookedMin = bookings
-    .filter(b => b.date >= first && b.date <= last && b.status !== 'cancelled')
+    .filter(b => b.date >= from && b.date <= last && b.status !== 'cancelled')
     .reduce((sum, b) => sum + b.duration, 0)
 
   return {

@@ -48,6 +48,9 @@ export type Message = {
   html?:     string
   /** SMS-texten. Kortare, utan ram — och utan den skickas inget SMS. */
   sms?:      string
+  /** Avsändarnamnet kunden ser. Salongens eget val; utan det skalas
+   *  salongsnamnet till samma form. */
+  smsFrom?:  string | null
 }
 
 export async function sendMessage(m: Message): Promise<MessageResult> {
@@ -86,7 +89,7 @@ export async function sendMessage(m: Message): Promise<MessageResult> {
     } else if (!m.sms?.trim()) {
       out.sms = { sent: false, reason: 'no_text' }
     } else {
-      const r = await sendSms({ to: m.phone, from: smsSender(m.salong), text: m.sms })
+      const r = await sendSms({ to: m.phone, from: smsSender(m.salong, m.smsFrom), text: m.sms })
       out.sms = { sent: r.sent, reason: r.reason, segments: r.segments }
     }
   }

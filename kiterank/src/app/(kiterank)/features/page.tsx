@@ -184,23 +184,6 @@ export default function FeaturesPage() {
       <div className="border-t border-white/5" />
 
       <FeatureBlock
-        id="ai"
-        icon="✺"
-        label="AI Search Visibility"
-        title="Does ChatGPT recommend your business?"
-        body="A growing share of local service searches are happening inside AI assistants, not Google. When someone asks 'who is the best plumber in Stockholm?' in ChatGPT or Perplexity, the answer is driven by your online reputation — reviews, citations, and content. Kiterank runs those exact searches weekly and shows you who gets recommended."
-        bullets={[
-          'Weekly prompt testing across ChatGPT, Perplexity, Gemini, and Google AI Overviews',
-          'Mention tracking — was your business named, at what position, and with what description?',
-          'Competitor share of voice — how many of your tracked prompts do they appear in vs. you?',
-          'Citation source tracking — which directories and review sites are AI platforms reading?',
-          'Response excerpts — the exact text each AI platform says about your business',
-        ]}
-      />
-
-      <div className="border-t border-white/5" />
-
-      <FeatureBlock
         id="social"
         icon="⬡"
         label="Social Media"

@@ -173,7 +173,7 @@ function LuxuryServiceList({ c, categories, serviceHref }: { c: TemplateColors; 
  * om oss och kontakt. Under den står vad sidan innehåller och var salongen
  * finns — byggt bara ur fält de fyllt i, inget påhittat om deras verksamhet.
  */
-function pageIntro(content: SiteContent): { rubrik: string; förklaring: string } {
+export function pageIntro(content: SiteContent): { rubrik: string; förklaring: string } {
   const rubrik = sectionPageTitle(content, 'pricelist')
 
   /* Vad som faktiskt står på sidan. Antalet nämns inte: en salong som lägger

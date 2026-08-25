@@ -92,10 +92,32 @@ export async function fetchAccounts(token: string): Promise<{ name: string; acco
   return data.accounts ?? []
 }
 
+/*
+ * Öppettiderna som Google lämnar dem: en period per dag och intervall, med
+ * klockslag uppdelat i timme och minut. En salong som har lunchstängt får två
+ * perioder på samma dag, och en som har öppet över midnatt får en period vars
+ * stängning ligger på nästa dags kod. Formen är alltså inte "en rad per dag"
+ * hur gärna man än vill att den ska vara det.
+ */
+export type GBPPeriod = {
+  openDay?:   string   // "MONDAY"
+  closeDay?:  string
+  openTime?:  { hours?: number; minutes?: number }
+  closeTime?: { hours?: number; minutes?: number }
+}
+
 export type GBPLocation = {
   name:       string
   title:      string
   websiteUri?: string
+  /* Numret som står på profilen. Det primära först; de övriga är sådant som en
+     andra linje eller ett mobilnummer, och vilket av dem som är rätt att visa
+     på hemsidan vet bara salongen. */
+  phoneNumbers?: {
+    primaryPhone?:     string
+    additionalPhones?: string[]
+  }
+  regularHours?: { periods?: GBPPeriod[] }
   categories?: {
     primaryCategory?: {
       displayName: string
@@ -114,7 +136,10 @@ export type GBPLocation = {
 
 export async function fetchLocations(token: string, accountName: string): Promise<GBPLocation[]> {
   const res = await fetch(
-    `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress,websiteUri,categories`,
+    /* Telefon och öppettider ligger i samma svar och kostar ingenting extra
+       att be om. De är dessutom precis de två uppgifter en nybyggd hemsida
+       saknar och som är tråkigast att skriva in för hand. */
+    `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress,websiteUri,categories,phoneNumbers,regularHours`,
     { headers: { Authorization: `Bearer ${token}` } }
   )
   if (!res.ok) throw new Error(`Locations: ${res.status} ${await res.text()}`)
@@ -459,35 +484,113 @@ export type SCQuery = {
   position: number
 }
 
-export async function fetchSCQueries(token: string, siteUrl: string, days = 28): Promise<SCQuery[]> {
-  const end = new Date()
+const SC_BASE = 'https://www.googleapis.com/webmasters/v3/sites'
+
+const scDatum = (d: Date) => d.toISOString().split('T')[0]
+
+/** Ett anrop till searchAnalytics, med den uppdelning anroparen ber om. */
+async function scFråga(
+  token: string, siteUrl: string, dimension: 'query' | 'date', days: number, rowLimit: number,
+): Promise<Record<string, unknown>[]> {
+  const end   = new Date()
   const start = new Date()
   start.setDate(start.getDate() - days)
 
-  const fmt = (d: Date) => d.toISOString().split('T')[0]
-
   const res = await fetch(
-    `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+    `${SC_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        startDate:  fmt(start),
-        endDate:    fmt(end),
-        dimensions: ['query'],
-        rowLimit:   500,
+        startDate:  scDatum(start),
+        endDate:    scDatum(end),
+        dimensions: [dimension],
+        rowLimit,
       }),
     }
   )
-  if (!res.ok) throw new Error(`SC queries: ${res.status} ${await res.text()}`)
+  if (!res.ok) throw new Error(`SC ${dimension}: ${res.status} ${await res.text()}`)
   const data = await res.json()
-  return (data.rows ?? []).map((row: any) => ({
-    query:       row.keys[0] as string,
-    clicks:      row.clicks      as number,
-    impressions: row.impressions as number,
-    ctr:         row.ctr         as number,
-    position:    Math.round(row.position * 10) / 10,
+  return (data.rows ?? []) as Record<string, unknown>[]
+}
+
+export async function fetchSCQueries(token: string, siteUrl: string, days = 28): Promise<SCQuery[]> {
+  const rows = await scFråga(token, siteUrl, 'query', days, 500)
+  return rows.map(row => ({
+    query:       (row.keys as string[])[0],
+    clicks:      Number(row.clicks),
+    impressions: Number(row.impressions),
+    ctr:         Number(row.ctr),
+    position:    Math.round(Number(row.position) * 10) / 10,
   }))
+}
+
+export type SCDag = {
+  /** YYYY-MM-DD, dagen Google räknar på. */
+  date:        string
+  clicks:      number
+  impressions: number
+  position:    number
+}
+
+/**
+ * Samma fönster, uppdelat per dygn i stället för per sökord.
+ *
+ * Det här är vad trendgrafen ritas ur. Hämtas varje synk för hela fönstret och
+ * inte bara för gårdagen, av två skäl: Google efterjusterar de senaste dygnens
+ * siffror i ett par dagar, och en natt då synken inte kördes lagas av sig själv
+ * nästa gång i stället för att bli ett hål i kurvan för alltid.
+ */
+export async function fetchSCDagar(token: string, siteUrl: string, days = 28): Promise<SCDag[]> {
+  const rows = await scFråga(token, siteUrl, 'date', days, 1000)
+  return rows.map(row => ({
+    date:        (row.keys as string[])[0],
+    clicks:      Number(row.clicks),
+    impressions: Number(row.impressions),
+    position:    Math.round(Number(row.position) * 10) / 10,
+  }))
+}
+
+/**
+ * Vilken av kundens verifierade properties som är deras sajt.
+ *
+ * Samma fälla som annonskontot hade: `sites[0]` tar första bästa, och en salong
+ * som haft en byrå har ofta byråns properties kvar i sin åtkomst. Då mätte vi
+ * någon annans sajt utan att något såg fel ut.
+ *
+ * Skillnaden mot annonskontot är att här finns något att matcha på. En property
+ * ÄR en adress, och vi vet vilka adresser salongens sajt svarar på. Matchar en
+ * av dem är valet gjort. Matchar ingen, och det finns flera att välja mellan,
+ * väljs ingen alls — en tom vy leder till en fråga, fel siffror leder till fel
+ * beslut.
+ *
+ * `sc-domain:exempel.se` är Googles form för en hel domän; `https://exempel.se/`
+ * för ett prefix. Båda är samma sajt för oss, så bara värdnamnet jämförs.
+ */
+export function väljSCSajt(sites: string[], adresser: string[], sparad?: string | null): string | null {
+  if (sparad && sites.includes(sparad)) return sparad
+  if (!sites.length) return null
+
+  const värd = (s: string): string => {
+    const utan = s.startsWith('sc-domain:') ? s.slice('sc-domain:'.length) : s
+    try {
+      return new URL(utan.includes('://') ? utan : `https://${utan}`).hostname.replace(/^www\./, '')
+    } catch {
+      return utan.replace(/^www\./, '').replace(/\/$/, '')
+    }
+  }
+
+  const mina = new Set(adresser.map(a => värd(a)))
+  /* Domänproperties först: de täcker både www och undersidor, och är det
+     Google själv rekommenderar. */
+  const träffar = sites.filter(s => mina.has(värd(s)))
+  const domän   = träffar.find(s => s.startsWith('sc-domain:'))
+  if (domän) return domän
+  if (träffar.length) return träffar[0]
+
+  /* Ingen träff. Bara när det inte finns något att välja mellan är gissningen
+     ofarlig. */
+  return sites.length === 1 ? sites[0] : null
 }
 
 // ── Google Analytics 4 API ───────────────────────────────────────────────────

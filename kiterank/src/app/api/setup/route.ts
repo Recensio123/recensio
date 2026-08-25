@@ -2,46 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteDraft } from '@/lib/siteTemplates'
-import { bookingServices } from '@/lib/trades'
 import { ledigAdress } from '@/lib/siteAddress'
 import { sparaOnboarding, type Vilja } from '@/lib/onboarding'
-
-// Trades outside the salon packs still keep a hand-written service list
-const DEFAULT_SERVICES: Record<string, { name: string; description: string; duration_minutes: number; price_sek: number }[]> = {
-  salon: [
-    { name: 'Klippning & styling',   description: 'Professionell klippning för alla hårtyper',          duration_minutes: 60,  price_sek: 850  },
-    { name: 'Balayage',              description: 'Naturliga, solkyssade highlights',                   duration_minutes: 150, price_sek: 2200 },
-    { name: 'Highlights',            description: 'Klassiska highlights med folieteknik',               duration_minutes: 120, price_sek: 1800 },
-    { name: 'Färgning hel',          description: 'Heltäckande hårfärg',                               duration_minutes: 90,  price_sek: 1400 },
-    { name: 'Slingor och klipp',     description: 'Kombinerat paket med slingor och klippning',        duration_minutes: 180, price_sek: 2800 },
-  ],
-  spa: [
-    { name: 'Klassisk massage',      description: 'Avslappnande helkroppsmassage',                     duration_minutes: 60,  price_sek: 950  },
-    { name: 'Djupvävnadsmassage',    description: 'Intensiv massage för muskeltrötthet',               duration_minutes: 60,  price_sek: 1100 },
-    { name: 'Ansiktsbehandling',     description: 'Djuprengörande och återfuktande',                   duration_minutes: 60,  price_sek: 1050 },
-    { name: 'Hotstone massage',      description: 'Massage med varma vulkanstenar',                    duration_minutes: 75,  price_sek: 1350 },
-  ],
-  beauty: [
-    { name: 'Fransförlängning',      description: 'Individuell förlängning för fylligare fransar',     duration_minutes: 120, price_sek: 1200 },
-    { name: 'Manikyr',               description: 'Nagelvård och lackering',                           duration_minutes: 45,  price_sek: 450  },
-    { name: 'Pedikyr',               description: 'Fotvård och lackering',                             duration_minutes: 60,  price_sek: 550  },
-    { name: 'Ögonbrynsstyling',      description: 'Formning och färgning av ögonbryn',                duration_minutes: 30,  price_sek: 350  },
-  ],
-  fitness: [
-    { name: 'Gruppass 60min',          description: 'Grupträningspass för alla nivåer',               duration_minutes: 60,  price_sek: 200  },
-    { name: 'Gruppass 45min',          description: 'Kortare intensivpass i grupp',                   duration_minutes: 45,  price_sek: 150  },
-    { name: 'Personlig träning',       description: 'Individuellt anpassat träningspass',             duration_minutes: 60,  price_sek: 850  },
-    { name: 'Kostrådgivning',          description: 'Individuell genomgång av kost och mål',         duration_minutes: 60,  price_sek: 750  },
-  ],
-  craftsman: [
-    { name: 'Kostnadsfri offert',      description: 'Besök och genomgång inför offert',              duration_minutes: 60,  price_sek: 0    },
-    { name: 'Snickeriarbete',          description: 'Anpassat snickeriarbete per timme',             duration_minutes: 60,  price_sek: 950  },
-    { name: 'Målning',                 description: 'Målningsarbete inomhus eller utomhus',          duration_minutes: 120, price_sek: 1800 },
-    { name: 'VVS-service',             description: 'Reparation och installation av rör och kranar', duration_minutes: 90,  price_sek: 1500 },
-    { name: 'Plattsättning & golv',    description: 'Kakel, klinker och golvläggning',               duration_minutes: 120, price_sek: 1600 },
-    { name: 'Montering & installation',description: 'Möbel- eller byggmontering',                    duration_minutes: 90,  price_sek: 1200 },
-  ],
-}
 
 // Default availability: Mon–Sat 09:00–18:00, Sundays closed
 const DEFAULT_AVAILABILITY = [1,2,3,4,5,6].map(day => ({
@@ -64,7 +26,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { industry, template, features, language, bizName, about, care,
-          vill, harSajt, epost, telefon } = await req.json()
+          vill, harSajt, epost, telefon, brief, valtPaket } = await req.json()
 
   if (!bizName?.trim()) {
     return NextResponse.json({ error: 'Missing bizName' }, { status: 400 })
@@ -82,11 +44,19 @@ export async function POST(req: NextRequest) {
    * through. See lib/siteTemplates. */
   const seeded: Record<string, unknown> = {
     ...buildSiteDraft(about, industry, bizName),
-    /* Kontaktuppgifterna från registreringen hamnar direkt på sidan. Att fråga
-       en gång och sedan låta kunden fylla i samma sak igen i panelen är att
-       ställa frågan två gånger. */
-    ...(epost?.trim()   ? { email: epost.trim() }   : {}),
-    ...(telefon?.trim() ? { phone: telefon.trim() } : {}),
+    /*
+     * Kontaktuppgifterna hamnar inte på sidan.
+     *
+     * Det vi frågar efter i registreringen är hur *vi* når kunden — dit
+     * fakturan och driftbeskeden går. Vilken adress och vilket nummer som ska
+     * stå publikt på deras hemsida är en annan fråga med ett annat svar: en
+     * salong har ofta en bokningstelefon som skiljer sig från ägarens, och en
+     * info-adress som inte är den personliga.
+     *
+     * Att fylla i den publika kontaktsektionen med våra kontaktuppgifter vore
+     * att publicera något de aldrig bett om. De sätts i webbplatspanelen, där
+     * kunden ser vad som visas.
+     */
     // Everything on from the start — trimming down happens in the editor,
     // with the real site in front of the customer
     siteFeatures: { booking: valt.bokning, pricelist: true, gallery: true, contact: true, blog: true, reviews: true, about: true },
@@ -122,15 +92,68 @@ export async function POST(req: NextRequest) {
         slug:       slug.trim(),
         industry,
         updated_at: new Date().toISOString(),
+        /* Provperioden börjar här: sju dagar, utan kort — samma löfte som
+           startsidan ger. Alla börjar på mallnivån; design och full service
+           är säljsamtal, inte något man råkar registrera sig till. Bokningen
+           följer vad de valde i registreringen och bekräftas av betalningen;
+           väljer de om vid köpet vinner köpet. */
+        /*
+         * Paketet från länken, men bara som en anteckning om vad de sagt sig
+         * vilja ha.
+         *
+         * Nivån sätts till mall oavsett vad adressraden påstår. Skulle den
+         * styra planen kunde vem som helst skriva ?paket=fullservice och få
+         * ett paket värt 699 kr i månaden på ett sjudagarsprov. Planen höjs
+         * när betalningen finns — av webhooken, som läser Stripe.
+         *
+         * Underlaget sparas ändå, så att du ser i admin vem som kom in genom
+         * vilken dörr och kan följa upp.
+         */
+        plan:          'mall',
+        har_bokning:   valt.bokning,
+        ...(brief ? { design_brief: brief } : {}),
+        trial_ends_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        /* Kontaktuppgifterna hör till kunden, inte bara till deras hemsida.
+           Låg de bara i sajtens innehåll gick de inte att se någon annanstans,
+           försvann om kunden redigerade bort kontaktsektionen, och salongen
+           fick skriva in samma telefonnummer en gång till under Meddelanden. */
+        ...(epost?.trim()   ? { contact_email: epost.trim() }   : {}),
+        ...(telefon?.trim() ? { contact_phone: telefon.trim() } : {}),
       })
       .select()
       .single()
 
     if (companyErr) return NextResponse.json({ error: companyErr.message }, { status: 500 })
     company = newCompany
+  } else if (epost?.trim() || telefon?.trim()) {
+    /* Ett andra försök efter ett halvt misslyckat: fyll i det som saknas utan
+       att skriva över något kunden hunnit ändra själv. */
+    await admin.from('companies').update({
+      ...(epost?.trim()   ? { contact_email: epost.trim() }   : {}),
+      ...(telefon?.trim() ? { contact_phone: telefon.trim() } : {}),
+    }).eq('id', existingCompany.id)
   }
 
   if (!company) return NextResponse.json({ error: 'Kunde inte skapa företag.' }, { status: 500 })
+
+  /*
+   * Kom de in genom en premiumlänk blir det en förfrågan.
+   *
+   * Kontot står på mallnivån tills en betalning finns — men någon har sagt att
+   * de vill ha en formgiven sida, och det ska inte försvinna in i en JSON-rad
+   * ingen läser. Samma lista som uppgraderingar från panelen, samma ställe i
+   * admin, samma avbockning.
+   */
+  if (valtPaket === 'design' || valtPaket === 'fullservice') {
+    try {
+      await admin.from('paket_forfragan').insert({
+        company_id: company.id,
+        fran_plan:  'mall',
+        till_plan:  valtPaket,
+        meddelande: 'Kom in genom registreringen med paketet valt',
+      })
+    } catch { /* tabellen inte skapad — registreringen ska gå ändå */ }
+  }
 
   /* Registreringen är avklarad i och med det här anropet. Skrivs innan sajten
      byggs: går något fel längre ner ska kunden inte kastas tillbaka till
@@ -165,16 +188,19 @@ export async function POST(req: NextRequest) {
 
   if (configErr) return NextResponse.json({ error: configErr.message }, { status: 500 })
 
-  // Seed default booking services if booking feature is enabled
-  if (features?.booking) {
-    // A salon trade books what its price list says; anything else falls back
-    // to the hand-written lists above.
-    const fromPack = bookingServices(industry)
-    const services = fromPack.length ? fromPack : (DEFAULT_SERVICES[industry] ?? DEFAULT_SERVICES.salon)
-    await admin
-      .from('booking_services')
-      .insert(services.map((s, i) => ({ ...s, company_id: company.id, sort_order: i })))
-  }
+  /*
+   * Inga tjänster seedas längre.
+   *
+   * Förut fylldes tabellen med branschens exempelpriser vid registreringen.
+   * Det gav en bokningssida som fungerade från dag ett — och som tog emot
+   * riktiga bokningar på priser salongen aldrig satt. En kund bokade en
+   * klippning för 650 kr och salongen tog 750.
+   *
+   * Tom lista betyder nu "har inte lagt upp sina tjänster". Panelen visar
+   * branschpaketet bredvid som förhandsvisning att utgå från, bokningssidan
+   * säger att tjänsterna inte är publicerade, och ingenting påstår att ett
+   * pris är salongens förrän de skrivit det själva.
+   */
 
   // Seed default weekly availability
   await admin

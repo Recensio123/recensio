@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { Role } from '@/lib/access'
 import { useLang } from '@/components/LanguageProvider'
 import { HelpButton } from '@/components/dashboard/HelpButton'
@@ -10,12 +10,19 @@ import {
 } from './data'
 import { DEFAULT_HOURS, type WeekHours } from './kalender'
 import { KalenderTab } from './KalenderTab'
-import { ListaTab } from './ListaTab'
+import { KundhistorikTab } from './KundhistorikTab'
+import { TjanstEditor } from '@/components/tjanster/TjanstEditor'
+import { slåIhop, type Månadsrad } from '@/lib/bokningsstatistik'
 import { PersonalTab } from './PersonalTab'
 import { NewBookingModal, type NewBooking } from './NewBookingModal'
 import { InstallningarTab } from './InstallningarTab'
 import { KontonTab } from './KontonTab'
-import { SmsTab } from './SmsTab'
+import { KommandeTab } from './KommandeTab'
+import type { KommandeBokning, KöInst } from '@/lib/kommande'
+import type { MeddelandeData } from '@/lib/meddelandenData'
+import type { teamData } from '@/lib/teamData'
+
+type TeamData = Awaited<ReturnType<typeof teamData>>
 import { MeddelandenTab } from './MeddelandenTab'
 import { AvbokaDialog } from './AvbokaDialog'
 
@@ -33,7 +40,7 @@ import { AvbokaDialog } from './AvbokaDialog'
 
 const TODAY = new Date().toISOString().split('T')[0]
 
-type Tab = 'kalender' | 'lista' | 'personal' | 'sms' | 'meddelanden' | 'installningar' | 'konton'
+type Tab = 'kalender' | 'lista' | 'tjanster' | 'personal' | 'kommande' | 'meddelanden' | 'installningar' | 'konton'
 
 export type { Role } from '@/lib/access'
 
@@ -41,7 +48,9 @@ export type { Role } from '@/lib/access'
  * stylist works their own and keeps their hours; the salon does everything.
  * The routes enforce the same split — this decides what is worth showing. */
 const TABS_BY_ROLE: Record<Role, Tab[]> = {
-  admin:  ['kalender', 'lista', 'personal', 'sms', 'meddelanden', 'installningar', 'konton'],
+  /* Tjänsterna är priser, och priser är ägarens. En receptionist ska kunna
+     flytta en tid, inte ändra vad salongen tar betalt. */
+  admin:  ['kalender', 'lista', 'tjanster', 'personal', 'kommande', 'meddelanden', 'installningar', 'konton'],
   schema: ['kalender', 'lista', 'personal'],
   staff:  ['kalender', 'lista', 'personal'],
 }
@@ -49,10 +58,10 @@ const TABS_BY_ROLE: Record<Role, Tab[]> = {
 const T = {
   sv: {
     title:       'Bokningar',
-    subtitle:    'Kalendern, kundlistan och personalens scheman',
+    subtitle:    'Kalendern, kundhistoriken och personalens scheman',
     bookingLink: 'Bokningslänk',
     demo:        'Exempeldata — så här ser en fylld vecka ut. Riktiga bokningar tar över så fort de kommer in.',
-    tabs:        { kalender: 'Kalender', lista: 'Lista', personal: 'Personal', sms: 'SMS', meddelanden: 'Meddelanden', installningar: 'Inställningar', konton: 'Konton' } as Record<Tab, string>,
+    tabs:        { kalender: 'Kalender', lista: 'Bokningshistorik', tjanster: 'Tjänster', personal: 'Personal', kommande: 'Kommande', meddelanden: 'Meddelanden', installningar: 'Inställningar', konton: 'Konton' } as Record<Tab, string>,
     statToday:   'Idag',
     statWeek:    'Denna vecka',
     statValue:   'Värde denna vecka',
@@ -68,10 +77,10 @@ const T = {
   },
   en: {
     title:       'Bookings',
-    subtitle:    'The calendar, the client list and staff schedules',
+    subtitle:    'The calendar, customer history and staff schedules',
     bookingLink: 'Booking link',
     demo:        'Example data — this is what a full week looks like. Real bookings take over as soon as they arrive.',
-    tabs:        { kalender: 'Calendar', lista: 'List', personal: 'Staff', sms: 'SMS', meddelanden: 'Messages', installningar: 'Settings', konton: 'Accounts' } as Record<Tab, string>,
+    tabs:        { kalender: 'Calendar', lista: 'Booking history', tjanster: 'Services', personal: 'Staff', kommande: 'Upcoming', meddelanden: 'Messages', installningar: 'Settings', konton: 'Accounts' } as Record<Tab, string>,
     statToday:   'Today',
     statWeek:    'This week',
     statValue:   'Value this week',
@@ -96,13 +105,22 @@ export function BokningarDashboard({
   initialCancelHours = 0,
   initialLeadMinutes = 60,
   initialAutoConfirm = true,
-  initialConfirmationText = null,
+  initialAutoCompleteHours = 1,
+  initialReminderSkipHours = 4,
+  initialBufferMinutes = 0,
+  kundNoteringar = {},
+  initialKommande = [],
+  köInst,
+  initialMeddelanden = null,
+  initialTeam = null,
+  årsrader = [],
+  bokningarFrån = '',
   initialTab = 'kalender',
-  companyName = 'Din salong',
   bookingLink = '/book/atelier-hair',
   role = 'admin',
   myStaffId = null,
   ownerEmail = null,
+  exempel = false,
 }: {
   initialBookings?: Booking[]
   initialStaff?:    StaffMember[]
@@ -113,14 +131,34 @@ export function BokningarDashboard({
   initialCancelHours?: number
   initialLeadMinutes?: number
   initialAutoConfirm?: boolean
-  initialConfirmationText?: string | null
+  initialAutoCompleteHours?: number
+  initialReminderSkipHours?: number
+  /** Städtid mellan bokningar, i minuter. Noll = avstängd. */
+  initialBufferMinutes?: number
+  /** Salongens anteckningar per kundnyckel. */
+  kundNoteringar?: Record<string, string>
+  /* Kön av utskick, färdigräknad på servern. Fliken ska inte behöva hämta det
+     sidan redan hade i handen. */
+  initialKommande?: KommandeBokning[]
+  köInst:           KöInst
+  /* Meddelandeflikens data, serverrenderad. */
+  initialMeddelanden?: MeddelandeData | null
+  /* Salongens inloggningar, serverrenderade. */
+  initialTeam?: TeamData | null
+  /* Ett år bakåt, en rad per månad, summerad på servern. Bokningarna själva
+     når bara trettio dagar bakåt — historiken behöver längre minne än kalendern. */
+  årsrader?: Månadsrad[]
+  /* Första datum initialBookings är komplett från. Avgör vilka månader panelen
+     får räkna om själv när något ändras — se slåIhop(). */
+  bokningarFrån?: string
   initialTab?:      Tab
-  companyName?:     string
   bookingLink?:     string
   role?:            Role
   /** The chair a stylist's login speaks for. */
   myStaffId?:       string | null
   ownerEmail?:      string | null
+  /** Demoläget. Exempelveckan visas bara då — aldrig som reserv. */
+  exempel?:         boolean
 }) {
   const { lang } = useLang()
   const L = T[lang]
@@ -128,21 +166,46 @@ export function BokningarDashboard({
   /*
    * Example mode: nothing real yet, so the whole salon is the example one.
    *
-   * Staff counts as real. A salon that has entered its people but taken no
-   * bookings yet used to have them replaced by the example trio — which meant
-   * an account could not be linked to an actual chair, because the actual
-   * chairs were not in the list. The two go together: example bookings sit on
-   * example chairs, and real chairs get a real (empty) calendar.
+   * Exempeldata visas bara i demoläget, aldrig som reserv.
+   *
+   * Tidigare fyllde exempelveckan kalendern så fort tabellerna var tomma —
+   * alltså för varje ny salong. Det såg ut som en fungerande vecka, och en
+   * ägare kunde tro att bokningar kommit in när ingen hade det. En tom
+   * kalender är ett ärligt besked; tre påhittade kunder är det inte.
    */
-  const demo = initialBookings.length === 0 && initialStaff.length === 0
+  const demo = exempel
 
   const [bookings, setBookings] = useState<Booking[]>(demo ? MOCK_BOOKINGS : initialBookings)
   const [staff,    setStaff]    = useState<StaffMember[]>(demo ? MOCK_STAFF : initialStaff)
   const [absences, setAbsences] = useState<Absence[]>(demo ? MOCK_ABSENCES : initialAbsences)
-  const svcList = services.length ? services : MOCK_SERVICES
+  const svcList = services.length ? services : (demo ? MOCK_SERVICES : [])
+
+  /*
+   * Statistiken i bokningshistoriken, räknad ur bokningarna.
+   *
+   * Servern har summerat hela året ur tabellen; här läggs de månader panelen
+   * själv har hela i handen ovanpå, så att en ny bokning eller ett återbud
+   * syns i stapeln direkt i stället för vid nästa omladdning.
+   *
+   * I exempelläget är hela året i listan, så då räknas allt om härifrån — och
+   * exempelsalongens diagram är därmed samma bokningar som dess kalender, inte
+   * en egen sifferserie bredvid. Två serier hade förr eller senare sagt emot
+   * varandra, och den som upptäckte det hade inte vetat vilken som ljög.
+   */
+  const statistik = useMemo(
+    () => slåIhop(
+      årsrader,
+      bookings.map(b => ({ datum: b.date, status: b.status, pris: b.price, minuter: b.duration })),
+      demo ? '0000-01-01' : bokningarFrån,
+    ),
+    [årsrader, bookings, demo, bokningarFrån])
 
   const allowed = TABS_BY_ROLE[role]
   const [avbokar, setAvbokar] = useState<string | null>(null)
+  /* Bumpas när något ändrats som kön beror på — en status, eller en
+     inställning i en annan flik. Kommandelistan läser om på den, i stället för
+     att gissa när dess data blivit gammal. */
+  const [köVersion, setKöVersion] = useState(0)
   const [tab, setTab] = useState<Tab>(allowed.includes(initialTab) ? initialTab : 'kalender')
   const avbokarBokning = avbokar ? bookings.find(b => b.id === avbokar) ?? null : null
 
@@ -162,28 +225,23 @@ export function BokningarDashboard({
   const seesRevenue  = role === 'admin'
   const [newBookingAt, setNewBookingAt] = useState<{ staffId: string | null; date: string; time: string } | null>(null)
 
-  /* The confirmation wording lives under SMS, with the reminder and the
-   * review request — the three things a customer receives, in one place.
-   * The state sits here because the tab unmounts when you leave it. */
-  const [confirmText,  setConfirmText]  = useState(initialConfirmationText ?? '')
-  const [confirmSaved, setConfirmSaved] = useState(false)
-  const [confirmError, setConfirmError] = useState('')
+  /*
+   * Anteckningarna ligger här och inte i respektive flik.
+   *
+   * De hör till personen, och personen syns på två ställen: i kommandelistan
+   * före besöket och i historiken efteråt. Två egna tillstånd hade betytt att
+   * en anteckning skriven i den ena inte syntes i den andra förrän sidan
+   * laddats om — och den som skriver "kom inte ihåg att hon bytt nummer" vill
+   * se den direkt.
+   */
+  const [noteringar, setNoteringar] = useState<Record<string, string>>(kundNoteringar)
 
-  function changeConfirmation(v: string) {
-    setConfirmText(v)
-    setConfirmSaved(false)
-  }
-
-  async function saveConfirmation(text: string) {
-    setConfirmSaved(false)
-    setConfirmError('')
-    const res = await fetch('/api/booking-settings', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmation_text: text }),
+  const sättNotering = useCallback((nyckel: string, text: string) => {
+    setNoteringar(n => {
+      if (!text) { const utan = { ...n }; delete utan[nyckel]; return utan }
+      return { ...n, [nyckel]: text }
     })
-    if (res.ok) setConfirmSaved(true)
-    else setConfirmError((await res.json().catch(() => ({})))?.error ?? 'Kunde inte spara')
-  }
+  }, [])
 
   function updateStatus(id: string, status: Status) {
     /* En avbokning är det enda statusbytet kunden får ett besked om, och därför
@@ -195,6 +253,7 @@ export function BokningarDashboard({
       return
     }
     setBookings(prev => prev.map(b => b.id === id ? { ...b, status } : b))
+    setKöVersion(v => v + 1)
     if (!isExample(id)) {
       void fetch('/api/bookings', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -208,6 +267,7 @@ export function BokningarDashboard({
   function genomförAvbokning(id: string, message: string | null) {
     setAvbokar(null)
     setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled' as Status } : b))
+    setKöVersion(v => v + 1)
     void fetch('/api/bookings', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -340,9 +400,22 @@ export function BokningarDashboard({
         />
       )}
       {tab === 'lista' && (
-        <ListaTab bookings={bookings} staff={staff} onStatusChange={updateStatus} />
+        <KundhistorikTab
+          årsrader={statistik}
+          hours={salonHours}
+          bookings={bookings} staff={staff} onStatusChange={updateStatus}
+          noteringar={noteringar} onNotering={sättNotering} demo={demo}
+        />
       )}
-      {tab === 'meddelanden' && <MeddelandenTab />}
+      {tab === 'tjanster' && (
+        <TjanstEditor
+          harBokning
+          stolar={staff.filter(s => s.is_active).map(s => ({ id: s.id, name: s.name }))}
+          låst={demo}
+        />
+      )}
+
+      {tab === 'meddelanden' && <MeddelandenTab initial={initialMeddelanden} />}
 
       {/* Avbokningen stannar här för ett val: vad kunden får läsa, och om de ska
           få något alls. Det är det enda statusbytet som når utanför salongen. */}
@@ -354,14 +427,13 @@ export function BokningarDashboard({
           onDone={msg => genomförAvbokning(avbokarBokning.id, msg)}
         />
       )}
-      {tab === 'sms' && (
-        <SmsTab
-          salonName={companyName}
-          confirmationText={confirmText}
-          onConfirmationChange={changeConfirmation}
-          onConfirmationSave={saveConfirmation}
-          confirmationSaved={confirmSaved}
-          confirmationError={confirmError}
+      {tab === 'kommande' && (
+        <KommandeTab
+          initial={initialKommande} inst={köInst} demo={demo} exempelBokningar={bookings}
+          version={köVersion} role={role} myStaffId={myStaffId}
+          onStatusChange={updateStatus}
+          noteringar={noteringar}
+          onNotering={sättNotering}
         />
       )}
       {tab === 'installningar' && (
@@ -369,6 +441,9 @@ export function BokningarDashboard({
           initialCancelHours={initialCancelHours}
           initialLeadMinutes={initialLeadMinutes}
           initialAutoConfirm={initialAutoConfirm}
+          initialAutoCompleteHours={initialAutoCompleteHours}
+          initialReminderSkipHours={initialReminderSkipHours}
+          initialBufferMinutes={initialBufferMinutes}
         />
       )}
       {tab === 'personal' && (
@@ -385,7 +460,7 @@ export function BokningarDashboard({
         />
       )}
       {tab === 'konton' && (
-        <KontonTab staff={staff} ownerEmail={ownerEmail} />
+        <KontonTab staff={staff} ownerEmail={ownerEmail} initial={initialTeam} />
       )}
 
       {newBookingAt && (

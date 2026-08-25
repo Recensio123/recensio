@@ -30,15 +30,23 @@ export async function GET() {
     .eq('company_id', companyId)
     .gte('booking_date', monthAgo.toISOString().split('T')[0])
     .lte('booking_date', weekEnd.toISOString().split('T')[0])
-    .neq('status', 'cancelled')
 
   // A stylist's own numbers, not the salon's
   if (!seesWholeCalendar(access)) q = q.eq('staff_id', access.staffId ?? '')
 
   const { data: rows } = await q
 
-  const all = rows ?? []
+  /* Avbokningarna läses med och räknas för sig. De hörde inte hemma i de andra
+     talen — en avbokad tid är inte bokade kronor och inte ett besök som ska
+     hända — men de är det enda som säger hur många luckor som öppnat sig, och
+     det är siffran en salong kan göra något åt samma vecka. */
+  const alla = rows ?? []
+  const all  = alla.filter(b => b.status !== 'cancelled')
   const week = all.filter(b => b.booking_date >= today)
+
+  /* Framåt i tiden: tider som blivit lediga och går att fylla. En avbokning som
+     redan passerat är historia. */
+  const avbokade = alla.filter(b => b.status === 'cancelled' && b.booking_date >= today).length
 
   /* Kronor per channel: the point of the whole integration. Every online
    * booking carries the utm_source it arrived from, so marketing spend can
@@ -50,11 +58,12 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    real:      all.length > 0,
+    real:      alla.length > 0,
     today:     week.filter(b => b.booking_date === today).length,
     week:      week.length,
     weekValue: week.reduce((s, b) => s + (b.service_price_sek ?? 0), 0),
     pending:   all.filter(b => b.status === 'pending' && b.booking_date >= today).length,
+    cancelled: avbokade,
     channels:  Object.entries(channels).map(([channel, value]) => ({ channel, value }))
       .sort((a, b) => b.value - a.value).slice(0, 4),
   })
