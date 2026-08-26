@@ -1,6 +1,6 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { fetchTemplates } from '@/lib/messageTemplates'
-import { hämtaKontaktsätt } from '@/lib/kontaktsatt'
+import { hämtaKanalval } from '@/lib/kontaktsatt'
 import { köInst, kön, type KommandeBokning, type KöInst } from '@/lib/kommande'
 import { fetchPolicy, type BookingPolicy } from '@/lib/bookingPolicy'
 import { kundNyckel } from '@/lib/kundNyckel'
@@ -30,13 +30,13 @@ export async function hämtaKö(
   /* Policyn hämtas här och inte av den som frågar. Två anropare betyder annars
      två ställen som kan glömma den, och den som glömmer får en lista där
      bokningar försvinner innan salongen hunnit bocka av dem. */
-  const [mallar, kontakt, policy, notes] = await Promise.all([
+  const [mallar, kanalval, policy, notes] = await Promise.all([
     fetchTemplates(admin, companyId),
-    hämtaKontaktsätt(admin, companyId),
+    hämtaKanalval(admin, companyId),
     fetchPolicy(admin, companyId),
     hämtaAnteckningar(admin, companyId),
   ])
-  const inst = köInst(mallar, kontakt)
+  const inst = köInst(mallar, kanalval)
 
   /* Fönstret bakåt räcker för att fånga besök vars omdömesfråga ännu inte gått.
      Längre tillbaka finns ingenting kvar att göra, och de raderna hör hemma i

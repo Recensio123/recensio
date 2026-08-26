@@ -16,6 +16,7 @@ const SIDOR: { href: string; namn: string; om: string }[] = [
   { href: '/admin',        namn: 'Konton',   om: 'Vilka som är kunder, och vem som sagt upp' },
   { href: '/admin/kunder', namn: 'Kundvård', om: 'Vad som slutat fungera hos kunderna' },
   { href: '/admin/sidor',  namn: 'Sidor',    om: 'Allt du byggt åt kunder, sparat' },
+  { href: '/admin/dokument', namn: 'Dokument', om: 'Strategier och månadsrapporter till full service-kunder' },
   { href: '/admin/betalning', namn: 'Betalning', om: 'Vem som betalar, vad, och till när' },
   { href: '/admin/avtal',     namn: 'Avtal',     om: 'Villkoren kunderna möter, redigerbara' },
   { href: '/admin/export',    namn: 'Utlämning', om: 'Kundhistorik och hemsida att lämna ut' },

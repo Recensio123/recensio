@@ -41,6 +41,8 @@ Avtalet gäller så länge Kunden har ett aktivt abonnemang, och därefter under
 
 Kiterank behandlar personuppgifter enbart för att leverera tjänsten: publicera Kundens hemsida, ta emot och administrera bokningar, skicka bekräftelser, påminnelser och omdömesförfrågningar, samt visa statistik och underlag för Kundens marknadsföring.
 
+Har Kunden slagit på återaktivering i tjänsten omfattar behandlingen även utskick av erbjudanden om Kundens egna tjänster till personer som redan är kunder hos Kunden. Inställningen i tjänsten utgör Kundens dokumenterade instruktion för den behandlingen, och utskicken upphör i samma stund inställningen slås av.
+
 Kiterank behandlar aldrig uppgifterna för egna ändamål, säljer dem inte vidare och använder dem inte för att träna modeller.
 
 ## 4. Kategorier av registrerade och uppgifter
@@ -161,7 +163,7 @@ Vid provets slut låses plattformen tills ett abonnemang tecknas. Innehållet ra
 
 Gällande priser framgår av kiterank.se och av kassan när abonnemanget tecknas.
 
-Priserna anges **inklusive moms**. Är Kunden momsregistrerad i ett annat EU-land än Sverige och anger sitt momsnummer i kassan hanteras momsen enligt reglerna för omvänd betalningsskyldighet.
+Priserna anges **exklusive moms**. Moms tillkommer enligt vid var tid gällande skattesats och läggs på i kassan. Är Kunden momsregistrerad i ett annat EU-land än Sverige och anger sitt momsnummer i kassan hanteras momsen enligt reglerna för omvänd betalningsskyldighet.
 
 ## 5. Betalning
 
@@ -215,9 +217,15 @@ Kiterank får ta bort innehåll som är olagligt eller uppenbart olämpligt, och
 
 ## 10. Utskick, SMS och marknadsföring
 
-Skickar Kunden bekräftelser, påminnelser, omdömesförfrågningar eller utskick via tjänsten ansvarar Kunden för att utskicken följer marknadsföringslagen och dataskyddsreglerna — däribland kravet på samtycke för marknadsföring.
+Skickar Kunden bekräftelser, påminnelser, omdömesförfrågningar eller utskick via tjänsten ansvarar Kunden för att utskicken följer marknadsföringslagen och dataskyddsreglerna.
 
 Kiterank tillhandahåller verktyget. Kunden avgör vad som skickas och till vem.
+
+**Annonsbudgeten betalar Kunden själv.** Sköter Kiterank Kundens annonsering sker den i Kundens eget annonskonto med Kundens egen betalningsmetod. Kunden betalar annonskostnaden direkt till annonsplattformen, och den ingår inte i abonnemangsavgiften. Kiteranks avgift avser arbetet: strategi, uppsättning, löpande justering och uppföljning.
+
+Kiterank ändrar aldrig Kundens annonsbudget uppåt utan att Kunden godkänt det. En oförändrad budget löper vidare utan nytt godkännande.
+
+**Erbjudanden till Kundens egna kunder.** Ingår återaktivering i Kundens paket, eller slår Kunden på den i tjänsten, skickar Kiterank erbjudanden om Kundens egna tjänster på Kundens instruktion. Kunden ansvarar för att registret får användas för det ändamålet. Kiterank skickar endast till personer som varit kunder hos Kunden de senaste tjugofyra (24) månaderna, som fått möjlighet att tacka nej när uppgifterna samlades in, och som inte tackat nej. Varje utskick innehåller avsändarens namn och en enkel möjlighet att tacka nej. Kunden kan stänga av utskicken när som helst i tjänsten.
 
 ## 11. Uppsägning
 

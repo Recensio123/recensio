@@ -163,6 +163,24 @@ export async function smsAvsandare(admin: Admin, companyId: string): Promise<str
   return (await sidansNamn(admin, companyId)) || null
 }
 
+/** Avsändarnamnet inkorgen visar, i rå form.
+ *
+ *  Samma trappa som SMS:et: eget val, sedan namnet på hemsidan, och utan
+ *  bådadera null — då faller utskicket tillbaka på kontots företagsnamn. Att
+ *  trappan är densamma är avsikten; två kanaler som hämtar salongens namn på
+ *  var sitt sätt blir förr eller senare två kanaler som visar olika namn. */
+export async function mailAvsandare(admin: Admin, companyId: string): Promise<string | null> {
+  const res = await admin
+    .from('companies').select('email_sender').eq('id', companyId).maybeSingle()
+
+  /* Kolumnen är ny och migrationen körs för hand. Saknas den ska bekräftelsen
+     gå ut med hemsidans namn, inte utebli. */
+  const eget = res.error ? null : (res.data?.email_sender as string | null)
+  if (eget?.trim()) return eget
+
+  return (await sidansNamn(admin, companyId)) || null
+}
+
 /*
  * Raden som talar om att utskicket är enkelriktat.
  *

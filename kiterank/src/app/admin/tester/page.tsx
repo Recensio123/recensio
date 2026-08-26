@@ -1,4 +1,7 @@
 import { körTester } from '@/lib/sjalvtest'
+import { smsConfigured } from '@/lib/smser'
+import { mailerConfigured, platformFrom } from '@/lib/mailer'
+import { Utskickstest } from './Utskickstest'
 
 /*
  * Proven, körda när sidan öppnas.
@@ -11,6 +14,10 @@ import { körTester } from '@/lib/sjalvtest'
  * millisekunder. Ingen körknapp heller — ett svar som kräver ett klick är ett
  * svar någon glömmer att hämta.
  */
+/* Miljön läses vid varje besök. Bakas sidan in vid bygget står det "nycklarna
+   saknas" kvar långt efter att de lagts in. */
+export const dynamic = 'force-dynamic'
+
 export default function TesterPage() {
   const utfall = körTester()
   const fel    = utfall.filter(u => !u.ok)
@@ -80,6 +87,10 @@ export default function TesterPage() {
         ingen databas och skickar ingenting — de matar reglerna med påhittade
         bokningar och kontrollerar vad som kommer ut.
       </p>
+
+      {/* Bara om nycklarna finns, aldrig vad de innehåller. En adminsida är
+          inte ett ställe att skriva ut hemligheter på. */}
+      <Utskickstest smsKlart={smsConfigured()} mailKlart={mailerConfigured() && !!platformFrom()} />
     </div>
   )
 }

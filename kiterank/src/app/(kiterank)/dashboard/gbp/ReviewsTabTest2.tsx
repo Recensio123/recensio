@@ -17,39 +17,39 @@ type Review = {
 const mockReviews: Review[] = [
   { id: 1,  author: 'Anna K.',   rating: 5, date: '2 days ago',   replied: false,
     reviewName: 'accounts/123/locations/456/reviews/1',
-    text: 'Excellent service, came within the hour. Very professional and fixed the issue quickly. Will definitely use again!' },
+    text: 'Fantastisk balayage! Maria lyssnade verkligen på vad jag ville ha och resultatet blev bättre än jag hoppats.' },
   { id: 2,  author: 'Marcus L.', rating: 2, date: '5 days ago',   replied: false,
     reviewName: 'accounts/123/locations/456/reviews/2',
-    text: 'Took much longer than quoted and the price was higher than expected. Not happy with the communication.' },
+    text: 'Tog nästan en timme längre än vad som stod vid bokningen, och priset blev högre än jag räknat med. Sa inte till i förväg.' },
   { id: 3,  author: 'Sara B.',   rating: 5, date: '1 week ago',   replied: false,
     reviewName: 'accounts/123/locations/456/reviews/3',
-    text: 'Really impressed. Clean work, explained everything clearly. Highly recommend.' },
+    text: 'Väldigt nöjd. Fick en ordentlig genomgång innan färgningen och de förklarade hur jag sköter färgen hemma.' },
   { id: 4,  author: 'Johan P.',  rating: 4, date: '2 weeks ago',  replied: true,
     reviewName: 'accounts/123/locations/456/reviews/4',
-    text: 'Good job overall, minor issue with scheduling but the actual work was great.',
-    reply: 'Thank you for the kind words, Johan! Really glad the work met your expectations — we look forward to helping you again.' },
+    text: 'Bra klippning, men fick vänta en kvart över min tid. Själva resultatet var jag mycket nöjd med.',
+    reply: 'Tack Johan! Vi ser över tiderna så att det inte ska bli väntan nästa gång — glad att du blev nöjd med klippningen.' },
   { id: 5,  author: 'Erik S.',   rating: 1, date: '3 weeks ago',  replied: false,
     reviewName: 'accounts/123/locations/456/reviews/5',
-    text: 'Showed up two hours late with no call. Job was done but the mess left behind was unacceptable. Would not use again.' },
+    text: 'Bokade toning och fick en färg som var flera nyanser mörkare än vad vi kom överens om. Ingen ville riktigt ta i det när jag sa till.' },
   { id: 6,  author: 'Lisa M.',   rating: 5, date: '1 month ago',  replied: true,
     reviewName: 'accounts/123/locations/456/reviews/6',
-    text: 'Boiler broke down on a Sunday and they came out within 2 hours. Absolute lifesavers. 5 stars without hesitation.',
-    reply: 'So glad we could sort out the boiler quickly before winter, Lisa! Thanks for taking the time to leave a review.' },
+    text: 'Ringde på morgonen och fick tid samma eftermiddag inför en fest. Räddade kvällen. Fem stjärnor utan tvekan.',
+    reply: 'Vad roligt att det löste sig, Lisa! Hör gärna av dig i tid nästa gång också så håller vi en lucka.' },
   { id: 7,  author: 'David H.',  rating: 3, date: '5 weeks ago',  replied: false,
     reviewName: 'accounts/123/locations/456/reviews/7',
-    text: 'Work was fine but communication was poor. Hard to get updates on when they were arriving.' },
+    text: 'Klippningen var fin, men jag fick ingen bekräftelse på bokningen och var osäker på om tiden gällde.' },
   { id: 8,  author: 'Maria L.',  rating: 5, date: '6 weeks ago',  replied: true,
     reviewName: 'accounts/123/locations/456/reviews/8',
-    text: 'Used them for a full bathroom renovation. Professional from start to finish, stuck to the timeline and budget.',
-    reply: 'Thank you Maria! The bathroom renovation was a big project and we really appreciate your patience throughout.' },
+    text: 'Gjorde min bruduppsättning med provuppsättning innan. Proffsigt hela vägen och det höll hela bröllopsdagen.',
+    reply: 'Tack Maria! Så fint att få vara med inför er dag — hoppas allt blev precis som ni tänkt er.' },
   { id: 9,  author: 'Peter K.',  rating: 4, date: '2 months ago', replied: true,
     reviewName: 'accounts/123/locations/456/reviews/9',
-    text: 'Solid work on the kitchen sink replacement. On time, tidy, and reasonably priced.',
-    reply: 'Appreciate the feedback, Peter — always good to hear when things go smoothly.' },
+    text: 'Bra herrklippning, i tid och till ett rimligt pris. Kommer tillbaka.',
+    reply: 'Tack Peter — kul att höra. Vi ses nästa gång!' },
   { id: 10, author: 'Karin B.',  rating: 5, date: '2 months ago', replied: true,
     reviewName: 'accounts/123/locations/456/reviews/10',
-    text: 'Emergency callout on a Friday evening — burst pipe under the sink. Had it sorted in under an hour. Incredible response time.',
-    reply: 'Really glad we could get to you quickly, Karin! Emergency calls are always our priority.' },
+    text: 'Slingor som satt precis rätt. Har provat tre salonger på Södermalm och det här var den bästa.',
+    reply: 'Tack Karin, vad roligt att höra! Hälsa Johan som färgade att du var nöjd.' },
 ]
 
 const REPLY_LIMIT = 4096
@@ -62,12 +62,12 @@ const ASK_TEMPLATES: Record<Lang, { id: string; label: string; text: string }[]>
     {
       id:    'sms',
       label: 'Sms',
-      text:  `Tack för att du valde oss! Det skulle betyda mycket om du ville lämna en snabb Google-recension — det tar bara en minut: ${REVIEW_LINK}`,
+      text:  `Tack för ditt besök hos oss! Det skulle betyda mycket om du ville lämna en snabb Google-recension — det tar bara en minut: ${REVIEW_LINK}`,
     },
     {
       id:    'email',
       label: 'E-post',
-      text:  `Hej!\n\nTack för att du anlitade oss — vi hoppas att du är nöjd med resultatet.\n\nOm du har en minut skulle en kort Google-recension betyda mycket för oss. Den hjälper andra kunder att hitta oss och visar hur vi sköter oss:\n${REVIEW_LINK}\n\nTack igen!`,
+      text:  `Hej!\n\nTack för att du besökte oss — vi hoppas att du är nöjd med resultatet.\n\nOm du har en minut skulle en kort Google-recension betyda mycket för oss. Den hjälper andra kunder att hitta oss och visar hur vi sköter oss:\n${REVIEW_LINK}\n\nTack igen!`,
     },
   ],
   en: [
@@ -157,7 +157,7 @@ function suggestedReply(review: Review, lang: Lang): string {
       : `Hej ${first}, tack för att du delade din upplevelse. Vi är ledsna att det inte levde upp till dina förväntningar — vi vill gärna ställa det till rätta. Hör av dig direkt till oss så löser vi det.`
   }
   return review.rating >= 4
-    ? `Thank you so much for the kind words, ${first}! We're really glad we could help and look forward to being your go-to plumber in the future.`
+    ? `Thank you so much for the kind words, ${first}! We're really glad we could help and look forward to seeing you in the salon again soon.`
     : `Hi ${first}, thank you for taking the time to share your feedback. We're sorry to hear the experience didn't meet your expectations — we'd love to make it right. Please reach out to us directly so we can discuss.`
 }
 

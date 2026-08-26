@@ -3,19 +3,29 @@ import { useState } from 'react'
 import { Tooltip } from '@/components/Tooltip'
 import { useLang, type Lang } from '@/components/LanguageProvider'
 
+/*
+ * Salongsårets rytm.
+ *
+ * Kalendern var skriven för en rörmokare — pannor i januari, utomhuskranar i
+ * maj — mitt i en produkt som annars visar en frisörsalong. Nu följer den det
+ * en salong faktiskt lever med: ljusare hår mot sommaren, balen i maj,
+ * bruduppsättningar juni till augusti, och december som årets tyngsta månad.
+ *
+ * `intensity` är hur mycket det är värt att lägga på månaden, 1 till 3.
+ */
 const SEASONAL: Record<string, { focus: string; focusSv: string; keywords: string[]; intensity: number }> = {
-  Jan: { focus: 'Emergency heating',  focusSv: 'Akut värme',           intensity: 3, keywords: ['emergency boiler repair', 'heating breakdown']   },
-  Feb: { focus: 'Winter maintenance', focusSv: 'Vinterunderhåll',      intensity: 2, keywords: ['boiler service', 'pipe insulation']              },
-  Mar: { focus: 'Spring checks',      focusSv: 'Vårkontroller',        intensity: 2, keywords: ['spring plumbing check', 'annual service']        },
-  Apr: { focus: 'Renovation season',  focusSv: 'Renoveringssäsong',    intensity: 3, keywords: ['bathroom renovation', 'new installation']        },
-  May: { focus: 'Outdoor plumbing',   focusSv: 'Utomhus-VVS',          intensity: 3, keywords: ['outdoor taps', 'garden plumbing']                },
-  Jun: { focus: 'Summer projects',    focusSv: 'Sommarprojekt',        intensity: 2, keywords: ['kitchen renovation', 'new bathroom']             },
-  Jul: { focus: 'Holiday coverage',   focusSv: 'Semesterjour',         intensity: 1, keywords: ['emergency plumber', '24h service']               },
-  Aug: { focus: 'Autumn prep',        focusSv: 'Höstförberedelser',    intensity: 2, keywords: ['heating check', 'boiler service']                },
-  Sep: { focus: 'Heating season',     focusSv: 'Värmesäsong',          intensity: 3, keywords: ['boiler service', 'heating installation']         },
-  Oct: { focus: 'Pre-winter prep',    focusSv: 'Inför vintern',        intensity: 3, keywords: ['boiler installation', 'pipe freeze prevention']  },
-  Nov: { focus: 'Winter emergency',   focusSv: 'Vinterakut',           intensity: 3, keywords: ['emergency heating', 'burst pipe']                },
-  Dec: { focus: 'Holiday emergency',  focusSv: 'Helgjour',             intensity: 2, keywords: ['emergency plumber', 'holiday availability']      },
+  Jan: { focus: 'Fresh start',        focusSv: 'Nystart',              intensity: 2, keywords: ['ny frisyr', 'klippning nyår']                    },
+  Feb: { focus: 'Repair and care',    focusSv: 'Reparera vinterhåret', intensity: 2, keywords: ['keratinbehandling', 'torrt hår behandling']      },
+  Mar: { focus: 'Lighter colour',     focusSv: 'Ljusare inför våren',  intensity: 3, keywords: ['balayage', 'slingor vår']                        },
+  Apr: { focus: 'Spring colour',      focusSv: 'Vårfärg',              intensity: 3, keywords: ['hårfärgning', 'toning']                          },
+  May: { focus: 'Prom and parties',   focusSv: 'Bal och studenten',    intensity: 3, keywords: ['uppsättning bal', 'student frisyr']              },
+  Jun: { focus: 'Wedding season',     focusSv: 'Bröllopssäsong',       intensity: 3, keywords: ['bruduppsättning', 'provuppsättning']             },
+  Jul: { focus: 'Summer care',        focusSv: 'Sommarvård',           intensity: 1, keywords: ['solskadat hår', 'hårvård sommar']                },
+  Aug: { focus: 'Back to routine',    focusSv: 'Tillbaka till rutin',  intensity: 2, keywords: ['klippning efter sommaren', 'toning']             },
+  Sep: { focus: 'Autumn colour',      focusSv: 'Höstfärg',             intensity: 3, keywords: ['mörkare hårfärg', 'balayage höst']               },
+  Oct: { focus: 'Colour refresh',     focusSv: 'Fylla på färgen',      intensity: 2, keywords: ['slingor', 'hårfärgning höst']                    },
+  Nov: { focus: 'Before the holidays',focusSv: 'Inför julen',          intensity: 3, keywords: ['klippning inför jul', 'boka i tid']              },
+  Dec: { focus: 'Party season',       focusSv: 'Festsäsong',           intensity: 3, keywords: ['uppsättning fest', 'julfrisyr']                  },
 }
 
 function getWeeklyPostIdea(lang: Lang) {
@@ -85,9 +95,9 @@ type PublishedPost = {
 const EXPIRY_DAYS = 180
 
 const INITIAL_POSTS: PublishedPost[] = [
-  { text: 'Spring pipe check special — 10% off all inspections booked in April.', publishedAt: new Date('2026-04-10') },
-  { text: 'We now offer same-day emergency callouts 7 days a week in Stockholm.',  publishedAt: new Date('2026-02-27') },
-  { text: 'Winter is here — get your boiler serviced before the cold hits.',        publishedAt: new Date('2025-10-20') },
+  { text: 'Vårens ljusare toner är här — boka konsultation inför balayage, konsultationen ingår.', publishedAt: new Date('2026-04-10') },
+  { text: 'Nu tar vi emot drop in på tisdagar mellan 10 och 14.',  publishedAt: new Date('2026-02-27') },
+  { text: 'Hösten är här — dags att fylla på färgen innan den växer ut.',        publishedAt: new Date('2025-10-20') },
 ]
 
 const T = {

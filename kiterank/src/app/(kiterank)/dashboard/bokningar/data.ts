@@ -196,10 +196,14 @@ const MOCK_HISTORIK: Booking[] = (() => {
   let n = 0
 
   /* Bakåt till dagen efter det spann veckorna ovan täcker, så att de två inte
-     lägger bokningar på samma dagar. Fyrahundra dagar räcker till de tretton
-     månader historiken visar, med marginal för att månaden vi står i inte är
-     slut. */
-  for (let day = -400; day <= -13; day++) {
+     lägger bokningar på samma dagar.
+   *
+   * 520 dagar och inte 400. Historiken i bokningsvyn behöver tretton månader,
+   * men kvartalsrapporten jämför ett kvartal med samma kvartal i fjol — och
+   * det kvartalet slutar upp till sjutton månader bakåt. Med 400 dagar blev
+   * årsjämförelsen tom, vilket såg ut som ett fel i rapporten i stället för
+   * som en gräns i exempeldatan. */
+  for (let day = -520; day <= -13; day++) {
     const datum = daysFromToday(day)
     const d = new Date(datum + 'T12:00:00')
     if (d.getDay() === 0) continue                                  // stängt
@@ -213,10 +217,20 @@ const MOCK_HISTORIK: Booking[] = (() => {
     for (let i = 0; i < perDag; i++) {
       const svc   = SPREAD_SERVICES[n % SPREAD_SERVICES.length]
       const staff = MOCK_STAFF[n % MOCK_STAFF.length]
-      /* Två av fem bokningar går till en stamkund. */
-      const kund  = n % 5 < 2
+      /*
+       * Två av fem bokningar går till en stamkund.
+       *
+       * Övriga dras ur en pool som växer med tiden. Utan det draget fanns
+       * varje namn i hela historiken från första dagen, och då hade salongen
+       * noll nya kunder varje kvartal — vilket kvartalsrapporten läser som en
+       * verksamhet som slutat växa. En riktig salong möter nya ansikten hela
+       * tiden, och de har inget besök före sitt första.
+       */
+      const andel  = (520 + day) / 520                              // 0 äldst, 1 idag
+      const öppna  = Math.max(60, Math.round((KUNDER.length - STAMKUNDER) * andel))
+      const kund   = n % 5 < 2
         ? KUNDER[(n * 31) % STAMKUNDER]
-        : KUNDER[STAMKUNDER + ((n * 137) % (KUNDER.length - STAMKUNDER))]
+        : KUNDER[STAMKUNDER + ((n * 137) % öppna)]
 
       /* Numret följer personen och inte bokningen — det är det som håller ihop
          en kund mellan besöken i kundhistoriken. */

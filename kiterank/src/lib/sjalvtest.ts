@@ -16,6 +16,10 @@ import {
   fårTaMedHemsidan, designAvbetald, avdragGäller, förlorarSidan, KRAV_MÅNADER,
 } from '@/lib/exportRatt'
 import { stadaSida, avskiljare } from '@/lib/export.server'
+import { smsSender } from '@/lib/smser'
+import { mailSender } from '@/lib/mailer'
+import { kanalFor } from '@/lib/messageTemplates'
+import { golvFor } from '@/lib/kontaktsatt'
 
 /*
  * Kontroller på det som kostar pengar när det går sönder.
@@ -78,8 +82,8 @@ const ledig = (lista: { time: string; available: boolean }[], klockan: string) =
 /* Kön: allt påslaget, ledtiderna satta så att proven blir läsbara. */
 const KÖ: KöInst = {
   confirmation: { enabled: true, channel: 'sms' },
-  reminder:     { enabled: true, ms: 24 * 3_600_000 },
-  review:       { enabled: true, ms: 2 * 3_600_000 },
+  reminder:     { enabled: true, ms: 24 * 3_600_000, channel: 'sms' },
+  review:       { enabled: true, ms: 2 * 3_600_000,  channel: 'sms' },
 }
 
 const bokning = (extra: Partial<Rå> = {}): Rå => ({
@@ -990,6 +994,118 @@ const TESTER: Test[] = [
       return halvor(staplar) === null
         ? null
         : 'jämförde ett halvt år mot fem månader och kallade skillnaden en förändring'
+    },
+  },
+
+  /*
+   * Avsändarnamnen.
+   *
+   * De hör hit av samma skäl som utskickskön: avsändaren är det enda kunden
+   * läser innan de bestämmer sig för att öppna, och den syns aldrig i panelen
+   * på det sätt kunden ser den. Ett namn som tappat sin form upptäcks alltså
+   * först ute hos kunderna.
+   */
+  /*
+   * Kanalregeln.
+   *
+   * Hör hit eftersom den avgör två saker samtidigt: vad kunden får, och vilken
+   * uppgift bokningsformuläret gör obligatorisk. Går den fel åt ena hållet
+   * skickas ingenting; åt det andra kräver formuläret ett nummer ingen behöver,
+   * och avhoppen syns inte som ett fel utan som färre bokningar.
+   */
+  {
+    namn: 'Bekräftelse och avbokning följer alltid kontaktsättet',
+    kör() {
+      /* De två kan inte välja egen kanal, och ett kanalval på salongen får
+         inte råka gälla dem — kunden lämnade sina uppgifter för ett format. */
+      const val = { kontakt: 'email', reminder: 'sms', review: 'sms' } as const
+      if (kanalFor('confirmation', val) !== 'email') return 'bekräftelsen lämnade kontaktsättet'
+      if (kanalFor('cancellation', val) !== 'email') return 'avbokningen lämnade kontaktsättet'
+      return null
+    },
+  },
+  {
+    namn: 'Tidsstyrda utan eget val följer kontaktsättet',
+    kör() {
+      /* Null betyder "samma som bekräftelsen" och inte "inget val". Tolkas det
+         som SMS börjar varje ny salong kräva telefonnummer vid bokning. */
+      const mail = { kontakt: 'email', reminder: null, review: null } as const
+      const sms  = { kontakt: 'sms',   reminder: null, review: null } as const
+      if (kanalFor('reminder', mail) !== 'email') return 'påminnelsen följde inte kontaktsättet mail'
+      if (kanalFor('review',   mail) !== 'email') return 'omdömesfrågan följde inte kontaktsättet mail'
+      if (kanalFor('reminder', sms)  !== 'sms')   return 'påminnelsen följde inte kontaktsättet sms'
+      return null
+    },
+  },
+  {
+    namn: 'Tidsstyrda med eget val går sin egen väg',
+    kör() {
+      /* Fallet hela funktionen finns för: salongen mailar sina bekräftelser men
+         påminner via SMS, och skickar omdömesfrågan som mail. */
+      const val = { kontakt: 'email', reminder: 'sms', review: 'email' } as const
+      if (kanalFor('reminder', val) !== 'sms')   return 'påminnelsen tappade sitt val'
+      if (kanalFor('review',   val) !== 'email') return 'omdömesfrågan tappade sitt val'
+      return null
+    },
+  },
+  {
+    namn: 'Golvet kräver den uppgift varje påslagen kanal faktiskt använder',
+    kör() {
+      /* En salong som mailar men påminner via SMS behöver båda uppgifterna.
+         Kräver formuläret bara adressen är påminnelsen påslagen för alla och
+         når ingen — och salongen betalar för en tjänst som är tyst. */
+      const båda = golvFor('email', ['sms'])
+      if (!båda.epost || !båda.telefon) return 'mail + SMS-påminnelse krävde inte båda uppgifterna'
+
+      /* Inget tidsstyrt påslaget: bara kontaktsättets uppgift. Ett extra
+         obligatoriskt fält är avhopp i bokningsformuläret. */
+      const bara = golvFor('email', [])
+      if (!bara.epost || bara.telefon) return 'mail utan påslagna utskick krävde ändå telefonnummer'
+      return null
+    },
+  },
+  {
+    namn: 'SMS-avsändaren skalar diakriter i stället för att stryka dem',
+    kör() {
+      const ut = smsSender('Salong Nordström & Co')
+      if (ut.length > 11)        return `${ut.length} tecken — operatören kapar vid 11`
+      if (!/^[A-Za-z0-9]+$/.test(ut)) return `"${ut}" innehåller tecken som inte överlever hos alla operatörer`
+      /* Strykning i stället för skalning ger SalongNrds — namnet blir
+         oläsbart av ett fel som ser ut som en detalj. */
+      return ut === 'SalongNords' ? null : `blev "${ut}" i stället för "SalongNords"`
+    },
+  },
+  {
+    namn: 'Mejlavsändaren behåller å, ä, ö och mellanslag',
+    kör() {
+      const namn = 'Salong Nordström & Co'
+      const ut   = mailSender(namn)
+      return ut === namn ? null : `skrev om "${namn}" till "${ut}"`
+    },
+  },
+  {
+    namn: 'Mejlavsändaren släpper inte igenom tecken som bryter avsändarhuvudet',
+    kör() {
+      /* Vägen man förfalskar en avsändare: bryta raden och skriva ett eget
+         huvud under. Tas det inte bort här räcker det att en salong klistrar in
+         fel sak i fältet för att våra utskick ska se förfalskade ut. */
+      const ut = mailSender('Salong\r\nBcc: alla@exempel.se <chef@banken.se>')
+      if (/[\r\n"<>]/.test(ut)) return `"${ut}" bär fortfarande ett tecken som bryter huvudet`
+      return null
+    },
+  },
+  {
+    namn: 'Tomt avsändarfält faller tillbaka på företagsnamnet',
+    kör() {
+      /* Tomt fält betyder "härled namnet", inte "skicka utan avsändare". Faller
+         det i stället tillbaka på ordet Salong har varenda kund som inte fyllt i
+         fältet fått fel namn i inkorgen. */
+      if (mailSender('Studio Söder', '')   !== 'Studio Söder') return 'mejlet tappade företagsnamnet'
+      if (mailSender('Studio Söder', null) !== 'Studio Söder') return 'mejlet tappade företagsnamnet vid null'
+      if (smsSender('Studio Söder', '')    !== 'StudioSoder')  return 'SMS:et tappade företagsnamnet'
+      /* Utan något namn alls måste det ändå stå något: ett tomt avsändarfält
+         avvisas av både operatören och mottagarens skräppostfilter. */
+      return mailSender('', '') === 'Salong' ? null : 'utan namn blev avsändaren tom'
     },
   },
 ]

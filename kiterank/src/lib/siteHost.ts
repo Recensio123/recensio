@@ -13,13 +13,25 @@ import { headers } from 'next/headers'
  * request it is answering, not from a fixed setting.
  */
 
-/** Our own addresses. Everything else that reaches us is a customer domain. */
+/*
+ * Our own addresses. Everything else that reaches us is a customer domain.
+ *
+ * The loopback addresses are here for a reason that costs an afternoon to
+ * rediscover: with only `localhost` listed, opening the dev server on
+ * 127.0.0.1 makes the middleware treat the IP as a salon's own domain and
+ * rewrite every page to /s/127.0.0.1/…, which answers 404 for the whole site.
+ * The page looks broken; nothing is. Some tools reach the dev server on the IP
+ * rather than the name, and they should get the same site.
+ */
 const OWN_HOSTS = new Set(
   [
     process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
     'kiterank.se',
     'www.kiterank.se',
     'localhost',
+    '127.0.0.1',
+    '[::1]',
+    '0.0.0.0',
   ].filter(Boolean) as string[],
 )
 
@@ -35,7 +47,12 @@ export function isOwnHost(host: string): boolean {
 export async function requestOrigin(): Promise<string> {
   const h     = await headers()
   const host  = h.get('x-forwarded-host') ?? h.get('host') ?? ''
-  const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
+  /* Bara utvecklingsmaskinen svarar över http. Förhandsdriftsättningar på
+     vercel.app är också våra men körs över https, så listan ovan duger inte
+     som villkor här. */
+  const bare  = host.split(':')[0].toLowerCase()
+  const lokal = bare === 'localhost' || bare === '127.0.0.1' || bare === '[::1]' || bare === '0.0.0.0'
+  const proto = h.get('x-forwarded-proto') ?? (lokal ? 'http' : 'https')
   if (!host) return process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiterank.se'
   return `${proto}://${host}`
 }

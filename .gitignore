@@ -1,0 +1,3 @@
+# Lokala verktygsinställningar. Behörigheter och dev-serverkommandon hör till
+# den här maskinen, inte till projektet.
+.claude/

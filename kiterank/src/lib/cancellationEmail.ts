@@ -20,7 +20,7 @@ import { sendMail, platformFrom, type MailResult } from './mailer'
 import type { MessageResult } from './sendMessage'
 import { datumText, tidText, smsVärden } from './bookingText'
 import { aktivMall, renderTemplate } from './messageTemplates'
-import { salonReplyTo, salonOrigin, salonPhone, smsAvsandare, svarsInfo, esc } from './mailParties'
+import { salonReplyTo, salonOrigin, salonPhone, smsAvsandare, mailAvsandare, svarsInfo, esc } from './mailParties'
 import { ramRader } from './meddelandeRam'
 
 type Admin = ReturnType<typeof createAdminClient>
@@ -156,6 +156,7 @@ export async function sendCancellationFor(
     phone:    (b.customer_phone as string) ?? null,
     smsOptIn,
     smsFrom:  await smsAvsandare(admin, b.company_id as string),
+    mailFrom: await mailAvsandare(admin, b.company_id as string),
     subject:  renderTemplate(aktiv.mall.subject, värden),
     text:     textBody(text, rader, bokaNy, svar.text),
     html:     htmlBody(text, rader, bokaNy, salong, svar.html),

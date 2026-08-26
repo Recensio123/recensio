@@ -207,7 +207,7 @@ const MOCK_ACTIONS: Action[] = [
     priority:     2,
     category:     'SEO',
     title:        'Rewrite your homepage title tag to improve CTR',
-    description:  'Your homepage ranks #2 for your main keyword but your CTR is 2.1% — far below the ~15% expected at position 2. Rewrite your title tag to include urgency, your city, and a differentiator: e.g. "Plumber Stockholm — Same Day, Fixed Price | Book Online".',
+    description:  'Your homepage ranks #2 for your main keyword but your CTR is 2.1% — far below the ~15% expected at position 2. Rewrite your title tag to include urgency, your city, and a differentiator: e.g. "Frisör Södermalm — Boka online, lediga tider i veckan".',
     impact:       'A better title at position 2 could 5–7x your organic clicks without any ranking change — this is the single highest-leverage SEO action available right now.',
     timeEstimate: '1 hour',
   },

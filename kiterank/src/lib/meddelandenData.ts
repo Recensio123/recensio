@@ -2,8 +2,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { smsDennaMånad } from '@/lib/utskickslogg'
 import { fetchTemplates } from '@/lib/messageTemplates'
 import { smsUiUnlocked, smsSender, SMS_MAX } from '@/lib/smser'
+import { mailSender, MAIL_SENDER_MAX } from '@/lib/mailer'
 import { svarsInfo, kortAvboka, kortOmdome } from '@/lib/mailParties'
-import { läsKontaktsätt } from '@/lib/kontaktsatt'
+import { läsKontaktsätt, läsKanal } from '@/lib/kontaktsatt'
 import { ramText } from '@/lib/meddelandeRam'
 import { EXEMPEL } from '@/lib/bookingText'
 
@@ -13,13 +14,29 @@ type Admin = ReturnType<typeof createAdminClient>
  *  att importera serverkoden som bygger den. */
 export type MeddelandeData = Awaited<ReturnType<typeof meddelandeData>>
 
+/*
+ * Salongens rad, med mejlavsändaren om kolumnen finns.
+ *
+ * email_sender är ny och migrationen körs för hand. Utan det här försöket
+ * fäller en osynlig kolumn hela frågan, och då förlorar fliken inte bara
+ * mejlnamnet utan även recensionslänken, telefonnumret och kontaktsättet — ett
+ * fel som ser ut som att allt är borta men är att en kolumn saknas.
+ */
+async function läsSalong(admin: Admin, id: string) {
+  const kolumner = 'review_url, slug, name, sms_sender, contact_phone, contact_channel'
+  const nytt = await admin.from('companies')
+    .select(`${kolumner}, email_sender, reminder_channel, review_channel`)
+    .eq('id', id).maybeSingle()
+  if (!nytt.error) return nytt
+
+  return admin.from('companies').select(kolumner).eq('id', id).maybeSingle()
+}
+
 export async function meddelandeData(admin: Admin, id: string) {
 
   const [rows, co, site, dom, sms] = await Promise.all([
     fetchTemplates(admin, id),
-    admin.from('companies')
-      .select('review_url, slug, name, sms_sender, contact_phone, contact_channel')
-      .eq('id', id).maybeSingle(),
+    läsSalong(admin, id),
     admin.from('site_config').select('content').eq('company_id', id).maybeSingle(),
     admin.from('custom_domains').select('domain')
       .eq('company_id', id).eq('is_primary', true).not('verified_at', 'is', null).maybeSingle(),
@@ -38,6 +55,9 @@ export async function meddelandeData(admin: Admin, id: string) {
   const slug      = (c?.slug as string | null) ?? null
   const namn      = (c?.name as string | null) ?? ''
   const avsändare = (c?.sms_sender as string | null) ?? ''
+  /* Finns kolumnen inte ännu läses fältet som tomt, vilket betyder samma sak
+     som ett tomt fält alltid betytt: namnet hämtas från Branding. */
+  const mejlnamn  = ((c as { email_sender?: string | null } | null)?.email_sender) ?? ''
   const channel   = läsKontaktsätt(c?.contact_channel)
 
   /* Eget val först, hemsidans värde sedan — för både numret och namnet. */
@@ -109,11 +129,25 @@ export async function meddelandeData(admin: Admin, id: string) {
     mailRam,
     smsMax:    SMS_MAX,
     reviewLink,
+    /* Adressen till förhandsvisningen av kundens avbokningssida. Byggs här och
+       inte i panelen: den ska ligga på samma adress som länken i utskicket, och
+       den adressen är salongens egen domän när de har en. */
+    avbokaExempel: slug ? `${origin ?? ''}/book/${slug}/avboka/exempel` : '',
     channel,
+    /* Kanalen för de tidsstyrda. Null betyder att de följer kontaktsättet —
+       panelen visar då samma kanal som bekräftelsen utan att ha ett eget val
+       nedskrivet. */
+    reminderChannel: läsKanal((c as { reminder_channel?: unknown } | null)?.reminder_channel),
+    reviewChannel:   läsKanal((c as { review_channel?: unknown } | null)?.review_channel),
     /* Avsändarnamnet: salongens eget val, och det som gäller när de inte gjort
        något — namnet på hemsidan, skalat till elva tecken. */
     smsSenderOwn:  avsändare,
     smsSenderUsed: smsSender(sidnamn || namn, avsändare),
+    /* Detsamma för inkorgen. Samma trappa — eget val, Branding, kontonamnet —
+       men utan SMS:ets tvättning, så namnet står som det stavas. */
+    mailSenderOwn:  mejlnamn,
+    mailSenderUsed: mailSender(sidnamn || namn, mejlnamn),
+    mailSenderMax:  MAIL_SENDER_MAX,
     phoneOwn:      egetTel,
     phoneUsed:     telAnvänds,
     /* Vad som gått ut hittills i månaden. Salongen betalar per SMS, och

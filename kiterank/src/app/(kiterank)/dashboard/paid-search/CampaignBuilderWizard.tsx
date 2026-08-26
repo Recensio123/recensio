@@ -514,7 +514,7 @@ export function CampaignBuilderWizard({
                 <input
                   value={campaignName}
                   onChange={e => setCampaignName(e.target.value)}
-                  placeholder="e.g. Plumber Stockholm — Leads — Search"
+                  placeholder="t.ex. Balayage Södermalm — Bokningar — Sök"
                   className="w-full bg-navy-800 border border-navy-700 focus:border-mustard/50 rounded-xl px-4 py-3 text-white text-sm outline-none transition-colors placeholder:text-slate-600"
                 />
               </Field>
@@ -837,7 +837,7 @@ export function CampaignBuilderWizard({
                       value={h}
                       onChange={e => setHeadline(i, e.target.value)}
                       placeholder={
-                        i === 0 ? 'e.g. Licensed Plumber Stockholm' :
+                        i === 0 ? 't.ex. Balayage på Södermalm' :
                         i === 1 ? 'e.g. Same-Day Callout Available'  :
                                   'e.g. Free Quote · No Hidden Fees'
                       }
@@ -874,8 +874,8 @@ export function CampaignBuilderWizard({
                       onChange={e => setDescription(i, e.target.value)}
                       placeholder={
                         i === 0
-                          ? 'e.g. Qualified plumber available 7 days a week. Fast response, transparent pricing, fully insured.'
-                          : 'e.g. Emergency callouts, drain unblocking, boiler repairs. Call now for a same-day free quote.'
+                          ? 't.ex. Färgspecialist på Södermalm. Konsultation ingår, boka online och se lediga tider direkt.'
+                          : 't.ex. Balayage, slingor och toning. Boka online — vi har tider kvar den här veckan.'
                       }
                       rows={2}
                       className={`flex-1 bg-navy-800 border rounded-xl px-4 py-2.5 text-white text-sm outline-none transition-colors resize-none placeholder:text-slate-600 ${

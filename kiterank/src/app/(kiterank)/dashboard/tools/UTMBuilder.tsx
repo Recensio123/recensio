@@ -101,7 +101,7 @@ const T = {
     campaignHint: 'Use the same name across channels to compare them.',
     termLabel:    'Campaign term',
     optional:     '(optional)',
-    termPlaceholder: 'e.g. emergency+plumber',
+    termPlaceholder: 't.ex. balayage+södermalm',
     termHint:     'The keyword that triggered the ad.',
     required:     '*',
     generate:     'Generate link',

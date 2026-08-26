@@ -38,6 +38,40 @@ export function mailerConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY?.trim())
 }
 
+/*
+ * Avsändarnamnet i inkorgen.
+ *
+ * Motsvarigheten till smsSender, med den skillnaden som är hela poängen:
+ * mejlhuvudet har ingen elvateckensgräns och inget krav på ren latin, så
+ * "Salong Nordström & Co" står som den stavas. Salongen slipper acceptera
+ * "SalongNords" bara för att telefonen gör det.
+ *
+ * Fyrtio tecken är läsbarhetens gräns, inte formatets. En telefoninkorg visar
+ * omkring trettio innan den klipper, och ett namn som klipps mitt i säger
+ * mindre än ett kortare som ryms. Samma tal som företagsnamnet under Branding,
+ * så att namnet därifrån alltid får plats.
+ */
+export const MAIL_SENDER_MAX = 40
+
+/** Rensar det som bryter avsändarhuvudet. Citattecken, vinkelparenteser och
+ *  radbrytning är inte smaksak: de är vägen man förfalskar en avsändare med,
+ *  och de tas bort oavsett var namnet kommer ifrån. */
+export function rensaMailavsandare(rå: string): string {
+  return rå
+    .replace(/[\r\n"<>\\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAIL_SENDER_MAX)
+    .trim()
+}
+
+/** Avsändaren kunden ser i inkorgen. Salongens eget val när de gjort ett,
+ *  annars namnet de går under — vilket i praktiken är detsamma som står på
+ *  deras hemsida. */
+export function mailSender(brandName: string, eget?: string | null): string {
+  return rensaMailavsandare(eget ?? '') || rensaMailavsandare(brandName) || 'Salong'
+}
+
 /** Avsändaradressen utskicken går från. Vår egen domän tills salongens är
  *  autentiserad hos sändningstjänsten — ett mail som utger sig för att komma
  *  från en domän vi inte fått rätt att skicka för avvisas eller hamnar i

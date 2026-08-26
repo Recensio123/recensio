@@ -12,7 +12,7 @@ import { KonkurrentKort } from './KonkurrentKort'
 
 // Booking attribution — mock until the booking page stores its referrer.
 // Bookings whose visit started from the GBP listing's booking link.
-const MOCK_GBP_BOOKINGS = { count: 9, revenueSEK: 8_400 }
+const MOCK_GBP_BOOKINGS = { count: 9, revenueSEK: 7_020 }
 
 const BUCKET_DAYS: Record<Period, number> = { Weekly: 7, Monthly: 30, Yearly: 365 }
 

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
  * Inside 24 hours the slot is too close to refill, and the page asks them to
  * call instead: the salon gets a voice and a chance to save the hour. */
 
-type Info = {
+export type Info = {
   company:      string
   service:      string
   date:         string
@@ -24,11 +24,22 @@ function formatDateLong(dateStr: string): string {
   return `${DAYS_LONG[d.getDay()]} ${d.getDate()} ${MONTHS_SV[d.getMonth()]} ${d.getFullYear()}`
 }
 
-export function AvbokaFlow({ slug, token }: { slug: string; token: string }) {
-  const [info,    setInfo]    = useState<Info | null>(null)
-  const [state,   setState]   = useState<'loading' | 'ready' | 'working' | 'done' | 'missing'>('loading')
+export function AvbokaFlow({ slug, token, exempel = null }: {
+  slug:  string
+  token: string
+  /* En färdig bokning i stället för en riktig. Salongen ska kunna se sidan
+     deras kunder möter utan att först lägga en påhittad bokning i sin egen
+     kalender — den bokningen ligger sedan kvar och stökar i statistiken. */
+  exempel?: Info | null
+}) {
+  const [info,    setInfo]    = useState<Info | null>(exempel)
+  const [state,   setState]   = useState<'loading' | 'ready' | 'working' | 'done' | 'missing'>(
+    exempel ? 'ready' : 'loading')
 
   useEffect(() => {
+    /* Exempelläget rör aldrig databasen. En förhandsvisning som hämtar en
+       riktig bokning kan också avboka en. */
+    if (exempel) return
     fetch(`/api/book/${slug}/cancel?token=${token}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((d: Info) => {
@@ -36,9 +47,12 @@ export function AvbokaFlow({ slug, token }: { slug: string; token: string }) {
         setState(d.status === 'cancelled' ? 'done' : 'ready')
       })
       .catch(() => setState('missing'))
-  }, [slug, token])
+  }, [slug, token, exempel])
 
   async function cancel() {
+    /* I exempelläget hoppar knappen rakt till kvittensen. Salongen ska se båda
+       skärmarna — den andra är den de aldrig annars får syn på. */
+    if (exempel) { setState('done'); return }
     setState('working')
     const res = await fetch(`/api/book/${slug}/cancel`, {
       method:  'POST',
@@ -56,6 +70,20 @@ export function AvbokaFlow({ slug, token }: { slug: string; token: string }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f7f7f5', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif' }}>
       <div style={{ maxWidth: '480px', margin: '0 auto', padding: '60px 16px' }}>
+        {/* Remsan står över kortet och inte under det. Den som öppnar sidan ska
+            veta att ingen riktig tid ligger bakom knappen innan de trycker på
+            den — inte efteråt. */}
+        {exempel && (
+          <div style={{
+            background: '#111', color: '#fff', borderRadius: '12px',
+            padding: '12px 16px', marginBottom: '16px', fontSize: '13px', lineHeight: 1.6,
+          }}>
+            <strong>Exempel.</strong> Så här ser sidan ut för din kund när de klickar
+            på länken i sitt meddelande. Ingen riktig bokning ligger bakom — knappen
+            avbokar ingenting.
+          </div>
+        )}
+
         {state === 'loading' && (
           <div style={{ ...card, textAlign: 'center', color: '#bbb', fontSize: '14px' }}>Hämtar bokning…</div>
         )}

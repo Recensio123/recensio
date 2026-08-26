@@ -3,28 +3,21 @@ import Anthropic from '@anthropic-ai/sdk'
 import { currentCompany } from '@/lib/companyScope'
 import { type KeywordSuggestion } from '@/app/(kiterank)/dashboard/paid-search/types'
 
-// ── Mock fallback (Stockholm plumber) ─────────────────────────────────────────
+// ── Reservdata (exempelsalongen på Södermalm) ────────────────────────────────
 // Realistic mock that demonstrates the tool's value — used when no API key is
 // present or as a reference for what real output looks like.
 
 const MOCK_SUGGESTIONS: KeywordSuggestion[] = [
-  { keyword: 'emergency plumber stockholm',         matchType: 'Exact',  category: 'Emergency / Urgent',      cpcDisplay: '180–250 SEK/click', cpcMicros: 21_000_000, reason: 'Highest-intent search in the category — people who type this need someone within hours, not days', priority: 'High'   },
-  { keyword: '24 hour plumber stockholm',           matchType: 'Exact',  category: 'Emergency / Urgent',      cpcDisplay: '160–220 SEK/click', cpcMicros: 19_000_000, reason: 'Time-sensitive qualifier means the searcher has already decided to pay — very high close rate', priority: 'High'   },
-  { keyword: 'same day plumber stockholm',          matchType: 'Exact',  category: 'Emergency / Urgent',      cpcDisplay: '150–200 SEK/click', cpcMicros: 17_000_000, reason: 'Speed qualifier separates urgent buyers from price browsers who can wait a week',              priority: 'High'   },
-  { keyword: 'burst pipe repair stockholm',         matchType: 'Phrase', category: 'Emergency / Urgent',      cpcDisplay: '150–200 SEK/click', cpcMicros: 17_000_000, reason: 'Problem-specific emergency query — these calls convert immediately because the damage is live',  priority: 'High'   },
-  { keyword: 'boiler installation stockholm',       matchType: 'Exact',  category: 'Installation',            cpcDisplay: '160–200 SEK/click', cpcMicros: 18_000_000, reason: 'High-value job keyword — boiler replacements generate 15 000–40 000 SEK revenue per booking', priority: 'High'   },
-  { keyword: 'new boiler price stockholm',          matchType: 'Phrase', category: 'Installation',            cpcDisplay: '130–180 SEK/click', cpcMicros: 15_000_000, reason: 'Price-intent modifier shows a buyer comparing options — capture them before they contact a rival', priority: 'High'   },
-  { keyword: 'water heater installation stockholm', matchType: 'Exact',  category: 'Installation',            cpcDisplay: '130–170 SEK/click', cpcMicros: 15_000_000, reason: 'High-value installation with an 8 000–20 000 SEK average job value',                            priority: 'Medium' },
-  { keyword: 'bathroom plumbing renovation',        matchType: 'Phrase', category: 'Installation',            cpcDisplay: '120–160 SEK/click', cpcMicros: 14_000_000, reason: 'Project-based work with high average value — renovations typically mean multiple days of work',   priority: 'Medium' },
-  { keyword: 'boiler service stockholm',            matchType: 'Exact',  category: 'Repair & Maintenance',   cpcDisplay: '120–160 SEK/click', cpcMicros: 14_000_000, reason: 'Annual recurring service — maintenance clients become long-term repeat customers',                 priority: 'High'   },
-  { keyword: 'boiler repair stockholm',             matchType: 'Exact',  category: 'Repair & Maintenance',   cpcDisplay: '130–170 SEK/click', cpcMicros: 15_000_000, reason: 'Broken boiler = needs fixing today — high urgency with clear buying intent',                       priority: 'High'   },
-  { keyword: 'leaking pipe repair stockholm',       matchType: 'Phrase', category: 'Repair & Maintenance',   cpcDisplay: '130–170 SEK/click', cpcMicros: 15_000_000, reason: 'Common problem with immediate commercial intent — searchers need a fix today, not information',    priority: 'High'   },
-  { keyword: 'blocked drain stockholm',             matchType: 'Exact',  category: 'Repair & Maintenance',   cpcDisplay: '110–150 SEK/click', cpcMicros: 13_000_000, reason: 'Specific service search with clear buyer intent and lower competition than generic plumber terms',  priority: 'Medium' },
-  { keyword: 'plumber near me stockholm',           matchType: 'Phrase', category: 'Location variants',       cpcDisplay: '140–190 SEK/click', cpcMicros: 16_000_000, reason: '"Near me" searches convert 2–3× faster than general queries — the searcher wants someone local now', priority: 'High'   },
-  { keyword: 'licensed plumber stockholm',          matchType: 'Phrase', category: 'Location variants',       cpcDisplay: '110–150 SEK/click', cpcMicros: 13_000_000, reason: 'Quality-intent modifier signals a buyer vetting credentials, not shopping for the cheapest price',  priority: 'Medium' },
-  { keyword: 'plumber södermalm',                   matchType: 'Phrase', category: 'Location variants',       cpcDisplay: '100–140 SEK/click', cpcMicros: 12_000_000, reason: 'District-level keyword — lower competition than city-level with equally strong local buying intent', priority: 'Medium' },
-  { keyword: 'pipe freeze prevention stockholm',    matchType: 'Phrase', category: 'Seasonal',                cpcDisplay: '90–120 SEK/click',  cpcMicros: 10_000_000, reason: 'High-volume October–December search — book preventive jobs before the winter rush drives up prices', priority: 'Medium' },
-  { keyword: 'underfloor heating installation',     matchType: 'Phrase', category: 'Installation',            cpcDisplay: '140–180 SEK/click', cpcMicros: 16_000_000, reason: 'Premium job with high average revenue — ideal for growing into larger renovation projects',          priority: 'Medium' },
+  { keyword: 'balayage stockholm',           matchType: 'Exact',  category: 'Färgbehandlingar',     cpcDisplay: '18–26 SEK/klick', cpcMicros: 22_000_000, reason: 'Dyraste behandlingen med tydlig köpavsikt — den som söker på ortsnamnet letar efter en salong att boka, inte efter inspiration', priority: 'High'   },
+  { keyword: 'slingor södermalm',            matchType: 'Exact',  category: 'Färgbehandlingar',     cpcDisplay: '15–22 SEK/klick', cpcMicros: 18_000_000, reason: 'Stadsdelen i sökningen betyder att personen redan bestämt var de vill gå',                                                priority: 'High'   },
+  { keyword: 'keratinbehandling stockholm',  matchType: 'Exact',  category: 'Behandlingar',         cpcDisplay: '14–20 SEK/klick', cpcMicros: 17_000_000, reason: 'Premiumbehandling med högt värde per bokning och få salonger som annonserar på den',                                    priority: 'High'   },
+  { keyword: 'frisör södermalm',             matchType: 'Phrase', category: 'Bransch + plats',      cpcDisplay: '12–18 SEK/klick', cpcMicros: 15_000_000, reason: 'Grundsökningen i området — bred men med hög andel som bokar samma vecka',                                              priority: 'High'   },
+  { keyword: 'bruduppsättning stockholm',    matchType: 'Phrase', category: 'Tillfällen',           cpcDisplay: '16–24 SEK/klick', cpcMicros: 20_000_000, reason: 'Säsongsbunden men lönsam — bokas i god tid och drar ofta med sig provuppsättning',                                       priority: 'Medium' },
+  { keyword: 'drop in frisör stockholm',     matchType: 'Phrase', category: 'Snabb bokning',        cpcDisplay: '10–15 SEK/klick', cpcMicros: 12_000_000, reason: 'Söks av någon som vill komma i dag — fyller luckor i kalendern samma eftermiddag',                                       priority: 'Medium' },
+  { keyword: 'herrklippning södermalm',      matchType: 'Exact',  category: 'Klippning',            cpcDisplay:  '8–12 SEK/klick', cpcMicros:  9_000_000, reason: 'Lägre pris per bokning men billigt klick och hög andel återkommande',                                                   priority: 'Medium' },
+  { keyword: 'hårförlängning stockholm',     matchType: 'Phrase', category: 'Behandlingar',         cpcDisplay: '20–30 SEK/klick', cpcMicros: 25_000_000, reason: 'Högsta värdet per bokning i hela branschen — dyrt klick men få behöver konverteras',                                    priority: 'Medium' },
+  { keyword: 'toning mörkt hår',             matchType: 'Phrase', category: 'Färgbehandlingar',     cpcDisplay:  '9–14 SEK/klick', cpcMicros: 11_000_000, reason: 'Specifik behandling som lockar den som redan vet vad de vill ha',                                                       priority: 'Medium' },
+  { keyword: 'frisör nära mig',              matchType: 'Phrase', category: 'Bred sökning',         cpcDisplay: '11–16 SEK/klick', cpcMicros: 13_000_000, reason: 'Stor volym men lös avsikt — värd att ha med, värd att bevaka noga',                                                    priority: 'Medium' },
 ]
 
 // ── JSON parser ───────────────────────────────────────────────────────────────
@@ -103,12 +96,12 @@ Return ONLY valid JSON with no markdown or explanation:
 {
   "keywords": [
     {
-      "keyword": "emergency plumber stockholm",
+      "keyword": "balayage stockholm",
       "matchType": "Exact",
-      "category": "Emergency / Urgent",
-      "cpcDisplay": "180–250 SEK/click",
-      "cpcMicros": 21000000,
-      "reason": "Highest-intent query — people who search this need someone within hours",
+      "category": "Service + location",
+      "cpcDisplay": "18–26 SEK/click",
+      "cpcMicros": 22000000,
+      "reason": "Highest-intent query — someone searching a treatment plus a place is looking for somewhere to book",
       "priority": "High"
     }
   ]
@@ -120,7 +113,7 @@ Rules:
 - Include the city or area name in the highest-intent keywords
 - cpcMicros: realistic CPC in ${currencyStr} × 1 000 000 (e.g. 150 SEK = 150000000)
 - cpcDisplay: human-readable range, e.g. "140–190 ${currencyStr}/click"
-- Categories: "Emergency / Urgent", "Installation", "Repair & Maintenance", "Location variants", "Seasonal"
+- Categories must fit the trade the business is actually in, not a fixed list. Use short, plain labels such as "Service + location", "Premium services", "Same-day / walk-in", "Occasions", "Location variants", "Seasonal"
 - priority "High" = searcher is ready to hire today; "Medium" = strong intent but less urgent
 - reason: one plain-English sentence a business owner with no marketing background will understand
 - Never include: DIY, how-to, salary, jobs, training, course, review, forum

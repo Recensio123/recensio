@@ -21,7 +21,7 @@ import { skickaOchLogga } from './utskickslogg'
 import type { MessageResult } from './sendMessage'
 import { datumText, tidText, smsVärden } from './bookingText'
 import { templateSettings, renderTemplate, type TemplateKind, type TemplateChannel } from './messageTemplates'
-import { salonPhone, salonOrigin, egenDoman, smsAvsandare, svarsInfo, kortAvboka, kortOmdome, esc } from './mailParties'
+import { salonPhone, salonOrigin, egenDoman, smsAvsandare, mailAvsandare, svarsInfo, kortAvboka, kortOmdome, esc } from './mailParties'
 import { ramRader } from './meddelandeRam'
 
 type Admin = ReturnType<typeof createAdminClient>
@@ -150,6 +150,7 @@ ${länk}`
     phone:    b.customer_phone,
     smsOptIn,
     smsFrom:  channel === 'sms' ? await smsAvsandare(admin, b.company_id) : null,
+    mailFrom: channel === 'sms' ? null : await mailAvsandare(admin, b.company_id),
     /* Ämnesraden är salongens och renderas med samma värden som texten. Den
        avgör om mailet öppnas, så den ska gå att skriva om. */
     subject:  renderTemplate(s.subject, värden),

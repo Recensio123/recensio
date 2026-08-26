@@ -11,13 +11,13 @@ import { visaExempel } from '@/lib/datalage.server'
 import { TomtLage } from '@/components/dashboard/TomtLage'
 
 const mockData = {
-  website_url:          'https://www.bbc.com',
+  website_url:          'https://studiosoder.se',
   sessions:             1240,
   users:                890,
   new_users:            612,
   engagement_rate:      0.62,
   avg_session_duration: 147,
-  conversions:          38,
+  conversions:          52,
   // WoW deltas
   sessions_wow:    12,
   users_wow:       8,
@@ -56,15 +56,15 @@ const mockData = {
   mobile_engagement_rate:  0.53,
   // Traffic sources with WoW / MoM / YoY + engagement/duration/conversions
   traffic_sources: [
-    { channel: 'Organic Search', sessions: 620, engagementRate: 0.74, avgDuration: 198, conversions: 22, wow: 15,  mom: 22,  yoy: 45,  topPage: '/services/plumbing', trend: [540, 562, 578, 591, 608, 620] },
-    { channel: 'Direct',         sessions: 298, engagementRate: 0.61, avgDuration: 158, conversions: 8,  wow: 3,   mom: 6,   yoy: 18,  topPage: '/',                  trend: [272, 281, 284, 288, 293, 298] },
-    { channel: 'Referral',       sessions: 187, engagementRate: 0.69, avgDuration: 184, conversions: 6,  wow: 8,   mom: 12,  yoy: 25,  topPage: '/contact',           trend: [158, 163, 169, 175, 181, 187] },
-    { channel: 'Paid Search',    sessions: 94,  engagementRate: 0.48, avgDuration: 92,  conversions: 12, spend: 1400, wow: 2,   mom: 5,   yoy: 10,  topPage: '/',                  trend: [90,  88,  91,  90,  92,  94]  },
-    { channel: 'Organic Social', sessions: 41,  engagementRate: 0.29, avgDuration: 38,  conversions: 0,              wow: -5,  mom: -8,  yoy: -12, topPage: '/about',             trend: [55,  52,  49,  46,  43,  41]  },
-    { channel: 'Email',          sessions: 34,  engagementRate: 0.72, avgDuration: 167, conversions: 3,              wow: 12,  mom: 8,   yoy: 22,  topPage: '/contact',           trend: [22,  25,  28,  30,  32,  34]  },
-    { channel: 'Display',        sessions: 27,  engagementRate: 0.31, avgDuration: 52,  conversions: 1,  spend: 450,  wow: -3,  mom: 4,   yoy: 15,  topPage: '/',                  trend: [30,  29,  28,  27,  27,  27]  },
+    { channel: 'Organic Search', sessions: 620, engagementRate: 0.74, avgDuration: 198, conversions: 14, wow: 15,  mom: 22,  yoy: 45,  topPage: '/tjanster/balayage', trend: [540, 562, 578, 591, 608, 620] },
+    { channel: 'Direct',         sessions: 298, engagementRate: 0.61, avgDuration: 158, conversions: 6,  wow: 3,   mom: 6,   yoy: 18,  topPage: '/',                  trend: [272, 281, 284, 288, 293, 298] },
+    { channel: 'Referral',       sessions: 187, engagementRate: 0.69, avgDuration: 184, conversions: 3,  wow: 8,   mom: 12,  yoy: 25,  topPage: '/boka',              trend: [158, 163, 169, 175, 181, 187] },
+    { channel: 'Paid Search',    sessions: 94,  engagementRate: 0.48, avgDuration: 92,  conversions: 27, spend: 3200, wow: 2,   mom: 5,   yoy: 10,  topPage: '/',                  trend: [90,  88,  91,  90,  92,  94]  },
+    { channel: 'Organic Social', sessions: 41,  engagementRate: 0.29, avgDuration: 38,  conversions: 0,              wow: -5,  mom: -8,  yoy: -12, topPage: '/tjanster',          trend: [55,  52,  49,  46,  43,  41]  },
+    { channel: 'Email',          sessions: 34,  engagementRate: 0.72, avgDuration: 167, conversions: 1,              wow: 12,  mom: 8,   yoy: 22,  topPage: '/boka',              trend: [22,  25,  28,  30,  32,  34]  },
+    { channel: 'Display',        sessions: 27,  engagementRate: 0.31, avgDuration: 52,  conversions: 0,  spend: 0,  wow: -3,  mom: 4,   yoy: 15,  topPage: '/',                  trend: [30,  29,  28,  27,  27,  27]  },
     { channel: 'Paid Social',    sessions: 19,  engagementRate: 0.22, avgDuration: 28,  conversions: 0,              wow: -8,  mom: -5,  yoy: 5,   topPage: '/',                  trend: [26,  24,  22,  21,  20,  19]  },
-    { channel: 'Gen AI',         sessions: 12,  engagementRate: 0.83, avgDuration: 228, conversions: 2,              wow: 50,  mom: 120, yoy: 0,   topPage: '/services/plumbing', trend: [2,   3,   5,   7,   9,   12]  },
+    { channel: 'Gen AI',         sessions: 12,  engagementRate: 0.83, avgDuration: 228, conversions: 1,              wow: 50,  mom: 120, yoy: 0,   topPage: '/tjanster/balayage', trend: [2,   3,   5,   7,   9,   12]  },
   ],
   incoming_sources: [
     { source: 'google.com',      medium: 'organic',  category: 'Organic Search', sessions: 620, engagementRate: 0.74, avgDuration: 198, change:   3  },
@@ -109,29 +109,29 @@ const mockData = {
     { label: 'Other',                               sessions: 983 },
   ],
   // Time patterns — GA4 'hour' and 'dayOfWeek' dimensions, available in Phase 6
-  // Represents a plumbing company in Stockholm — morning and after-work peaks, quiet weekends
+  // Exempelsalongen på Södermalm — toppar före jobbet och efter fem, lugna söndagar
   traffic_by_hour: [12, 8, 5, 4, 6, 14, 38, 72, 95, 88, 76, 68, 74, 79, 81, 84, 91, 87, 71, 52, 43, 36, 28, 18],
   traffic_by_day:  [82, 198, 212, 221, 215, 187, 125],  // Sun Mon Tue Wed Thu Fri Sat
   // Content gaps — queries from Search Console with no dedicated page on the site.
-  // Requires Phase 2 (Search Console integration) to pull live. Mock data represents a plumbing company in Stockholm.
+  // Requires Phase 2 (Search Console integration) to pull live. Exempeldatan är samma salong som resten av demoläget.
   content_gaps: [
-    { query: 'water heater repair stockholm',        impressions: 420, clicks: 3 },
-    { query: 'blocked toilet emergency stockholm',   impressions: 310, clicks: 4 },
-    { query: 'underfloor heating installation cost', impressions: 340, clicks: 1 },
-    { query: 'bathroom renovation plumber',          impressions: 280, clicks: 2 },
-    { query: 'burst pipe what to do',                impressions: 230, clicks: 5 },
+    { query: 'keratinbehandling stockholm',    impressions: 420, clicks: 3 },
+    { query: 'bruduppsättning södermalm',      impressions: 310, clicks: 4 },
+    { query: 'hårförlängning pris stockholm',  impressions: 340, clicks: 1 },
+    { query: 'toning mörkt hår',               impressions: 280, clicks: 2 },
+    { query: 'hur länge håller balayage',      impressions: 230, clicks: 5 },
   ],
   top_pages: [
     { path: '/',                    sessions: 540, engagementRate: 0.58 },
-    { path: '/services/plumbing',   sessions: 210, engagementRate: 0.71 },
-    { path: '/contact',             sessions: 188, engagementRate: 0.82 },
-    { path: '/services/boiler',     sessions: 145, engagementRate: 0.67 },
-    { path: '/about',               sessions: 87,  engagementRate: 0.54 },
+    { path: '/tjanster/balayage',   sessions: 210, engagementRate: 0.71 },
+    { path: '/boka',                sessions: 188, engagementRate: 0.82 },
+    { path: '/tjanster/klippning',     sessions: 145, engagementRate: 0.67 },
+    { path: '/tjanster',            sessions: 87,  engagementRate: 0.54 },
   ],
   // Paid spend — Google Ads only (Paid Search + Display). Paid Social requires Meta Ads API (not yet integrated).
-  paid_spend:            1850,
-  paid_spend_prev:       1400,
-  paid_conversions_prev: 12,
+  paid_spend:            3200,
+  paid_spend_prev:       2950,
+  paid_conversions_prev: 22,
   // Your pages tab — GA4 landing page + Search Console position/impressions/clicks
   /* The pages a site we build actually has: the start page, the treatment
      menu, one page per treatment, about, contact — and the articles, which are

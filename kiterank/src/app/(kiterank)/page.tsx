@@ -269,11 +269,11 @@ const paketen = (p: Prislista): Paket[] => [
     pitch: 'Vi sköter marknadsföringen — ni sköter salongen',
     punkter: [
       'Allt i designpaketet',
-      'Vi driver marknadsföringen åt er löpande',
-      'Annonser som sköts och följs upp',
-      'Omdömen bevakas och besvaras',
-      'Löpande ändringar på sidan — säg vad ni vill',
-      'Månatlig genomgång av resultatet',
+      'Vi sköter Google-profilen: foton, inlägg och omdömen',
+      'Vi sköter annonserna — strategi, uppsättning och löpande',
+      'Löpande SEO-rådgivning på det ni skriver',
+      'Vi väcker gamla kunder — ett utskick i månaden',
+      'Månadsrapport med plan och budget ni godkänner',
     ],
     ...köpKnapp('fullservice'),
   },
@@ -341,27 +341,94 @@ function PrisSektion({ priser }: { priser: Prislista }) {
         ))}
       </div>
 
-      {/* Tillägget står under trappan, inte i den: det hör till alla tre
-          nivåerna, och ett fjärde kort i raden hade läst som en fjärde nivå. */}
-      <div className="rounded-2xl border border-[#f0b429]/20 bg-[#f0b429]/4 p-8 md:flex md:items-center md:gap-8">
-        <div className="md:flex-1 space-y-3">
-          <div className="flex items-baseline gap-3 flex-wrap">
-            <h3 className="text-white text-xl font-bold">Bokningssystem</h3>
-            <span className="text-[#f0b429] text-sm font-semibold">
-              {priser.bokning
-                ? `${priser.bokning}/mån — läggs till på valfritt paket`
-                : 'Läggs till på valfritt paket'}
-            </span>
+      {/*
+        * Momsen, direkt under korten.
+        *
+        * Kunderna är momsregistrerade företag som drar av den, och branschen
+        * skriver därför sina priser exklusive moms — ett pris inklusive moms
+        * ser dyrare ut än det är i den jämförelse kunden faktiskt gör.
+        *
+        * Raden står under priserna och inte i en fotnot längst ned på sidan.
+        * Ett prisvillkor som kräver att man scrollar förbi köpknappen för att
+        * hittas är enligt marknadsföringslagen inte tydligt angivet.
+        */}
+      <div className="space-y-3 text-center">
+        <p className="text-white/30 text-xs">* Alla priser är exklusive moms.</p>
+        <p className="text-white/45 text-sm">
+          Osäker på vilket paket du ska välja?{' '}
+          <Link href="/priser" className="text-[#f0b429] hover:text-[#e0a520] transition-colors">
+            Läs de fullständiga specifikationerna
+          </Link>
+        </p>
+      </div>
+
+      {/*
+        * Tillägget står under trappan, inte i den: det hör till alla tre
+        * nivåerna, och ett fjärde kort i raden hade läst som en fjärde nivå.
+        *
+        * Rutan var tidigare tre rader text i en tom ram. Bokningssystemet är
+        * den dyraste enskilda saken en kund lägger till, och tre rader räcker
+        * inte för att någon ska säga ja till en femtedel av sin månadsavgift.
+        * Nu står det som ett eget erbjudande: vad det gör, en bild på det, och
+        * vad som faktiskt ingår.
+        */}
+      <div className="rounded-2xl border border-[#f0b429]/25 bg-[#f0b429]/5 overflow-hidden">
+        <div className="grid md:grid-cols-[1.25fr_1fr]">
+          <div className="p-8 md:p-9">
+            <p className="text-[#f0b429] text-xs font-semibold uppercase tracking-wider">
+              Tillägg på valfritt paket
+            </p>
+            <div className="flex items-baseline gap-3 flex-wrap mt-2">
+              <h3 className="text-white text-2xl font-bold">Bokningssystem</h3>
+              {priser.bokning && (
+                <span className="text-[#f0b429] font-semibold">{priser.bokning}/mån</span>
+              )}
+            </div>
+
+            <p className="text-white/55 leading-relaxed mt-3">
+              Kalendern ligger på hemsidan och tar emot bokningar dygnet runt — också när salongen
+              är stängd, vilket är när en stor del av dem faktiskt görs. Personal, tjänster och
+              arbetstider styr vad som går att boka.
+            </p>
+
+            {/* Vad tillägget innehåller, i två spalter. Samma grepp som
+                "Guiden täcker" i guidebiblioteket: läsaren ska se omfattningen
+                utan att först klicka sig vidare. */}
+            <div className="mt-6 pt-5 border-t border-[#f0b429]/15">
+              <p className="text-[11px] uppercase tracking-wider text-white/30 mb-3">
+                Det här ingår
+              </p>
+              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
+                {[
+                  'Onlinebokning på er hemsida',
+                  'Kalender med personal och scheman',
+                  'Bekräftelse och påminnelse till kunden',
+                  'Omdömesfråga efter besöket',
+                  'Kundregister med historik',
+                  'Regler för avbokning och framförhållning',
+                  'Bokningsstatistik och fyllnadsgrad',
+                  'Spegling till din egen kalender',
+                ].map(rad => (
+                  <div key={rad} className="flex gap-2.5 text-sm text-white/60 leading-snug">
+                    <span className="text-[#f0b429] shrink-0 text-xs mt-1">✓</span>
+                    {rad}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-white/30 text-xs mt-5 leading-relaxed">
+              SMS {priser.sms}/st, betalas i efterskott för det som faktiskt skickats — mejl ingår
+              utan kostnad. Tillägget kostar mindre på de två formgivna paketen.
+            </p>
           </div>
-          <p className="text-white/50 text-sm leading-relaxed max-w-2xl">
-            Onlinebokning direkt på hemsidan, kalender med personal och scheman, automatiska
-            bekräftelser och påminnelser, omdömesfrågor efter besöket, samt kundhistorik och
-            bokningsstatistik.
-          </p>
-          <p className="text-white/30 text-xs">
-            SMS {priser.sms}/st — betala bara för det som skickas, mejl ingår.
-            Tillägget kostar mindre på de större paketen.
-          </p>
+
+          {/* Bilden: bokningsvyn som kunden möter den. Byggd i markup av samma
+              skäl som mockuperna högre upp på sidan — den håller sig aktuell
+              när produkten ändras, till skillnad från en skärmdump. */}
+          <div className="hidden md:flex items-center justify-center p-8 bg-[#080f1e]/40">
+            <BookingMockup />
+          </div>
         </div>
       </div>
 
@@ -369,6 +436,86 @@ function PrisSektion({ priser }: { priser: Prislista }) {
         7 dagar gratis · Ingen kortuppgift för att börja · Två månader gratis vid årsbetalning
       </p>
     </section>
+  )
+}
+
+// ─── Booking mockup ───────────────────────────────────────────────────────────
+// Bokningsvyn som kunden möter den: välj behandling, välj dag, välj tid.
+// Byggd i markup och inte som skärmdump — en bild av en produkt som ändras
+// blir fel utan att någon märker det, och den här följer med av sig själv.
+
+function BookingMockup() {
+  const dagar  = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre']
+  const datum  = [12, 13, 14, 15, 16]
+  const tider  = ['09:00', '10:30', '13:00', '14:30', '16:00', '17:30']
+  const upptagna = [1, 4]
+
+  return (
+    <div className="w-full max-w-[300px] rounded-xl overflow-hidden border border-white/10 bg-[#0d1526] shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+      {/* Toppraden — salongens namn, som på kundens egen sida */}
+      <div className="px-4 py-3 border-b border-white/8 flex items-center justify-between">
+        <span className="text-white text-xs font-bold">Studio Söder</span>
+        <span className="text-[#f0b429] text-[9px] font-bold bg-[#f0b429]/15 px-2 py-0.5 rounded">
+          Boka tid
+        </span>
+      </div>
+
+      <div className="p-4 space-y-3.5">
+        {/* Vald behandling */}
+        <div>
+          <p className="text-white/25 text-[9px] uppercase tracking-wider mb-1.5">Behandling</p>
+          <div className="rounded-lg border border-[#f0b429]/40 bg-[#f0b429]/8 px-3 py-2 flex items-center justify-between">
+            <span className="text-white text-[11px] font-medium">Balayage</span>
+            <span className="text-[#f0b429] text-[10px]">2 200 kr · 150 min</span>
+          </div>
+        </div>
+
+        {/* Dagarna */}
+        <div>
+          <p className="text-white/25 text-[9px] uppercase tracking-wider mb-1.5">Dag</p>
+          <div className="grid grid-cols-5 gap-1.5">
+            {dagar.map((d, i) => (
+              <div
+                key={d}
+                className={`rounded-md py-1.5 text-center ${
+                  i === 2 ? 'bg-[#f0b429] text-[#080f1e]' : 'bg-white/5 text-white/45'
+                }`}
+              >
+                <div className="text-[8px] leading-none">{d}</div>
+                <div className="text-[11px] font-bold leading-none mt-1">{datum[i]}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Tiderna — två upptagna, så att det syns att kalendern är verklig */}
+        <div>
+          <p className="text-white/25 text-[9px] uppercase tracking-wider mb-1.5">Tid</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {tider.map((t, i) => (
+              <div
+                key={t}
+                className={`rounded-md py-1.5 text-center text-[10px] ${
+                  upptagna.includes(i)
+                    ? 'bg-white/3 text-white/15 line-through'
+                    : 'border border-white/12 text-white/70'
+                }`}
+              >
+                {t}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-[#f0b429] text-[#080f1e] text-[11px] font-bold text-center py-2 rounded-lg">
+          Boka 14:30 →
+        </div>
+
+        <p className="text-white/20 text-[9px] text-center leading-relaxed">
+          Bekräftelse och påminnelse skickas automatiskt
+        </p>
+      </div>
+    </div>
   )
 }
 
@@ -719,7 +866,7 @@ export default async function HomePage() {
               till samma adresser för varje betalande kund. */}
           <div className="flex items-center gap-6 flex-wrap justify-center text-white/30 text-sm">
             <Link href="/features" className="hover:text-white/60 transition-colors">Funktioner</Link>
-            <Link href="/pricing"  className="hover:text-white/60 transition-colors">Priser</Link>
+            <Link href="/priser"  className="hover:text-white/60 transition-colors">Priser</Link>
             <Link href="/villkor"  className="hover:text-white/60 transition-colors">Villkor</Link>
             <Link href="/integritetspolicy" className="hover:text-white/60 transition-colors">Integritetspolicy</Link>
             <Link href="/auth/login" className="hover:text-white/60 transition-colors">Logga in</Link>

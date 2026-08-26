@@ -91,7 +91,7 @@ const T = {
     closed:           'Closed',
     add:              'Add',
     servicesHint:     'Press Enter or click Add. Remove a service by clicking ×.',
-    servicePlaceholder: 'e.g. Emergency callout, Boiler installation…',
+    servicePlaceholder: 't.ex. Balayage, Klippning, Bruduppsättning…',
     removeService:    (svc: string) => `Remove ${svc}`,
     descPlaceholder:  'Describe your business — what you do, where you operate, and what makes you the right choice. Aim for 250–750 characters.',
   },
@@ -219,7 +219,7 @@ function buildAudit(data: GBPData, lang: Lang): AuditGroup[] {
         {
           label:         'Services listed',
           passed:        (data.services?.length ?? 0) > 0,
-          tip:           'Listing your specific services (e.g. boiler installation, emergency callout) helps Google match you to more specific searches.',
+          tip:           'Listing your specific services (e.g. balayage, keratin treatment) helps Google match you to more specific searches.',
           editableField: 'services',
           btnAdd:        'Add services',
           btnEdit:       'Edit',

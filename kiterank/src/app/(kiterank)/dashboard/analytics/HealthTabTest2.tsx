@@ -50,12 +50,12 @@ const HEALTH_MOCK: { mobile: VitalsSet; desktop: VitalsSet; indexing: IndexingDa
     mobileIssues:  0,
     errorPages: [
       { url: '/services/old-heating-repair', reason: 'Not found (404) — this page no longer exists but Google keeps trying to visit it. Add a redirect to a relevant page or remove any remaining links to it.' },
-      { url: '/blog/emergency-plumber-tips', reason: 'Removed page — was previously in Google\'s index but is now gone with no redirect. Any ranking this page had is being lost.' },
+      { url: '/artiklar/harvard-pa-vintern', reason: 'Removed page — was previously in Google\'s index but is now gone with no redirect. Any ranking this page had is being lost.' },
     ],
     excludedPages: [
-      { url: '/services/drain-cleaning-old', reason: 'Duplicate page — Google found this page has the same content as another page on your site and decided to only show the other version. Consider redirecting this URL to the main one.' },
-      { url: '/?s=plumber',                  reason: 'Internal search result page — Google does not index pages showing your own site\'s search results. This is normal and expected; no action needed.' },
-      { url: '/tag/emergency-plumber',        reason: 'Thin content page — a blog tag page containing very little unique content. Google chose not to index it. This is usually fine unless you want the tag to rank.' },
+      { url: '/tjanster/slingor-gammal', reason: 'Duplicate page — Google found this page has the same content as another page on your site and decided to only show the other version. Consider redirecting this URL to the main one.' },
+      { url: '/?s=balayage',                  reason: 'Internal search result page — Google does not index pages showing your own site\'s search results. This is normal and expected; no action needed.' },
+      { url: '/etikett/harfarg',        reason: 'Thin content page — a blog tag page containing very little unique content. Google chose not to index it. This is usually fine unless you want the tag to rank.' },
       { url: '/page/2',                       reason: 'Pagination page — the second page of your blog archive. Google sometimes skips these when the content is already covered by the individual posts.' },
     ],
   },
@@ -65,10 +65,10 @@ const HEALTH_MOCK: { mobile: VitalsSet; desktop: VitalsSet; indexing: IndexingDa
 // mock data shape stays untouched.
 const REASON_SV: Record<string, string> = {
   '/services/old-heating-repair': 'Hittades inte (404) — sidan finns inte längre men Google fortsätter försöka besöka den. Lägg till en omdirigering till en relevant sida eller ta bort länkar som pekar hit.',
-  '/blog/emergency-plumber-tips': 'Borttagen sida — fanns tidigare i Googles index men är nu borta utan omdirigering. Den rankning sidan hade går förlorad.',
-  '/services/drain-cleaning-old': 'Dubblettsida — Google såg att sidan har samma innehåll som en annan sida på din webbplats och valde att bara visa den andra versionen. Överväg att omdirigera denna adress till huvudsidan.',
-  '/?s=plumber':                  'Intern söksida — Google indexerar inte sidor som visar din egen webbplats sökresultat. Detta är helt normalt; inget behöver göras.',
-  '/tag/emergency-plumber':       'Sida med tunt innehåll — en etikettsida från bloggen med väldigt lite unikt innehåll. Google valde att inte indexera den. Det är oftast helt okej, om du inte vill att etiketten ska ranka.',
+  '/artiklar/harvard-pa-vintern': 'Borttagen sida — fanns tidigare i Googles index men är nu borta utan omdirigering. Den rankning sidan hade går förlorad.',
+  '/tjanster/slingor-gammal': 'Dubblettsida — Google såg att sidan har samma innehåll som en annan sida på din webbplats och valde att bara visa den andra versionen. Överväg att omdirigera denna adress till huvudsidan.',
+  '/?s=balayage':                  'Intern söksida — Google indexerar inte sidor som visar din egen webbplats sökresultat. Detta är helt normalt; inget behöver göras.',
+  '/etikett/harfarg':       'Sida med tunt innehåll — en etikettsida från bloggen med väldigt lite unikt innehåll. Google valde att inte indexera den. Det är oftast helt okej, om du inte vill att etiketten ska ranka.',
   '/page/2':                      'Sidnumreringssida — andra sidan i ditt bloggarkiv. Google hoppar ibland över dessa när innehållet redan täcks av de enskilda inläggen.',
 }
 

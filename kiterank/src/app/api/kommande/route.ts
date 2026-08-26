@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { hämtaKö } from '@/lib/kommandeServer'
 import { sendTimedMessage, type TimedBooking } from '@/lib/timedMessages'
 import { kanalFor } from '@/lib/messageTemplates'
-import { hämtaKontaktsätt } from '@/lib/kontaktsatt'
+import { hämtaKanalval } from '@/lib/kontaktsatt'
 
 /*
  * Kön av utskick, omläst.
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'wrong_status' }, { status: 409 })
   }
 
-  const channel = kanalFor(kind, await hämtaKontaktsätt(admin, access.companyId))
+  const channel = kanalFor(kind, await hämtaKanalval(admin, access.companyId))
   const r = await sendTimedMessage(admin, bokning, kind, channel)
 
   if (!r.sent) {

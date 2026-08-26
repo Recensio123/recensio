@@ -32,76 +32,95 @@ function Logo() {
   )
 }
 
+/*
+ * Menyn, buntad efter vad kunden vill uppnå.
+ *
+ * Den listade tidigare nio poster, varav sex var olika sätt att titta på
+ * Google: profilen, kartrankningen, sökorden, sökannonserna. För oss är det
+ * fyra system; för en salongsägare är det en enda fråga — syns jag på Google?
+ * Nio val i en meny är inte nio vägar in, det är nio tillfällen att tveka.
+ *
+ * Sju poster i tre grupper, döpta efter resultatet i stället för efter
+ * verktyget. Rubriken "Google-profilen" bär i dag foton, inlägg, frågor och
+ * kategorier tillsammans, eftersom ingen kund har haft dem som skilda ärenden.
+ */
 const FEATURES_MENU = [
   {
-    group: 'Google Presence',
+    group: 'Hemsida & bokning',
+    items: [
+      {
+        icon:  '▤',
+        title: 'Hemsidan',
+        desc:  'Färdig, ifylld och byggd så att Google hittar den',
+        href:  '/features#hemsida',
+      },
+      {
+        icon:  '◷',
+        title: 'Bokningssystem',
+        desc:  'Kalender, påminnelser och kundhistorik',
+        href:  '/features#bokning',
+      },
+    ],
+  },
+  {
+    group: 'Synlighet på Google',
     items: [
       {
         icon:  '✦',
-        title: 'Google Business Profile',
-        desc:  'Photos, posts, Q&A and GBP health score',
-        href:  '/features#gbp',
-      },
-      {
-        icon:  '★',
-        title: 'Review Intelligence',
-        desc:  'Monitor every review and draft responses instantly',
-        href:  '/features#reviews',
+        title: 'Google-profilen',
+        desc:  'Foton, inlägg, frågor och kategorier på ett ställe',
+        href:  '/features#google',
       },
       {
         icon:  '◎',
-        title: 'Local Pack Rankings',
-        desc:  'Your position in Google Maps results per keyword',
-        href:  '/features#local-pack',
+        title: 'Sök och kartor',
+        desc:  'Var ni rankar, på vilka ord, mot vilka grannar',
+        href:  '/features#synlighet',
+      },
+      {
+        icon:  '★',
+        title: 'Omdömen',
+        desc:  'Nya omdömen, färdiga svar och betygstrend',
+        href:  '/features#omdomen',
       },
     ],
   },
   {
-    group: 'Traffic & Ads',
+    group: 'Trafik & annonser',
     items: [
       {
-        icon:  '⌕',
-        title: 'SEO & Rankings',
-        desc:  'Keywords, positions, and competitor keyword gaps',
-        href:  '/features#seo',
+        icon:  '↗',
+        title: 'Besökarna',
+        desc:  'Varifrån trafiken kommer och vad den gör på sidan',
+        href:  '/features#trafik',
       },
       {
         icon:  '◈',
-        title: 'Google Ads',
-        desc:  'Spend, CPC and wasted budget in plain numbers',
-        href:  '/features#ads',
-      },
-      {
-        icon:  '↗',
-        title: 'Website Analytics',
-        desc:  'GA4 + Search Console in one clean dashboard',
-        href:  '/features#analytics',
+        title: 'Annonser',
+        desc:  'Kostnad, klick och vad varje krona gav tillbaka',
+        href:  '/features#annonser',
       },
     ],
   },
-  {
-    group: 'AI & Social',
-    items: [
-      {
-        icon:  '✺',
-        title: 'AI Search Visibility',
-        desc:  'ChatGPT, Perplexity, Gemini and AI Overviews',
-        href:  '/features#ai',
-      },
-      {
-        icon:  '⬡',
-        title: 'Social Media',
-        desc:  'Facebook and Instagram performance in one view',
-        href:  '/features#social',
-      },
-      {
-        icon:  '✓',
-        title: 'Weekly Action Plan',
-        desc:  'Three prioritised tasks delivered every Monday',
-        href:  '/features#action-plan',
-      },
-    ],
-  },
+]
+
+/*
+ * Sidorna vid sidan av funktionsmenyn.
+ *
+ * En lista och inte två uppsättningar länkar: skrivbordsmenyn och
+ * mobilmenyn ritas ur samma rader, så en ny sida kan aldrig hamna i den ena
+ * och saknas i den andra.
+ *
+ * Supporten står inte här. Den bor i plattformen, där kunden är inloggad och
+ * vi ser vilket konto frågan gäller — en supportsida på säljsajten hade bara
+ * bett dem beskriva det de redan gett oss.
+ */
+const SIDOR = [
+  { namn: 'Priser',  href: '/priser'  },
+  { namn: 'Guider',  href: '/guider'  },
+  { namn: 'FAQ',     href: '/faq'     },
+  { namn: 'Om oss',  href: '/om-oss'  },
+  { namn: 'Kontakt', href: '/kontakt' },
 ]
 
 export function Nav() {
@@ -137,14 +156,20 @@ export function Nav() {
             onMouseEnter={openMenu}
             onMouseLeave={scheduleClose}
           >
-            <button
+            {/* Rubriken är en länk, inte bara en lucka som fälls ut.
+                Den som klickar på "Funktioner" vill någonstans — och möttes
+                tidigare av ingenting, eftersom knappen bara öppnade menyn.
+                Nu går klicket till översikten och menyn fälls ut vid hovring
+                som förut, så båda sätten att navigera fungerar. */}
+            <Link
+              href="/features"
               className={`flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-colors ${
                 isActive('/features')
                   ? 'text-white bg-white/8'
                   : 'text-white/55 hover:text-white hover:bg-white/5'
               }`}
             >
-              Features
+              Funktioner
               <svg
                 className={`w-3.5 h-3.5 transition-transform duration-150 ${menuOpen ? 'rotate-180' : ''}`}
                 fill="none"
@@ -154,7 +179,7 @@ export function Nav() {
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
-            </button>
+            </Link>
 
             {menuOpen && (
               <div
@@ -195,14 +220,14 @@ export function Nav() {
                   {/* Bottom CTA strip */}
                   <div className="col-span-3 border-t border-white/5 mt-2 pt-4 flex items-center justify-between">
                     <p className="text-xs text-white/30">
-                      All features included in your free 7-day trial.
+                      Prova mallpaketet gratis i 7 dagar — allt i plattformen ingår.
                     </p>
                     <Link
                       href="/onboarding"
                       onClick={() => setMenuOpen(false)}
                       className="text-xs font-semibold text-[#f0b429] hover:text-[#e0a520] transition-colors"
                     >
-                      Start free trial →
+                      Kom igång →
                     </Link>
                   </div>
                 </div>
@@ -210,16 +235,22 @@ export function Nav() {
             )}
           </div>
 
-          <Link
-            href="/pricing"
-            className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-              isActive('/pricing')
-                ? 'text-white bg-white/8'
-                : 'text-white/55 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            Pricing
-          </Link>
+          {/* Ordningen är den en besökare rör sig i: vad kostar det, hur gör
+              man, vilka är ni, hur når jag er. Smalare vaddering än förut —
+              fem poster bredvid en utfällbar meny får inte plats annars. */}
+          {SIDOR.map(sida => (
+            <Link
+              key={sida.href}
+              href={sida.href}
+              className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                isActive(sida.href)
+                  ? 'text-white bg-white/8'
+                  : 'text-white/55 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              {sida.namn}
+            </Link>
+          ))}
         </nav>
 
         {/* CTAs */}
@@ -228,20 +259,20 @@ export function Nav() {
             href="/auth/login"
             className="hidden md:block text-white/50 hover:text-white text-sm transition-colors"
           >
-            Log in
+            Logga in
           </Link>
           <Link
             href="/onboarding"
             className="bg-[#f0b429] hover:bg-[#e0a520] text-[#080f1e] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
-            Get started free
+            Kom igång gratis
           </Link>
 
           {/* Mobile hamburger */}
           <button
             className="md:hidden p-2 text-white/50 hover:text-white"
             onClick={() => setMobileOpen(v => !v)}
-            aria-label="Toggle menu"
+            aria-label="Öppna menyn"
           >
             {mobileOpen
               ? <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -263,9 +294,18 @@ export function Nav() {
                 aria-hidden="true"
               >KiteRank</span>
             </span>
-            <Link href="/features" onClick={() => setMobileOpen(false)} className="block py-2 text-white/60 hover:text-white text-sm transition-colors">Features</Link>
-            <Link href="/pricing"  onClick={() => setMobileOpen(false)} className="block py-2 text-white/60 hover:text-white text-sm transition-colors">Pricing</Link>
-            <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="block py-2 text-white/60 hover:text-white text-sm transition-colors">Log in</Link>
+            <Link href="/features" onClick={() => setMobileOpen(false)} className="block py-2 text-white/60 hover:text-white text-sm transition-colors">Funktioner</Link>
+            {SIDOR.map(sida => (
+              <Link
+                key={sida.href}
+                href={sida.href}
+                onClick={() => setMobileOpen(false)}
+                className="block py-2 text-white/60 hover:text-white text-sm transition-colors"
+              >
+                {sida.namn}
+              </Link>
+            ))}
+            <Link href="/auth/login" onClick={() => setMobileOpen(false)} className="block py-2 text-white/60 hover:text-white text-sm transition-colors">Logga in</Link>
           </div>
         </div>
       )}

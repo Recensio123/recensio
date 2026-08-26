@@ -18,7 +18,7 @@ import type { MessageResult, Channel } from './sendMessage'
 import { fill, smsVärden, datumText, tidText } from './bookingText'
 import { fetchPolicy } from './bookingPolicy'
 import { aktivMall } from './messageTemplates'
-import { salonOrigin, salonPhone, smsAvsandare, svarsInfo, kortAvboka, esc } from './mailParties'
+import { salonOrigin, salonPhone, smsAvsandare, mailAvsandare, svarsInfo, kortAvboka, esc } from './mailParties'
 import { ramRader } from './meddelandeRam'
 
 /* Samma form som de övriga bokningsmodulerna använder. */
@@ -185,10 +185,11 @@ export async function sendBookingConfirmation(
   admin: Admin,
   b: ConfirmationInput,
 ): Promise<MessageResult> {
-  const [origin, phone, avsändare] = await Promise.all([
+  const [origin, phone, avsändare, mejlnamn] = await Promise.all([
     salonOrigin(admin, b.companyId),
     salonPhone(admin, b.companyId),
     smsAvsandare(admin, b.companyId),
+    mailAvsandare(admin, b.companyId),
   ])
   /* SMS:et får den korta formen av avbokningslänken. Den räknas ut här uppe
      eftersom svarsraden beror på den: bär meddelandet redan en länk behövs inte
@@ -245,6 +246,7 @@ export async function sendBookingConfirmation(
     phone:    b.customerPhone,
     smsOptIn: b.smsOptIn,
     smsFrom:  avsändare,
+    mailFrom: mejlnamn,
     subject,
     text:     textBody(lead, rader, cancelUrl, b.status, svar.text),
     html:     htmlBody(lead, rader, cancelUrl, b.status, b.companyName, svar.html),

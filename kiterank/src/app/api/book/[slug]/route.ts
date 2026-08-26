@@ -103,6 +103,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     customer_email,
     customer_note,
     sms_opt_in,
+    inga_erbjudanden,    // kryssade i formuläret: vill inte ha erbjudanden
     source_channel,      // utm_source from the page the visitor arrived on
   } = await req.json()
 
@@ -315,7 +316,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (existingCustomer) {
     await admin
       .from('customers')
-      .update({ name: customer_name, email: epost || null, sms_opt_in: sms_opt_in ?? true, updated_at: new Date().toISOString() })
+      /* Ett nej sätts, men tas aldrig bort automatiskt. Den som tackat nej en
+         gång och bokar igen utan att kryssa i rutan har inte ändrat sig — de
+         har inte tänkt på saken, och tystnad är inget samtycke. */
+      .update({
+        name: customer_name, email: epost || null,
+        sms_opt_in: sms_opt_in ?? true,
+        ...(inga_erbjudanden
+          ? { marknadsforing_nej: true, marknadsforing_nej_at: new Date().toISOString(), marknadsforing_nej_kalla: 'bokning' }
+          : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', existingCustomer.id)
   } else if (telefon || epost) {
     const { data: created } = await admin
@@ -326,6 +337,9 @@ export async function POST(req: NextRequest, { params }: Params) {
         phone:      telefon || null,
         email:      epost || null,
         sms_opt_in: sms_opt_in ?? true,
+        marknadsforing_nej:       Boolean(inga_erbjudanden),
+        marknadsforing_nej_at:    inga_erbjudanden ? new Date().toISOString() : null,
+        marknadsforing_nej_kalla: inga_erbjudanden ? 'bokning' : null,
         updated_at: new Date().toISOString(),
       })
       .select('id')

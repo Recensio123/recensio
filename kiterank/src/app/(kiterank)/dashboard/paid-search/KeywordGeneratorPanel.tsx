@@ -155,7 +155,7 @@ export function KeywordGeneratorPanel({
                 type="text"
                 value={businessType}
                 onChange={e => setBusinessType(e.target.value)}
-                placeholder="e.g. Plumber, Electrician, Dentist"
+                placeholder="t.ex. Frisör, Nagelsalong, Massör"
                 className="w-full bg-navy-900 border border-navy-600 focus:border-mustard text-white placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none"
               />
             </div>
@@ -177,7 +177,7 @@ export function KeywordGeneratorPanel({
                 type="text"
                 value={services}
                 onChange={e => setServices(e.target.value)}
-                placeholder="e.g. boiler installation, drain repairs"
+                placeholder="t.ex. balayage, keratinbehandling"
                 className="w-full bg-navy-900 border border-navy-600 focus:border-mustard text-white placeholder-slate-600 text-sm rounded-lg px-3 py-2.5 focus:outline-none"
               />
             </div>

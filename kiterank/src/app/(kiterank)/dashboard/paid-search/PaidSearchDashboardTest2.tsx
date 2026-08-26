@@ -23,7 +23,7 @@ import { CoverageNote, MeasuringSince } from '@/components/dashboard/CoverageNot
 
 // Booking attribution — mock until the booking page stores UTM/gclid on each
 // booking row. Bookings attributed to ads × their service prices (bookings table).
-const MOCK_AD_BOOKINGS = { count: 27, revenueSEK: 32_400 }
+const MOCK_AD_BOOKINGS = { count: 27, revenueSEK: 28_350 }
 
 /* ── Period scaling — deterministic factors, same approach as SEODashboardTest2 ──
  * Flow metrics (spend, clicks, customers, wasted spend) scale with the period:

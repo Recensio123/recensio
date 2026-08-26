@@ -27,13 +27,16 @@ const mockData: GBPData = {
   daysSincePost: 47,
 
   recentReviews: [
-    { author: 'Anna S.',   rating: 5, text: 'Excellent service, really happy with the result!',      publishedAt: '2026-05-20T09:00:00Z' },
-    { author: 'Marcus L.', rating: 3, text: 'Good work but took longer than expected.',              publishedAt: '2026-05-14T14:30:00Z' },
-    { author: 'Sofia K.',  rating: 5, text: 'Very professional team. Would definitely recommend.',   publishedAt: '2026-05-08T11:15:00Z' },
+    /* Samma tre personer som står på sajten. Två uppsättningar omdömen om
+       samma salong — en på engelska här och en på svenska i sidredigeraren —
+       var det tydligaste tecknet på att exempeldatan inte hängde ihop. */
+    { author: 'Anna Lindström', rating: 5, text: 'Fantastiskt bemötande och resultat som överträffade alla förväntningar. Kommer definitivt tillbaka!', publishedAt: '2026-05-20T09:00:00Z' },
+    { author: 'Sofia Nilsson',  rating: 4, text: 'Mycket nöjd med resultatet. Personalen är hjälpsam och lyhörd för önskemål.',                          publishedAt: '2026-05-14T14:30:00Z' },
+    { author: 'Erik Johansson', rating: 5, text: 'Professionellt och personligt. Man känner sig verkligen välkommen från första stund.',                  publishedAt: '2026-05-08T11:15:00Z' },
   ],
 
   lastPost: {
-    text:        'Spring campaign now live — check out our latest offers and get in touch for a free consultation.',
+    text:        'Höstens färger är här. Boka konsultation inför balayage eller slingor — konsultationen ingår.',
     publishedAt: '2026-04-10T10:00:00Z',
   },
 
@@ -46,15 +49,16 @@ const mockData: GBPData = {
   ],
 
   description: '',                   // not yet filled in — hasDescription = false
-  phone:       '+46 8 123 456 78',   // already set — hasPhone = true
+  phone:       '070 123 45 67',      // already set — hasPhone = true
 
   regularHours: [
-    { openDay: 'MONDAY',    openTime: '08:00', closeDay: 'MONDAY',    closeTime: '17:00' },
-    { openDay: 'TUESDAY',   openTime: '08:00', closeDay: 'TUESDAY',   closeTime: '17:00' },
-    { openDay: 'WEDNESDAY', openTime: '08:00', closeDay: 'WEDNESDAY', closeTime: '17:00' },
-    { openDay: 'THURSDAY',  openTime: '08:00', closeDay: 'THURSDAY',  closeTime: '17:00' },
-    { openDay: 'FRIDAY',    openTime: '08:00', closeDay: 'FRIDAY',    closeTime: '17:00' },
-    { openDay: 'SATURDAY',  openTime: '09:00', closeDay: 'SATURDAY',  closeTime: '13:00' },
+    /* Salongens tider, samma som står på sajten: 09–19 vardagar, 10–17 lördag. */
+    { openDay: 'MONDAY',    openTime: '09:00', closeDay: 'MONDAY',    closeTime: '19:00' },
+    { openDay: 'TUESDAY',   openTime: '09:00', closeDay: 'TUESDAY',   closeTime: '19:00' },
+    { openDay: 'WEDNESDAY', openTime: '09:00', closeDay: 'WEDNESDAY', closeTime: '19:00' },
+    { openDay: 'THURSDAY',  openTime: '09:00', closeDay: 'THURSDAY',  closeTime: '19:00' },
+    { openDay: 'FRIDAY',    openTime: '09:00', closeDay: 'FRIDAY',    closeTime: '19:00' },
+    { openDay: 'SATURDAY',  openTime: '10:00', closeDay: 'SATURDAY',  closeTime: '17:00' },
     // Sunday absent = closed
   ],
 

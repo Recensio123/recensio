@@ -1,5 +1,5 @@
 import { TEMPLATES, settingsFor, kanalFor, leadMs, type TemplateRow, type TemplateChannel } from '@/lib/messageTemplates'
-import { läsKontaktsätt } from '@/lib/kontaktsatt'
+import type { Kanalval } from '@/lib/kontaktsatt'
 
 /*
  * Kön av utskick per bokning.
@@ -59,19 +59,21 @@ export type KommandeBokning = {
  *  flit: den skickas från servern till panelen. */
 export type KöInst = {
   confirmation: { enabled: boolean; channel: TemplateChannel }
-  reminder:     { enabled: boolean; ms: number }
-  review:       { enabled: boolean; ms: number }
+  /* Kanalen följer med. De två bär sitt eget val, och listan visar vad varje
+     bokning faktiskt kommer att få — en rad som säger SMS när mailet går är
+     värre än ingen rad alls. */
+  reminder:     { enabled: boolean; ms: number; channel: TemplateChannel }
+  review:       { enabled: boolean; ms: number; channel: TemplateChannel }
 }
 
-export function köInst(rader: TemplateRow[], kontakt: unknown): KöInst {
-  const k = läsKontaktsätt(kontakt)
+export function köInst(rader: TemplateRow[], val: Kanalval): KöInst {
   const s = Object.fromEntries(
-    TEMPLATES.map(t => [t.kind, settingsFor(rader, t.kind, kanalFor(t.kind, k))]),
+    TEMPLATES.map(t => [t.kind, settingsFor(rader, t.kind, kanalFor(t.kind, val))]),
   )
   return {
     confirmation: { enabled: s.confirmation.enabled, channel: s.confirmation.channel },
-    reminder:     { enabled: s.reminder.enabled, ms: leadMs(s.reminder) },
-    review:       { enabled: s.review.enabled,   ms: leadMs(s.review) },
+    reminder:     { enabled: s.reminder.enabled, ms: leadMs(s.reminder), channel: s.reminder.channel },
+    review:       { enabled: s.review.enabled,   ms: leadMs(s.review),   channel: s.review.channel },
   }
 }
 
@@ -114,14 +116,14 @@ export function köFor(b: Rå, inst: KöInst, nu: number): KommandeBokning | nul
   if (inst.reminder.enabled) {
     const när = start - inst.reminder.ms
     planerat.push({
-      kind: 'reminder', channel: 'sms', när: new Date(när).toISOString(),
+      kind: 'reminder', channel: inst.reminder.channel, när: new Date(när).toISOString(),
       skickat: b.påmind ?? false, över: b.överPåminnelse ?? false,
     })
   }
   if (inst.review.enabled) {
     const när = start + inst.review.ms
     planerat.push({
-      kind: 'review', channel: 'sms', när: new Date(när).toISOString(),
+      kind: 'review', channel: inst.review.channel, när: new Date(när).toISOString(),
       skickat: b.omdömt ?? false, över: b.överOmdöme ?? false,
     })
   }

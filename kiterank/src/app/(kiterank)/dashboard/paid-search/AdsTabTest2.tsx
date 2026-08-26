@@ -436,8 +436,8 @@ export function SnippetsCard({ initialSnippet }: { initialSnippet?: AdSnippet } 
   const failedMsg = sv ? 'Kunde inte spara' : 'Save failed'
 
   const placeholders = sv
-    ? ['Akut rörmokare', 'Byte av varmvattenberedare', 'Stopp i avlopp', 'Värmereparationer']
-    : ['Emergency plumber', 'Boiler installation', 'Drain clearing', 'Heating repairs']
+    ? ['Balayage', 'Slingor', 'Klippning', 'Bruduppsättning']
+    : ['Balayage', 'Highlights', 'Haircuts', 'Bridal hair']
 
   async function save() {
     const vals = values.filter(v => v.trim())

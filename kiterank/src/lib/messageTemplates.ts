@@ -15,7 +15,7 @@
 import type { createAdminClient } from './supabase/admin'
 import { fill, type PlaceholderValues } from './bookingText'
 import type { Channel } from './sendMessage'
-import { hämtaKontaktsätt } from './kontaktsatt'
+import { hämtaKanalval, type Kanalval } from './kontaktsatt'
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -291,8 +291,21 @@ export async function templateSettings(
  * besöket är färskt eller inte alls. Ett SMS läses inom minuter, ett mail när
  * det passar. Salongen väljer därför bara om de ska skickas, inte hur.
  */
-export function kanalFor(kind: TemplateKind, kontakt: TemplateChannel): TemplateChannel {
-  return kind === 'confirmation' || kind === 'cancellation' ? kontakt : 'sms'
+/**
+ * Vilken kanal ett meddelande går i.
+ *
+ * Bekräftelsen och avbokningen följer salongens kontaktsätt utan undantag. De
+ * är svar på något kunden just gjort, och de går i det format kunden nyss
+ * lämnade sina uppgifter för.
+ *
+ * De två tidsstyrda bär sitt eget val, och null betyder att de följer
+ * kontaktsättet. Skälet att de får välja: en påminnelse ska läsas inom några
+ * timmar och gör det bäst som SMS, medan en recensionsförfrågan mår bra av ett
+ * mail där länken blir en knapp i stället för tecken som kostar.
+ */
+export function kanalFor(kind: TemplateKind, val: Kanalval): TemplateChannel {
+  if (kind === 'confirmation' || kind === 'cancellation') return val.kontakt
+  return (kind === 'reminder' ? val.reminder : val.review) ?? val.kontakt
 }
 
 /**
@@ -310,11 +323,11 @@ export function kanalFor(kind: TemplateKind, kontakt: TemplateChannel): Template
 export async function aktivMall(
   admin: Admin, companyId: string, kind: TemplateKind,
 ): Promise<{ mall: TemplateSettings; kanal: TemplateChannel | null }> {
-  const [rows, kontakt] = await Promise.all([
+  const [rows, val] = await Promise.all([
     fetchTemplates(admin, companyId),
-    hämtaKontaktsätt(admin, companyId),
+    hämtaKanalval(admin, companyId),
   ])
-  const kanal = kanalFor(kind, kontakt)
+  const kanal = kanalFor(kind, val)
   const mall  = settingsFor(rows, kind, kanal)
   return { mall, kanal: mall.enabled ? kanal : null }
 }

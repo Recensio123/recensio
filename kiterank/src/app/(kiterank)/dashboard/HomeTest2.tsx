@@ -34,7 +34,7 @@ const CATEGORY_SV: Record<string, string> = {
 // Exempelsiffror. Vilket läge vyerna kör i avgörs av VISA_EXEMPEL i lib/datalage.
 const MOCK_DATA = {
   reviewCount:       47,
-  responded:         19,
+  responded:         44,
   newReviews:        3,
   impressionsDelta:  12,
   budgetPct:         64,
@@ -46,7 +46,7 @@ const T = {
     subtitle:        'Vad som hänt, och vad du gör härnäst',
     sample:          'Exempeldata',
     thisWeek:        'Denna vecka',
-    headline:        '14 nya kunder hittade dig via Google',
+    headline:        '27 bokningar kom via annonserna',
     headlineSub:     'Upp från 11 förra veckan. Nedan ser du varifrån de kom.',
     digestLink:      'Förhandsgranska din måndagsrapport →',
     alertReviews:    (n: number) => `${n} Google-recension${n === 1 ? '' : 'er'} väntar på svar`,
@@ -83,7 +83,7 @@ const T = {
       { label: 'Annonser',          unit: 'per kund',        href: '/dashboard/paid-search' },
       { label: 'Hemsida',           unit: 'besök',           href: '/dashboard/analytics'   },
     ],
-    adsBookingUnit:  'tillbaka per annonskrona · 32 400 kr',
+    adsBookingUnit:  'tillbaka per annonskrona · 28 350 kr',
   },
   en: {
     subtitle:        'What changed, and what to do next',
@@ -126,7 +126,7 @@ const T = {
       { label: 'Ads',                 unit: 'per customer',  href: '/dashboard/paid-search' },
       { label: 'Website',             unit: 'visits',        href: '/dashboard/analytics'   },
     ],
-    adsBookingUnit:  'back on ad spend · 32 400 kr',
+    adsBookingUnit:  'back on ad spend · 28 350 kr',
   },
 }
 

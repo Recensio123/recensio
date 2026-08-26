@@ -163,6 +163,10 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
   const [name,             setName]             = useState('')
   const [phone,            setPhone]            = useState('+46 ')
   const [email,            setEmail]            = useState('')
+  /* Ikryssad = kunden vill inte ha erbjudanden. Skickas med bokningen och
+     hamnar i salongens nej-lista direkt, så att undantaget för befintligt
+     kundförhållande är uppfyllt från första sekunden. */
+  const [ingaErbjudanden,  setIngaErbjudanden]  = useState(false)
   const [note,             setNote]             = useState('')
 
   const totalDuration = selectedServices.reduce((s, x) => s + x.duration_minutes, 0)
@@ -239,6 +243,7 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
         customer_email:  email,
         customer_note:   note,
         sms_opt_in:      true,
+        inga_erbjudanden: ingaErbjudanden,
         source_channel:  utm,
       }),
     })
@@ -661,6 +666,37 @@ export function BookingFlow({ slug, companyName }: { slug: string; companyName: 
                     onBlur={focusOut}
                   />
                 </div>
+
+                {/*
+                  * Möjligheten att tacka nej, vid insamlingen.
+                  *
+                  * Salongen får skicka erbjudanden till någon som redan varit
+                  * kund — men bara om personen fick tacka nej redan här. Utan
+                  * den här rutan faller undantaget, hur välskrivet utskicket
+                  * än är, och då är varje erbjudande olagligt.
+                  *
+                  * Ikryssad betyder nej. Rutan står tom som förval eftersom en
+                  * förikryssad ruta inte räknas som ett aktivt val — men här är
+                  * tomrutan "ja tack" i lagens mening, och det är just därför
+                  * texten måste vara omöjlig att missförstå.
+                  */}
+                <label
+                  style={{
+                    display: 'flex', gap: '10px', alignItems: 'flex-start',
+                    fontSize: '12.5px', color: '#777', lineHeight: 1.6, cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={ingaErbjudanden}
+                    onChange={e => setIngaErbjudanden(e.target.checked)}
+                    style={{ marginTop: '2px', width: '15px', height: '15px', flexShrink: 0, cursor: 'pointer' }}
+                  />
+                  <span>
+                    {companyName} kan komma att skicka erbjudanden om sina tjänster till dig.
+                    Kryssa i rutan om du inte vill ha det — du kan tacka nej när som helst senare också.
+                  </span>
+                </label>
               </div>
             </div>
           )}

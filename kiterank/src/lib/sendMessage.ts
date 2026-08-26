@@ -20,7 +20,7 @@
  *   om, så inget stämplas.
  */
 
-import { sendMail, platformFrom, type MailFrom } from './mailer'
+import { sendMail, mailSender, platformFrom, type MailFrom } from './mailer'
 import { sendSms, smsSender, smsConfigured } from './smser'
 
 export type Channel = 'email' | 'sms' | 'both'
@@ -51,6 +51,9 @@ export type Message = {
   /** Avsändarnamnet kunden ser. Salongens eget val; utan det skalas
    *  salongsnamnet till samma form. */
   smsFrom?:  string | null
+  /** Detsamma för inkorgen. Eget fält och inte samma som SMS:ets, eftersom
+   *  gränserna skiljer sig: elva rena tecken där, fyrtio med å ä ö här. */
+  mailFrom?: string | null
 }
 
 export async function sendMessage(m: Message): Promise<MessageResult> {
@@ -69,7 +72,7 @@ export async function sendMessage(m: Message): Promise<MessageResult> {
       /* Ingen Reply-To. Utskicken är enkelriktade, och det står i mailet — ett
          svarsspår till en inkorg ingen bevakar är sämre än ett tydligt nej.
          Avsändaradressen sätts till en noreply-adress via MAIL_FROM. */
-      const avsändare: MailFrom = { email: from, name: m.salong }
+      const avsändare: MailFrom = { email: from, name: mailSender(m.salong, m.mailFrom) }
       const r = await sendMail({
         to: m.email.trim(), from: avsändare,
         subject: m.subject, text: m.text, html: m.html,

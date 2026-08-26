@@ -3,7 +3,8 @@ import { currentAccess } from '@/lib/access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { saveTemplate, MAX_LEDTID, TEMPLATES, type TemplateKind, type TemplatePatch, type TemplateChannel } from '@/lib/messageTemplates'
 import { smsUiUnlocked, rensaAvsandare } from '@/lib/smser'
-import { sparaKontaktsätt, läsKontaktsätt } from '@/lib/kontaktsatt'
+import { rensaMailavsandare } from '@/lib/mailer'
+import { sparaKontaktsätt, läsKontaktsätt, läsKanal, sparaKanal } from '@/lib/kontaktsatt'
 import { meddelandeData } from '@/lib/meddelandenData'
 
 /*
@@ -92,6 +93,52 @@ export async function PUT(req: Request) {
     const admin = createAdminClient()
     const { error } = await admin
       .from('companies').update({ sms_sender: rent || null }).eq('id', access.companyId)
+    return error
+      ? NextResponse.json({ error: 'save_failed' }, { status: 500 })
+      : NextResponse.json({ ok: true })
+  }
+
+  /*
+   * Kanalen för påminnelsen eller recensionsförfrågan.
+   *
+   * Egen gren och inte en del av `channel` ovan: den styr bekräftelsen och
+   * avbokningen och avgör vilken uppgift bokningsformuläret kräver, medan den
+   * här bara flyttar ett av de två tidsstyrda.
+   *
+   * Null lägger tillbaka meddelandet under kontaktsättet. Det är ett giltigt
+   * val och inte ett saknat — salongen som byter kontaktsätt ska få med sig de
+   * två utan att gå in och ändra dem också.
+   */
+  if (typeof b.kindChannel === 'string') {
+    if (b.kindChannel !== 'reminder' && b.kindChannel !== 'review') {
+      return NextResponse.json({ error: 'invalid_kind' }, { status: 400 })
+    }
+    const val = läsKanal(b.value)
+    /* SMS utan nycklar skickar ingenting. Att låta salongen välja det vore att
+       göra numret obligatoriskt i bokningen för ett meddelande som aldrig går. */
+    if (val === 'sms' && !smsUiUnlocked()) {
+      return NextResponse.json({ error: 'sms_not_ready' }, { status: 400 })
+    }
+    const admin = createAdminClient()
+    const ok = await sparaKanal(admin, access.companyId, b.kindChannel, val)
+    return ok
+      ? NextResponse.json({ ok: true })
+      : NextResponse.json({ error: 'save_failed' }, { status: 500 })
+  }
+
+  /* Avsändarnamnet i inkorgen. Samma skäl att ligga här som SMS-namnet, och
+     samma innebörd för tomt fält: namnet hämtas från Branding igen. */
+  if (typeof b.mailSender === 'string') {
+    const rent = rensaMailavsandare(b.mailSender)
+    /* Ett namn helt utan bokstäver avvisas. I inkorgen står avsändaren där
+       ett namn förväntas, och "070 123 45 67" som avsändare läser som
+       nätfiske — vilket är precis den plats där en kund ska tveka. */
+    if (rent && !/\p{L}/u.test(rent)) {
+      return NextResponse.json({ error: 'invalid_sender' }, { status: 400 })
+    }
+    const admin = createAdminClient()
+    const { error } = await admin
+      .from('companies').update({ email_sender: rent || null }).eq('id', access.companyId)
     return error
       ? NextResponse.json({ error: 'save_failed' }, { status: 500 })
       : NextResponse.json({ ok: true })

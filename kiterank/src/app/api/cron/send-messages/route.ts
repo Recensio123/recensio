@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchTemplates, settingsFor, kanalFor, leadMs } from '@/lib/messageTemplates'
 import { sendTimedMessage, type TimedBooking } from '@/lib/timedMessages'
 import { TYSTA_SKÄL } from '@/lib/sendMessage'
-import { hämtaKontaktsätt } from '@/lib/kontaktsatt'
+import { hämtaKanalval } from '@/lib/kontaktsatt'
 import { fetchPolicy } from '@/lib/bookingPolicy'
 
 /*
@@ -63,13 +63,13 @@ export async function GET(request: NextRequest) {
     /* Kontaktsättet gäller bekräftelsen och avbokningen. De två här väljer
        kanal själva — en påminnelse ska läsas i tid, en recensionsförfrågan mår
        bra av en knapp — så kanalen slås upp per meddelande. */
-    const kontakt = await hämtaKontaktsätt(admin, companyId)
+    const kanalval = await hämtaKanalval(admin, companyId)
     /* Salongens egen gräns för hur sent en bokning får göras och ändå få en
        påminnelse. Läses en gång per salong, inte per bokning. */
     const hoppaSent = (await fetchPolicy(admin, companyId)).reminder_skip_hours * TIMME
 
     for (const kind of ['reminder', 'review'] as const) {
-      const channel = kanalFor(kind, kontakt)
+      const channel = kanalFor(kind, kanalval)
       const s = settingsFor(mallar, kind, channel)
       if (!s.enabled) continue
 

@@ -4,7 +4,7 @@ import {
   type TemplateChannel,
 } from '@/lib/messageTemplates'
 import {
-  läsKontaktsätt, golvFor, STANDARD_KONTAKT,
+  golvFor, hämtaKanalval,
   type Kontaktsätt, type Krav,
 } from '@/lib/kontaktsatt'
 
@@ -31,28 +31,24 @@ type Admin = ReturnType<typeof createAdminClient>
 export async function hämtaKrav(
   admin: Admin, companyId: string,
 ): Promise<{ kanal: Kontaktsätt; krav: Krav }> {
-  const [res, rader] = await Promise.all([
-    admin
-      .from('companies')
-      .select('contact_channel')
-      .eq('id', companyId)
-      .maybeSingle(),
+  const [val, rader] = await Promise.all([
+    hämtaKanalval(admin, companyId),
     fetchTemplates(admin, companyId),
   ])
 
-  /* Kolumnen är en sen migration — utan den gäller standarden i stället för att
-     bokningssidan faller. */
-  const kanal = res.error ? STANDARD_KONTAKT : läsKontaktsätt(res.data?.contact_channel)
+  /* Påminnelsen och recensionsförfrågan bär sin egen kanal. Är någon av dem
+     påslagen måste den uppgiften finnas — annars är meddelandet påslaget för
+     alla och når ingen. Ett avstängt meddelande kräver ingenting.
 
-  /* Påminnelsen och recensionsförfrågan går som SMS. Är någon av dem påslagen
-     måste numret finnas — annars är den påslagen för alla och når ingen. Ett
-     avstängt meddelande kräver ingenting. */
+     Det är därför golvet räknas ur mallarna och inte ur kontaktsättet ensamt:
+     en salong som mailar sina bekräftelser men påminner via SMS behöver båda
+     uppgifterna, och den kombinationen syns bara här. */
   const används: TemplateChannel[] = []
   for (const t of TEMPLATES) {
     if (!t.ledtid) continue
-    const k = kanalFor(t.kind, kanal)
+    const k = kanalFor(t.kind, val)
     if (settingsFor(rader, t.kind, k).enabled) används.push(k)
   }
 
-  return { kanal, krav: golvFor(kanal, används) }
+  return { kanal: val.kontakt, krav: golvFor(val.kontakt, används) }
 }

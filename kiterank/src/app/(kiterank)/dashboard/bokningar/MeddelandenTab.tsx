@@ -4,11 +4,12 @@ import {
   TEMPLATES, settingsFor, kanalFor, MAX_LEDTID,
   type TemplateKind, type TemplateRow, type TemplateChannel,
 } from '@/lib/messageTemplates'
-import { läsKontaktsätt, type Kontaktsätt } from '@/lib/kontaktsatt'
+import { läsKontaktsätt, läsKanal, type Kontaktsätt, type Kanalval } from '@/lib/kontaktsatt'
 import type { MeddelandeData } from '@/lib/meddelandenData'
 import { OsparatRad, useOsparat } from '@/components/dashboard/Osparat'
 
 import { previewOf } from '@/lib/bookingText'
+import { rensaMailavsandare } from '@/lib/mailer'
 import { rensaAvsandare } from '@/lib/smser'
 
 /*
@@ -41,10 +42,18 @@ import { rensaAvsandare } from '@/lib/smser'
  *  med bara det som ändrats ifyllt. */
 type Val = {
   kanal:     Kontaktsätt
+  /* Kanal för de tidsstyrda. Null betyder att de följer kontaktsättet ovan —
+     inte att inget är valt. En salong som byter kontaktsätt ska få med sig de
+     två utan att gå in och ändra dem också. */
+  påminnKanal: Kontaktsätt | null
+  omdömeKanal: Kontaktsätt | null
   /** På/av och ledtid per meddelande. */
   mallar:    Record<string, { enabled: boolean; leadValue: number }>
   telefon:   string
   avsändare: string
+  /* Avsändarnamnet i inkorgen. Eget fält och inte samma som SMS:ets: elva rena
+     tecken där, fyrtio med å ä ö här. */
+  mejlnamn:  string
   reviewUrl: string
 }
 
@@ -53,9 +62,16 @@ type Val = {
 function urData(d: MeddelandeData) {
   const rader  = d.templates ?? []
   const kanal  = läsKontaktsätt(d.channel)
+  /* Kanalvalet först: vilken rad varje mall läses ur beror på det, och läser
+     panelen ur fel rad visar den en text salongen aldrig skrivit. */
+  const val: Kanalval = {
+    kontakt:  kanal,
+    reminder: läsKanal(d.reminderChannel),
+    review:   läsKanal(d.reviewChannel),
+  }
   const mallar: Val['mallar'] = {}
   for (const t of TEMPLATES) {
-    const s = settingsFor(rader, t.kind, kanalFor(t.kind, kanal))
+    const s = settingsFor(rader, t.kind, kanalFor(t.kind, val))
     mallar[t.kind] = { enabled: s.enabled, leadValue: s.leadValue }
   }
   return {
@@ -65,12 +81,18 @@ function urData(d: MeddelandeData) {
     mailRam:     d.mailRam  ?? {},
     smsExtra:    d.smsExtra ?? {},
     reviewLink:  d.reviewLink ?? '',
+    avbokaExempel: d.avbokaExempel ?? '',
     telStandard: d.phoneUsed ?? '',
     avsStandard: d.smsSenderUsed ?? '',
+    mejlStandard: d.mailSenderUsed ?? '',
+    mejlMax:      d.mailSenderMax ?? 40,
     val: {
       kanal, mallar,
+      påminnKanal: val.reminder,
+      omdömeKanal: val.review,
       telefon:   d.phoneOwn ?? '',
       avsändare: d.smsSenderOwn ?? '',
+      mejlnamn:  d.mailSenderOwn ?? '',
       reviewUrl: d.reviewUrl ?? '',
     } as Val,
   }
@@ -88,9 +110,12 @@ export function MeddelandenTab({ initial = null }: { initial?: MeddelandeData | 
   const [mailRam,    setMailRam]    = useState<Record<string, string[]>>(start?.mailRam ?? {})
   const [smsExtra,   setSmsExtra]   = useState<Record<string, string>>(start?.smsExtra ?? {})
   const [reviewLink, setReviewLink] = useState(start?.reviewLink ?? '')
+  const [avbokaExempel, setAvbokaExempel] = useState(start?.avbokaExempel ?? '')
   /* Vad hemsidan säger, när salongen inte skrivit något eget. */
   const [telStandard, setTelStandard] = useState(start?.telStandard ?? '')
   const [avsStandard, setAvsStandard] = useState(start?.avsStandard ?? '')
+  const [mejlStandard, setMejlStandard] = useState(start?.mejlStandard ?? '')
+  const [mejlMax, setMejlMax] = useState(start?.mejlMax ?? 40)
 
   /* Det som lästes in, och det salongen ändrat ovanpå. Skillnaden mellan dem är
      precis det som ska sparas. */
@@ -120,8 +145,11 @@ export function MeddelandenTab({ initial = null }: { initial?: MeddelandeData | 
     setMailRam(x.mailRam)
     setSmsExtra(x.smsExtra)
     setReviewLink(x.reviewLink)
+    setAvbokaExempel(x.avbokaExempel)
     setTelStandard(x.telStandard)
     setAvsStandard(x.avsStandard)
+    setMejlStandard(x.mejlStandard)
+    setMejlMax(x.mejlMax)
     setLäst(x.val)
     setUtkast({})
   }, [])
@@ -145,17 +173,29 @@ export function MeddelandenTab({ initial = null }: { initial?: MeddelandeData | 
     mallar: { ...läst.mallar, ...utkast.mallar },
   }
 
+  /* Kanalvalet i den form regeln vill ha det. Samma funktion avgör här som ute
+     i utskicket vilken kanal varje meddelande går i — panelen får aldrig räkna
+     ut det på sitt eget sätt, för då visar den förr eller senare en annan kanal
+     än den kunden får. */
+  const kanalval: Kanalval = {
+    kontakt: v.kanal, reminder: v.påminnKanal, review: v.omdömeKanal,
+  }
+
   const ändrat = {
-    kanal:     v.kanal     !== läst.kanal,
+    kanal:     v.kanal       !== läst.kanal,
+    påminnKanal: v.påminnKanal !== läst.påminnKanal,
+    omdömeKanal: v.omdömeKanal !== läst.omdömeKanal,
     telefon:   v.telefon   !== läst.telefon,
     avsändare: v.avsändare !== läst.avsändare,
+    mejlnamn:  v.mejlnamn  !== läst.mejlnamn,
     reviewUrl: v.reviewUrl !== läst.reviewUrl,
     mallar:    TEMPLATES.filter(t =>
       v.mallar[t.kind].enabled      !== läst.mallar[t.kind].enabled
       || v.mallar[t.kind].leadValue !== läst.mallar[t.kind].leadValue
       ),
   }
-  const osparat = ändrat.kanal || ändrat.telefon || ändrat.avsändare
+  const osparat = ändrat.kanal || ändrat.påminnKanal || ändrat.omdömeKanal
+    || ändrat.telefon || ändrat.avsändare || ändrat.mejlnamn
     || ändrat.reviewUrl || ändrat.mallar.length > 0
 
   /* Ändra ett fält i utkastet. */
@@ -178,15 +218,18 @@ export function MeddelandenTab({ initial = null }: { initial?: MeddelandeData | 
       }
 
       /* Kanalen först: den avgör vilken rad de andra ändringarna hör till. */
-      if (ändrat.kanal)     await skicka({ channel: v.kanal })
+      if (ändrat.kanal)       await skicka({ channel: v.kanal })
+      if (ändrat.påminnKanal) await skicka({ kindChannel: 'reminder', value: v.påminnKanal })
+      if (ändrat.omdömeKanal) await skicka({ kindChannel: 'review',   value: v.omdömeKanal })
       if (ändrat.telefon)   await skicka({ contactPhone: v.telefon })
       if (ändrat.avsändare) await skicka({ smsSender: v.avsändare })
+      if (ändrat.mejlnamn)  await skicka({ mailSender: v.mejlnamn })
       if (ändrat.reviewUrl) await skicka({ reviewUrl: v.reviewUrl })
 
       for (const t of ändrat.mallar) {
         await skicka({
           kind:    t.kind,
-          channel: kanalFor(t.kind, v.kanal),
+          channel: kanalFor(t.kind, kanalval),
           enabled: v.mallar[t.kind].enabled,
           ...(t.ledtid ? { lead_value: v.mallar[t.kind].leadValue } : {}),
         })
@@ -208,6 +251,7 @@ export function MeddelandenTab({ initial = null }: { initial?: MeddelandeData | 
       spara={spara} sätt={sätt} sättMall={sättMall}
       rows={rows} smsReady={smsReady} smsMånad={smsMånad} mailRam={mailRam} smsExtra={smsExtra}
       reviewLink={reviewLink} telStandard={telStandard} avsStandard={avsStandard}
+      mejlStandard={mejlStandard} mejlMax={mejlMax} avbokaExempel={avbokaExempel}
     />
   )
 }
@@ -217,6 +261,7 @@ export function MeddelandenTab({ initial = null }: { initial?: MeddelandeData | 
 function Innehåll({
   v, osparat, sparar, sparad, fel, spara, sätt, sättMall,
   rows, smsReady, smsMånad, mailRam, smsExtra, reviewLink, telStandard, avsStandard,
+  mejlStandard, mejlMax, avbokaExempel,
 }: {
   v:           Val
   osparat:     boolean
@@ -236,18 +281,30 @@ function Innehåll({
   reviewLink:  string
   telStandard: string
   avsStandard: string
+  mejlStandard: string
+  mejlMax: number
+  /** Adressen till förhandsvisningen av kundens avbokningssida. */
+  avbokaExempel: string
 }) {
   useOsparat({ osparat, sparar, sparad, fel, spara })
 
+  const kanalval: Kanalval = {
+    kontakt: v.kanal, reminder: v.påminnKanal, review: v.omdömeKanal,
+  }
+
   /* Går något som SMS över huvud taget? Kontaktsättet styr bekräftelsen och
-     avbokningen, de tidsstyrda väljer själva. */
+     avbokningen, de tidsstyrda väljer själva — och ett påslaget meddelande som
+     valt SMS räknas även när salongen i övrigt mailar. Det är svaret på om
+     SMS-avsändaren är något salongen behöver se. */
   const smsAnvänds = v.kanal === 'sms'
-    || TEMPLATES.some(t => t.ledtid && v.mallar[t.kind].enabled)
+    || TEMPLATES.some(t =>
+      t.ledtid && v.mallar[t.kind].enabled && kanalFor(t.kind, kanalval) === 'sms')
 
   /* Fälten står ifyllda med hemsidans värden när salongen inte skrivit något
      eget. En ruta som ser tom ut läses som något man måste fylla i. */
   const telFält = v.telefon   || telStandard
-  const avsFält = v.avsändare || avsStandard
+  const avsFält  = v.avsändare || avsStandard
+  const mejlFält = v.mejlnamn  || mejlStandard
 
   const omdömeslänk = reviewLink || v.reviewUrl.trim()
   const egnaVärden  = omdömeslänk ? { '{omdömeslänk}': omdömeslänk } : undefined
@@ -304,41 +361,77 @@ function Innehåll({
           })}
         </div>
 
-        {/* Numret kunden kan ringa. Våra utskick går inte att svara på, så det
-            här är den enda vägen tillbaka för den som vill prata med någon.
-            Hämtas från hemsidans kontaktuppgifter, men går att skriva över. */}
-        <div className="mt-5 pt-5 border-t border-navy-700">
-          <label className="block text-white text-xs font-semibold mb-1">{T.phoneTitle}</label>
-          <p className="text-slate-400 text-xs mb-2 leading-relaxed">{T.phoneHelp}</p>
-          <input
-            value={telFält}
-            onChange={e => sätt({ telefon: e.target.value })}
-            placeholder="070 123 45 67"
+        {/*
+          * Uppgifterna kunden möter: numret de kan ringa och namnen de ser som
+          * avsändare. Tre fält på en rad och inte tre staplade block — de gör
+          * samma sak, de fylls i vid samma tillfälle, och staplade läser de som
+          * tre separata ärenden.
+          *
+          * Två avsändarfält och inte ett, eftersom kanalerna inte tål samma
+          * namn: SMS har GSM-standardens elva tecken utan å, ä, ö, mejlet har
+          * inget sådant tvång. Ett gemensamt fält hade tvingat ner inkorgen
+          * till SMS:ets form, och "SalongNords" i inkorgen är sämre än det
+          * behöver vara.
+          *
+          * Alla tre hämtar sitt värde från hemsidan när fältet är tomt. Det som
+          * skiljer är vad som händer på vägen: SMS-namnet tvättas och det
+          * tvättade är vad kunden ser, mejlnamnet går fram som det stavas.
+          */}
+        <div className={`mt-5 pt-5 border-t border-navy-700 grid gap-x-6 gap-y-5 sm:grid-cols-2 ${
+          smsAnvänds ? 'lg:grid-cols-3' : ''
+        }`}>
+          <Fält
+            titel={T.phoneTitle}
+            hjälp={T.phoneHelp}
+            värde={telFält}
+            onChange={x => sätt({ telefon: x })}
             maxLength={24}
-            className="w-44 bg-navy-900 border border-navy-600 focus:border-mustard text-white text-sm rounded-lg px-3 py-2 focus:outline-none"
+            placeholder="070 123 45 67"
+            fot={!telFält.trim()
+              ? <span className="text-amber-400">{T.phoneMissing}</span>
+              : null}
           />
-          {!telFält.trim() && (
-            <p className="text-amber-400 text-xs mt-2 leading-relaxed">{T.phoneMissing}</p>
+
+          {smsAnvänds && (
+            <Fält
+              titel={T.senderTitle}
+              hjälp={T.senderHelp}
+              värde={avsFält}
+              onChange={x => sätt({ avsändare: rensaAvsandare(x) })}
+              maxLength={11}
+              räknare
+              fot={<>{T.senderShown} <span className="text-slate-200">{avsFält || avsStandard}</span></>}
+            />
           )}
+
+          <Fält
+            titel={T.mailSender}
+            hjälp={T.mailHelp}
+            värde={mejlFält}
+            onChange={x => sätt({ mejlnamn: rensaMailavsandare(x) })}
+            maxLength={mejlMax}
+            räknare
+            fot={<>{T.senderShown} <span className="text-slate-200">{mejlFält || mejlStandard}</span></>}
+          />
         </div>
 
-        {/* Avsändarnamnet. Det första kunden ser i sitt SMS, och elva tecken är
-            GSM-standardens gräns — inte vår. Visas bara när något går som SMS. */}
-        {smsAnvänds && (
+        {/* Sidan bakom länken i meddelandet.
+            Salongen skickar den till varenda kund utan att någonsin ha sett den
+            själv — och den som inte vet vad kunden möter kan inte svara på
+            frågor om den. Öppnas i egen flik: den ligger på kundsidan och inte
+            i panelen, och ett klick ska inte kosta osparade ändringar. */}
+        {avbokaExempel && (
           <div className="mt-5 pt-5 border-t border-navy-700">
-            <label className="block text-white text-xs font-semibold mb-1">{T.senderTitle}</label>
-            <p className="text-slate-400 text-xs mb-2 leading-relaxed">{T.senderHelp}</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              <input
-                value={avsFält}
-                onChange={e => sätt({ avsändare: rensaAvsandare(e.target.value) })}
-                maxLength={11}
-                className="w-32 bg-navy-900 border border-navy-600 focus:border-mustard text-white text-sm rounded-lg px-3 py-2 focus:outline-none"
-              />
-              <span className="text-slate-500 text-xs tabular-nums">{avsFält.length}/11</span>
-            </div>
-            <p className="text-slate-500 text-xs mt-2">
-              {T.senderShown} <span className="text-slate-200">{avsFält || avsStandard}</span>
+            <p className="text-slate-400 text-xs leading-relaxed">
+              {T.cancelPageHelp}{' '}
+              <a
+                href={avbokaExempel}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-mustard hover:text-mustard-light underline underline-offset-2"
+              >
+                {T.cancelPageLink}
+              </a>
             </p>
           </div>
         )}
@@ -349,11 +442,15 @@ function Innehåll({
           const tidsstyrd = Boolean(spec.ledtid)
           /* Bekräftelsen och avbokningen följer kontaktsättet. De tidsstyrda bär
              sitt eget val. */
-          const c       = kanalFor(spec.kind, v.kanal)
+          const c       = kanalFor(spec.kind, kanalval)
           const m       = v.mallar[spec.kind]
           const mall    = settingsFor(rows, spec.kind, c)
           const smsBara = c === 'sms'
           const extra   = smsExtra[spec.kind] ?? ''
+          /* Bara SMS kräver en leverantör. Ett tidsstyrt meddelande som valt
+             mail ska gå att slå på även innan SMS är påkopplat — annars är hela
+             påminnelsen låst av något som inte rör den. */
+          const låstAvSms = smsBara && !smsReady
 
           return (
             <div key={spec.kind} className={`bg-navy-800 border rounded-xl p-6 transition-colors ${
@@ -364,9 +461,52 @@ function Innehåll({
                   <h3 className={`font-semibold text-sm ${m.enabled ? 'text-white' : 'text-slate-500'}`}>
                     {spec.namn}
                   </h3>
-                  <p className="text-slate-400 text-xs mt-1">
-                    {spec.när}{tidsstyrd && <> {T.smsOnly}</>}
-                  </p>
+                  <p className="text-slate-400 text-xs mt-1">{spec.när}</p>
+
+                  {/*
+                    * Kanalvalet, bara för de tidsstyrda.
+                    *
+                    * Bekräftelsen och avbokningen följer kontaktsättet högst upp
+                    * och har inget val här — de är svar på något kunden just
+                    * gjort, och de går i det format kunden nyss lämnade sina
+                    * uppgifter för.
+                    *
+                    * De två andra är en annan sak. En påminnelse ska läsas inom
+                    * några timmar och gör det bäst som SMS; en omdömesfråga mår
+                    * bra av ett mail, där länken blir en knapp i stället för
+                    * tecken som kostar.
+                    */}
+                  {tidsstyrd && (
+                    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+                      {([['email', T.chEmail], ['sms', T.chSms]] as const).map(([k, namn]) => {
+                        const vald = c === k
+                        const låst = k === 'sms' && !smsReady
+                        return (
+                          <button
+                            key={k}
+                            onClick={() => {
+                              if (låst) return
+                              sätt(spec.kind === 'reminder'
+                                ? { påminnKanal: k }
+                                : { omdömeKanal: k })
+                            }}
+                            disabled={låst}
+                            title={låst ? T.noSmsShort : undefined}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors border ${
+                              låst ? 'border-navy-800 text-slate-600 cursor-default'
+                              : vald ? 'border-mustard bg-mustard/10 text-mustard'
+                              : 'border-navy-600 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            {namn}
+                          </button>
+                        )
+                      })}
+                      <span className="text-slate-500 text-xs ml-1">
+                        {c === 'sms' ? T.smsWhy : T.mailWhy}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Bekräftelsen och avbokningen går inte att stänga av. En kund
@@ -374,14 +514,14 @@ function Innehåll({
                     har systemet skapat arbete i stället för att ta bort det. */}
                 {tidsstyrd ? (
                   <button
-                    onClick={() => { if (smsReady) sättMall(spec.kind, { enabled: !m.enabled }) }}
-                    disabled={!smsReady}
-                    title={smsReady ? undefined : T.noSmsShort}
+                    onClick={() => { if (!låstAvSms) sättMall(spec.kind, { enabled: !m.enabled }) }}
+                    disabled={låstAvSms}
+                    title={låstAvSms ? T.noSmsShort : undefined}
                     role="switch"
                     aria-checked={m.enabled}
                     aria-label={spec.namn}
                     className={`shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${
-                      !smsReady ? 'bg-navy-800' : m.enabled ? 'bg-mustard' : 'bg-navy-600'
+                      låstAvSms ? 'bg-navy-800' : m.enabled ? 'bg-mustard' : 'bg-navy-600'
                     }`}
                   >
                     <span className={`block w-5 h-5 rounded-full bg-white transition-transform ${
@@ -510,6 +650,60 @@ function SmsRäknare({ antal, segment, från }: { antal: number; segment: number
   )
 }
 
+/*
+ * Ett av fälten på raden.
+ *
+ * Ligger på modulnivå och inte inne i vyn med flit: en komponent som deklareras
+ * under renderingen får en ny identitet varje gång, och React river då fältet
+ * och bygger det på nytt — markören hoppar ur efter varje tecken. Felet ser ut
+ * som ett tangentbordsproblem och är ett struktursproblem.
+ *
+ * Hjälptexten tar den plats som blir över så att inmatningsfälten hamnar på
+ * samma höjd i alla tre kolumnerna, trots att texterna är olika långa. Utan det
+ * står fälten i trappa och raden ser slarvig ut även när den är rätt.
+ */
+function Fält({
+  titel, hjälp, värde, onChange, maxLength, placeholder, räknare = false, fot,
+}: {
+  titel: string
+  hjälp: string
+  värde: string
+  onChange: (v: string) => void
+  maxLength: number
+  placeholder?: string
+  räknare?: boolean
+  fot?: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col">
+      {/* Räknaren står vid etiketten och inte bredvid fältet: i en smal kolumn
+          äter den bredd som namnet behöver, och uppe till höger läser den ändå
+          som fältets egen. */}
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <label className="text-white text-xs font-semibold">{titel}</label>
+        {räknare && (
+          <span className="text-slate-500 text-xs tabular-nums shrink-0">
+            {värde.length}/{maxLength}
+          </span>
+        )}
+      </div>
+      <p className="text-slate-400 text-xs mb-2 leading-relaxed flex-1">{hjälp}</p>
+      <input
+        value={värde}
+        onChange={e => onChange(e.target.value)}
+        maxLength={maxLength}
+        placeholder={placeholder}
+        className="w-full bg-navy-900 border border-navy-600 focus:border-mustard text-white text-sm rounded-lg px-3 py-2 focus:outline-none"
+      />
+      {/* Fotraden reserverar två raders höjd i alla tre kolumnerna, även när
+          den är tom. Utan det bestämmer den längsta foten var just det fältet
+          hamnar, och inmatningsfälten står i trappa i stället för på linje —
+          plus att raden rycker till i höjd så fort ett nummer fylls i. */}
+      <p className="text-slate-500 text-xs mt-2 leading-relaxed min-h-10">{fot}</p>
+    </div>
+  )
+}
+
 const T = {
   title:        'Meddelanden till kunden',
   intro:        'Fyra besked utmed besöket. Du väljer vilka som går ut och när — texterna sköter vi.',
@@ -519,8 +713,12 @@ const T = {
   phoneHelp:    'Numret kunden kan ringa när de vill ändra något — våra utskick går inte att svara på. Hämtas från kontaktuppgifterna på din hemsida, men du kan skriva ett annat här.',
   phoneMissing: 'Utan nummer står kunden utan väg tillbaka om de vill prata med någon.',
   senderTitle:  'Avsändarnamn i SMS',
-  senderHelp:   'Det första kunden ser. Max 11 tecken, bokstäver och siffror — det är vad mobilnäten släpper igenom. Lämnar du fältet tomt används företagsnamnet från din hemsida.',
+  mailSender:   'Avsändarnamn i e-post',
+  mailHelp:     'Det som står som avsändare i inkorgen. Lämnar du fältet tomt används företagsnamnet från din hemsida.',
+  senderHelp:   'Avsändare för sms. Lämnar du fältet tomt används företagsnamnet från din hemsida. Max 11 tecken',
   senderShown:  'Kunden ser:',
+  cancelPageHelp: 'Bekräftelsen och påminnelsen bär en länk dit kunden kan avboka eller ändra sin tid.',
+  cancelPageLink: 'Se sidan kunden kommer till',
   chEmail:      'E-post',
   chSms:        'SMS',
   emailWhat:    'Bekräftelser och påminnelser som mail. Kostar ingenting per utskick och rymmer hela texten.',
@@ -528,7 +726,8 @@ const T = {
   emailRequires:'Kunden fyller i sin e-postadress när de bokar',
   smsRequires:  'Kunden fyller i sitt mobilnummer när de bokar',
   always:       'Alltid på',
-  smsOnly:      'Går som SMS — det läses inom minuter, och båda de här är beroende av att läsas i tid.',
+  smsWhy:       'Läses inom minuter, kostar per utskick.',
+  mailWhy:      'Kostar ingenting, men läses när kunden öppnar sin inkorg.',
   before:       'Före besöket:',
   after:        'Efter besöket:',
   hours:        'timmar',
