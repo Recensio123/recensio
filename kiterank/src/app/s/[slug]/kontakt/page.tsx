@@ -1,4 +1,5 @@
 import { notFound, permanentRedirect } from 'next/navigation'
+import { jsonLd } from '@/lib/jsonLd'
 import { sectionPageTitle } from '@/lib/sectionPages'
 import type { Metadata } from 'next'
 import { BookButton } from '@/components/site/PreviewSite'
@@ -80,7 +81,7 @@ export default async function ContactPage({ params }: Props) {
 
   return (
     <SitePage site={site} current="kontakt">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(schema) }} />
 
       <main style={{ maxWidth: 640, margin: '0 auto', padding: '72px 24px 96px' }}>
         <h1 style={{ fontSize: 40, fontWeight: 800, color: c.h, letterSpacing: -1, marginBottom: 8 }}>

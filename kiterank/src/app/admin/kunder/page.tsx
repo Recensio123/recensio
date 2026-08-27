@@ -104,7 +104,7 @@ export default async function KundvårdPage() {
   const företag = företagRader ?? []
   if (!företag.length) {
     return (
-      <div style={{ maxWidth: 900, fontFamily: 'var(--font-geist-sans)' }}>
+      <div style={{ maxWidth: 900, fontFamily: 'var(--font-brand-sans)' }}>
         <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Kundvård</h1>
         <p style={{ fontSize: 13, color: '#64748b' }}>Inga företag i databasen ännu.</p>
       </div>
@@ -228,7 +228,7 @@ export default async function KundvårdPage() {
   const rena     = rader.filter(r => !r.fynd.length).length
 
   return (
-    <div style={{ maxWidth: 900, fontFamily: 'var(--font-geist-sans)' }}>
+    <div style={{ maxWidth: 900, fontFamily: 'var(--font-brand-sans)' }}>
       <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Kundvård</h1>
       <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.7, margin: '0 0 18px' }}>
         Vad som slutat fungera hos kunderna, innan de hinner höra av sig. Trasigt

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google'
 import '../globals.css'
 
 /*
@@ -19,8 +19,8 @@ import '../globals.css'
  * skärmen är något som drar dem därifrån.
  */
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
+const brandSans = Plus_Jakarta_Sans({ variable: '--font-brand-sans', subsets: ['latin'] })
+const brandMono = Geist_Mono({ variable: '--font-brand-mono', subsets: ['latin'] })
 
 /*
  * Aldrig i sökresultaten.
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
 
 export default function BookLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="sv" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
+    <html lang="sv" className={`${brandSans.variable} ${brandMono.variable} h-full`}>
       <body style={{ margin: 0, minHeight: '100%' }}>{children}</body>
     </html>
   )

@@ -384,23 +384,32 @@ function isLight(hex: string): boolean {
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150
 }
 
+/*
+ * En miniatyr per layout — som register och inte som switch.
+ *
+ * Record<Layout, …> är kontraktet: läggs en ny layout till i unionen vägrar
+ * kompilatorn bygga tills miniatyren finns här. En switch utan default gav
+ * nästan samma skydd, men tomt utrymme i mallväljaren som enda symtom när
+ * någon kringgick den; ett register kan inte kringgås.
+ */
+const THUMBNAILS: Record<Layout, (p: TP) => React.ReactElement> = {
+  centered:  p => <Centered  {...p}/>,
+  split:     p => <Split     {...p}/>,
+  editorial: p => <Editorial {...p}/>,
+  heritage:  p => <Heritage  {...p}/>,
+  luxury:    p => <Luxury    {...p}/>,
+  showcase:  p => <Showcase  {...p}/>,
+  direct:    p => <Direct    {...p}/>,
+  team:      p => <TeamThumb {...p}/>,
+  pole:      p => <Pole      {...p}/>,
+  grid:      p => <GridThumb {...p}/>,
+  workshop:  p => <Workshop  {...p}/>,
+  sign:      p => <Sign      {...p}/>,
+  foyer:     p => <Foyer     {...p}/>,
+}
+
 export function TemplateThumbnail({ template, active }: { template: Template; active: boolean }) {
-  const props = { c: template.colors, active }
-  switch (template.layout) {
-    case 'centered':  return <Centered  {...props}/>
-    case 'split':     return <Split     {...props}/>
-    case 'editorial': return <Editorial {...props}/>
-    case 'heritage':  return <Heritage  {...props}/>
-    case 'luxury':    return <Luxury    {...props}/>
-    case 'showcase':  return <Showcase  {...props}/>
-    case 'direct':    return <Direct    {...props}/>
-    case 'team':      return <TeamThumb {...props}/>
-    case 'pole':      return <Pole      {...props}/>
-    case 'grid':      return <GridThumb {...props}/>
-    case 'workshop':  return <Workshop  {...props}/>
-    case 'sign':      return <Sign      {...props}/>
-    case 'foyer':     return <Foyer     {...props}/>
-  }
+  return THUMBNAILS[template.layout]({ c: template.colors, active })
 }
 
 /* ── Template data ──────────────────────────────────────────────────────────

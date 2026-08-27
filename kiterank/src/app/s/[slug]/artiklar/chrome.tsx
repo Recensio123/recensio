@@ -15,7 +15,7 @@ import type { CSSProperties } from 'react'
  * the same source the start page uses, so nothing can drift apart again.
  */
 
-export const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
+export const F = 'var(--font-brand-sans), system-ui, -apple-system, sans-serif'
 
 export function isDark(hex: string) {
   const h = hex.replace('#', '')

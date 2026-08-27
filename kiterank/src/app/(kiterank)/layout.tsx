@@ -1,14 +1,22 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google'
 import "../globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/*
+ * Produktens typsnitt.
+ *
+ * Plus Jakarta Sans i allt som är text, Geist Mono där siffror ska stå i
+ * kolumn. Variabelnamnen är avsiktligt leverantörsneutrala — de hette
+ * --font-geist-sans, vilket blev en lögn i trettiotvå filer den dag typsnittet
+ * byttes.
+ */
+const brandSans = Plus_Jakarta_Sans({
+  variable: "--font-brand-sans",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const brandMono = Geist_Mono({
+  variable: "--font-brand-mono",
   subsets: ["latin"],
 });
 
@@ -28,7 +36,7 @@ export default function RootLayout({
   return (
     <html
       lang="sv"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${brandSans.variable} ${brandMono.variable} h-full antialiased`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">{children}</body>
     </html>

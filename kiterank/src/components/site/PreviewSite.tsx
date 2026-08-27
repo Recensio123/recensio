@@ -9,7 +9,9 @@
  * eller ändrar något som gäller fler än en.
  */
 
-import type { Template, TemplateColors } from '@/lib/templates'
+import type { Template, TemplateColors, Layout } from '@/lib/templates'
+import { layoutInfo } from '@/lib/layoutKarta'
+import { jsonLd } from '@/lib/jsonLd'
 import { Fragment } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { SERVICES, type ServiceCategory } from '@/lib/services-data'
@@ -166,7 +168,7 @@ function isDark(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 < 128
 }
 
-const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
+const F = 'var(--font-brand-sans), system-ui, -apple-system, sans-serif'
 
 /* ── Backdrops ────────────────────────────────────────────────────────────
    Until now every template painted flat colour, which is the single reason
@@ -590,20 +592,7 @@ function WallNav({ c, content, th, base, over, current }: SiteNavProps) {
  * passes nothing and gets the same menu in the design's own colours.
  */
 export function SiteNav({ layout, ...rest }: SiteNavProps & { layout: string }) {
-  switch (layout) {
-    case 'editorial':  return <EditorialNav  {...rest} />
-    case 'luxury':     return <LuxuryNav     {...rest} />
-    case 'showcase':   return <OverlayNav    {...rest} />
-    case 'workshop':   return <WallNav       {...rest} />
-    case 'sign':       return <BurgerNav c={rest.c} content={rest.content} th={rest.th ?? ''} base={rest.base ?? ''} over={rest.over} />
-    case 'foyer':      return <StackedNav c={rest.c} content={rest.content} th={rest.th ?? ''} base={rest.base ?? ''} />
-    case 'heritage':   return <Nav {...rest} centered tjansterHref={rest.th} />
-    case 'direct':
-    case 'team':
-    case 'pole':
-    case 'grid':       return <Nav {...rest} minimal tjansterHref={rest.th} />
-    default:           return <Nav {...rest} tjansterHref={rest.th} />
-  }
+  return layoutDef(layout).nav(rest)
 }
 
 /*
@@ -1201,7 +1190,7 @@ function JsonLD({ content, industry, slug, care, base }: {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(businessNode({ content, industry, slug, care, base })) }}
+      dangerouslySetInnerHTML={{ __html: jsonLd(businessNode({ content, industry, slug, care, base })) }}
     />
   )
 }
@@ -1836,19 +1825,14 @@ function HeritageSite({ c, content, th, base, industry, care, siteBase }: { c: T
 
 /* ── Layout: Luxury ─────────────────────────────────────────────────────── */
 
-export type ImageSlot = 'heroImage' | 'featureImage' | 'aboutImage'
+export type { ImageSlot } from '@/lib/layoutKarta'
 
 /** Which picture slots a template's design actually has. The editor only
  *  offers the ones the chosen layout renders — an upload that changes nothing
- *  visible is worse than no upload at all. */
-export function templateImageSlots(layout: string): ImageSlot[] {
-  switch (layout) {
-    case 'split':     return ['heroImage']
-    case 'editorial':
-    case 'heritage':  return ['aboutImage']
-    case 'luxury':    return ['featureImage']
-    default:          return []
-  }
+ *  visible is worse than no upload at all. Svaret bor i layoutKarta — datadelen
+ *  av registret — och det här är bara den gamla dörren dit. */
+export function templateImageSlots(layout: string) {
+  return layoutInfo(layout).imageSlots
 }
 
 function LuxurySite({ c, content, th, base, industry, care, siteBase }: { c: TemplateColors; content: SiteContent; th: string; base: string; industry?: string; care?: CareAnswer | null; siteBase?: string }) {
@@ -2627,23 +2611,8 @@ export function PreviewSite({
       ? (content.bookingUrl?.trim() || '#prislista')
     : base
 
-  const layout = (() => {
-    switch (template.layout) {
-      case 'split':     return <SplitSite     c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'editorial': return <EditorialSite c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'heritage':  return <HeritageSite  c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'luxury':    return <LuxurySite    c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'showcase':  return <ShowcaseSite  c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'direct':    return <DirectSite    c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'team':      return <TeamSite      c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'pole':      return <PoleSite      c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'grid':      return <GridSite      c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'workshop':  return <WorkshopSite  c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'sign':      return <SignSite      c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      case 'foyer':     return <FoyerSite     c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-      default:          return <CenteredSite  c={c} content={content} th={th} base={base} industry={industry} care={care} siteBase={siteBase} />
-    }
-  })()
+  const layout = layoutDef(template.layout)
+    .Site({ c, content, th, base, industry, care, siteBase })
 
   /* lang on the site itself, not just the document: a customer writing in
    * French gets a French-declared page without us owning a separate root.
@@ -2656,4 +2625,96 @@ export function PreviewSite({
       {layout}
     </div>
   )
+}
+
+/* ── Layoutregistret ────────────────────────────────────────────────────────
+ *
+ * Allt en layout består av, i en post. Tidigare låg samma kunskap utspridd i
+ * fem växlar som inte visste om varandra — sajten, menyn, bildplatserna,
+ * miniatyren och tjänstesidan — och en ny layout skulle kopplas in i var och
+ * en. Den som glömde ett ställe fick ingen krasch: koden föll tyst tillbaka på
+ * standardbeteendet, och felet upptäcktes av en kund som undrade varför
+ * menyn såg ut som en annan malls.
+ *
+ * Record<Layout, LayoutDef> är hela poängen. Läggs 'nylayout' till i unionen i
+ * templates.tsx vägrar kompilatorn bygga tills posten finns här, komplett.
+ * Miniatyren bor i templates.tsx av samma skäl, i sitt eget register.
+ *
+ * Registret ligger sist i filen med flit: funktionsdeklarationer hissas, så
+ * härifrån når vi varje komponent ovanför utan framåtreferenser.
+ */
+
+/** Props varje layouts startsida tar emot — samma form för alla. */
+type LayoutSiteProps = {
+  c: TemplateColors; content: SiteContent; th: string; base: string
+  industry?: string; care?: CareAnswer | null; siteBase?: string
+}
+
+export type LayoutDef = {
+  /** Startsidan — kompositionen som är hela layouten. */
+  Site: (p: LayoutSiteProps) => React.ReactElement
+  /** Menyn, med layoutens egen klädsel. */
+  nav: (p: SiteNavProps) => React.ReactElement
+}
+
+const LAYOUT_DEF: Record<Layout, LayoutDef> = {
+  centered: {
+    Site: p => <CenteredSite {...p} />,
+    nav:  p => <Nav {...p} tjansterHref={p.th} />,
+  },
+  split: {
+    Site: p => <SplitSite {...p} />,
+    nav:  p => <Nav {...p} tjansterHref={p.th} />,
+  },
+  editorial: {
+    Site: p => <EditorialSite {...p} />,
+    nav:  p => <EditorialNav {...p} />,
+  },
+  heritage: {
+    Site: p => <HeritageSite {...p} />,
+    nav:  p => <Nav {...p} centered tjansterHref={p.th} />,
+  },
+  luxury: {
+    Site: p => <LuxurySite {...p} />,
+    nav:  p => <LuxuryNav {...p} />,
+  },
+  showcase: {
+    Site: p => <ShowcaseSite {...p} />,
+    nav:  p => <OverlayNav {...p} />,
+  },
+  direct: {
+    Site: p => <DirectSite {...p} />,
+    nav:  p => <Nav {...p} minimal tjansterHref={p.th} />,
+  },
+  team: {
+    Site: p => <TeamSite {...p} />,
+    nav:  p => <Nav {...p} minimal tjansterHref={p.th} />,
+  },
+  pole: {
+    Site: p => <PoleSite {...p} />,
+    nav:  p => <Nav {...p} minimal tjansterHref={p.th} />,
+  },
+  grid: {
+    Site: p => <GridSite {...p} />,
+    nav:  p => <Nav {...p} minimal tjansterHref={p.th} />,
+  },
+  workshop: {
+    Site: p => <WorkshopSite {...p} />,
+    nav:  p => <WallNav {...p} />,
+  },
+  sign: {
+    Site: p => <SignSite {...p} />,
+    nav:  p => <BurgerNav c={p.c} content={p.content} th={p.th ?? ''} base={p.base ?? ''} over={p.over} />,
+  },
+  foyer: {
+    Site: p => <FoyerSite {...p} />,
+    nav:  p => <StackedNav c={p.c} content={p.content} th={p.th ?? ''} base={p.base ?? ''} />,
+  },
+}
+
+/** Posten för en layout. Tar emot en sträng eftersom lagrade mallval är data
+ *  — en gammal rad kan bära ett namn som inte längre finns, och den ska ge
+ *  standardlayouten, inte en krasch. */
+export function layoutDef(layout: string): LayoutDef {
+  return LAYOUT_DEF[layout as Layout] ?? LAYOUT_DEF.centered
 }

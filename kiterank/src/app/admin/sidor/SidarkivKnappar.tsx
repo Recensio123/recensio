@@ -12,7 +12,7 @@ import { useState } from 'react'
 
 const knapp = {
   padding: '5px 11px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-  fontFamily: 'var(--font-geist-sans)', cursor: 'pointer',
+  fontFamily: 'var(--font-brand-sans)', cursor: 'pointer',
   border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1',
 } as const
 

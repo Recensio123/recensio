@@ -21,6 +21,7 @@ const SIDOR: { href: string; namn: string; om: string }[] = [
   { href: '/admin/avtal',     namn: 'Avtal',     om: 'Villkoren kunderna möter, redigerbara' },
   { href: '/admin/export',    namn: 'Utlämning', om: 'Kundhistorik och hemsida att lämna ut' },
   { href: '/admin/tester', namn: 'Tester',   om: 'Kontroller på bokning och utskick' },
+  { href: '/admin/mallprov', namn: 'Mallvård', om: 'Alla mallar mot innehåll som vill sönder' },
 ]
 
 export function AdminNav() {
@@ -40,7 +41,7 @@ export function AdminNav() {
             style={{
               display: 'block', padding: '9px 12px', borderRadius: 9,
               fontSize: 13, fontWeight: aktiv ? 700 : 500,
-              fontFamily: 'var(--font-geist-sans)', textDecoration: 'none',
+              fontFamily: 'var(--font-brand-sans)', textDecoration: 'none',
               background: aktiv ? '#1e293b' : 'transparent',
               color: aktiv ? '#f1f5f9' : '#94a3b8',
             }}

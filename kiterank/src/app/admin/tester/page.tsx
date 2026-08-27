@@ -22,7 +22,7 @@ export default function TesterPage() {
   const utfall = körTester()
   const fel    = utfall.filter(u => !u.ok)
 
-  const F = 'var(--font-geist-sans)'
+  const F = 'var(--font-brand-sans)'
 
   return (
     <div style={{ maxWidth: 720, fontFamily: F }}>

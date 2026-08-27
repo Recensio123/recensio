@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google'
 import '../../globals.css'
 import { getPublishedSite } from './site-data'
 import { siteOrigin, viaOwnDomain } from '@/lib/siteHost'
@@ -23,8 +23,8 @@ import { Matning } from '@/components/site/Matning'
  * domain, carrying visitors and anything Google already knew straight there.
  */
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
+const brandSans = Plus_Jakarta_Sans({ variable: '--font-brand-sans', subsets: ['latin'] })
+const brandMono = Geist_Mono({ variable: '--font-brand-mono', subsets: ['latin'] })
 
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> },
@@ -62,7 +62,7 @@ export default async function SiteLayout({
   return (
     <html
       lang={site?.content.siteLang || 'sv'}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${brandSans.variable} ${brandMono.variable} h-full antialiased`}
     >
       <body suppressHydrationWarning className="min-h-full">
         {children}

@@ -10,7 +10,7 @@ import { formatArticleDate, type Article, type ArticleBlock } from '@/lib/articl
  * change to how an article looks happens once, here.
  */
 
-const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
+const F = 'var(--font-brand-sans), system-ui, -apple-system, sans-serif'
 
 function isDark(hex: string) {
   const h = hex.replace('#', '')

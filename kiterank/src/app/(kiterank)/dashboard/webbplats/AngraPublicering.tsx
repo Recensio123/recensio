@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from 'react'
  * ingen knapp.
  */
 
-const F = 'var(--font-geist-sans)'
+const F = 'var(--font-brand-sans)'
 
 export function ÅngraPublicering() {
   const [finns, setFinns]         = useState(false)

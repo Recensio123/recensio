@@ -83,7 +83,7 @@ export default async function AdminHem() {
   const aktiva  = företag.filter(f => !avtalAvslutat(f.closed_at))
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', fontFamily: 'var(--font-geist-sans)' }}>
+    <div style={{ maxWidth: 900, margin: '0 auto', fontFamily: 'var(--font-brand-sans)' }}>
       <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Kunder</h1>
       <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 20px' }}>
         {aktiva.length} av {företag.length} har ett aktivt avtal.

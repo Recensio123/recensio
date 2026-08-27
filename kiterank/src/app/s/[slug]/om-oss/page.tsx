@@ -1,4 +1,5 @@
 import { notFound, permanentRedirect } from 'next/navigation'
+import { jsonLd } from '@/lib/jsonLd'
 import type { Metadata } from 'next'
 import { sitePath, siteAbsUrl } from '@/lib/siteHost'
 import { BookButton } from '@/components/site/PreviewSite'
@@ -67,7 +68,7 @@ export default async function AboutPage({ params }: Props) {
 
   return (
     <SitePage site={site} current="about">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(schema) }} />
 
       <main style={{ maxWidth: 760, margin: '0 auto', padding: '72px 24px 96px' }}>
         <h1 style={{ fontSize: 40, fontWeight: 800, color: c.h, letterSpacing: -1, lineHeight: 1.15, marginBottom: 24 }}>

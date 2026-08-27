@@ -53,7 +53,7 @@ export function ForfraganRad({ id, namn, från, till, skapad }: {
         disabled={läge === 'sparar'}
         style={{
           padding: '3px 9px', borderRadius: 7, fontSize: 11, fontWeight: 600,
-          fontFamily: 'var(--font-geist-sans)', cursor: 'pointer',
+          fontFamily: 'var(--font-brand-sans)', cursor: 'pointer',
           border: '1px solid #334155', background: '#1e293b', color: '#cbd5e1',
         }}
       >

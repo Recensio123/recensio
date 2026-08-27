@@ -20,6 +20,27 @@ import { smsSender } from '@/lib/smser'
 import { mailSender } from '@/lib/mailer'
 import { kanalFor } from '@/lib/messageTemplates'
 import { golvFor } from '@/lib/kontaktsatt'
+import { ALL_TEMPLATES } from '@/lib/mallprov'
+
+/* WCAG-kontrast mellan två hexfärger. Formeln är standardens, inte vår. */
+function wcagKontrast(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const [r, g, bl] = [1, 3, 5]
+      .map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl
+  }
+  const [ljus, mörk] = [lum(a), lum(b)].sort((x, y) => y - x)
+  return (ljus + 0.05) / (mörk + 0.05)
+}
+
+/* Samma ljushetsregel som layouterna väljer textfärg med. */
+function mörkYta(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return (r * 299 + g * 587 + b * 114) / 1000 < 128
+}
 
 /*
  * Kontroller på det som kostar pengar när det går sönder.
@@ -1062,6 +1083,47 @@ const TESTER: Test[] = [
       const bara = golvFor('email', [])
       if (!bara.epost || bara.telefon) return 'mail utan påslagna utskick krävde ändå telefonnummer'
       return null
+    },
+  },
+  /*
+   * Mallarnas färger.
+   *
+   * Sex handplockade värden per mall och inget som hindrar en kombination där
+   * texten inte går att läsa — utom de här proven. Trösklarna är satta ur
+   * WCAG-kontrast med dagens mallar som facit: rubriker klarar 4,5 med bred
+   * marginal, sekundärtext ligger som lägst strax över 2,5, knappar över 3.
+   * En framtida mall som går under är inte en smaksak utan ett fel.
+   */
+  {
+    namn: 'Varje malls rubriker läser mot sina egna ytor',
+    kör() {
+      const fel = ALL_TEMPLATES.filter(t =>
+        wcagKontrast(t.colors.h, t.colors.bg) < 4.5
+        || wcagKontrast(t.colors.h, t.colors.b) < 4.5)
+      return fel.length === 0 ? null
+        : `oläslig rubrik i: ${fel.map(t => t.id).join(', ')}`
+    },
+  },
+  {
+    namn: 'Varje malls sekundärtext läser mot bakgrunden',
+    kör() {
+      const fel = ALL_TEMPLATES.filter(t => wcagKontrast(t.colors.s, t.colors.bg) < 2.5)
+      return fel.length === 0 ? null
+        : `oläslig sekundärtext i: ${fel.map(t => t.id).join(', ')}`
+    },
+  },
+  {
+    namn: 'Varje malls knapp läser sin egen text',
+    kör() {
+      /* Knapptexten väljs av samma ljushetsregel som layouterna använder —
+         vit på mörk accent, svart på ljus. Provet räknar på det texten
+         faktiskt blir, inte på ett antagande. */
+      const fel = ALL_TEMPLATES.filter(t => {
+        const text = mörkYta(t.colors.a) ? '#ffffff' : '#0a0a0a'
+        return wcagKontrast(t.colors.a, text) < 3
+      })
+      return fel.length === 0 ? null
+        : `oläslig knapptext i: ${fel.map(t => t.id).join(', ')}`
     },
   },
   {

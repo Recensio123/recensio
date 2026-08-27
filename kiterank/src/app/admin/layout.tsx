@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google'
 import '../globals.css'
 import { platformAdmin, adminAvstängt } from '@/lib/admin'
 import { AdminNav } from './AdminNav'
@@ -19,8 +19,8 @@ import { AdminNav } from './AdminNav'
  * metadata eller navigering. Och noindex: det här ska aldrig hamna på Google.
  */
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
+const brandSans = Plus_Jakarta_Sans({ variable: '--font-brand-sans', subsets: ['latin'] })
+const brandMono = Geist_Mono({ variable: '--font-brand-mono', subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Kiterank — admin',
@@ -36,20 +36,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!admin) redirect('/auth/login')
 
   return (
-    <html lang="sv" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
+    <html lang="sv" className={`${brandSans.variable} ${brandMono.variable} h-full`}>
       <body style={{ margin: 0, minHeight: '100%', background: '#0b1220' }}>
         <header style={{
           display: 'flex', alignItems: 'baseline', gap: 12,
           padding: '16px 24px', borderBottom: '1px solid #1e293b',
         }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: '#f1f5f9', fontFamily: 'var(--font-geist-sans)' }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: '#f1f5f9', fontFamily: 'var(--font-brand-sans)' }}>
             Kiterank admin
           </span>
-          <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'var(--font-geist-sans)' }}>
+          <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'var(--font-brand-sans)' }}>
             {admin}
           </span>
           <span style={{ flex: 1 }} />
-          <a href="/dashboard" style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'var(--font-geist-sans)' }}>
+          <a href="/dashboard" style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'var(--font-brand-sans)' }}>
             Till panelen →
           </a>
         </header>

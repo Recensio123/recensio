@@ -118,7 +118,7 @@ export type Testimonial = {
 /* ── Helpers ───────────────────────────────────────────────────────── */
 
 
-const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
+const F = 'var(--font-brand-sans), system-ui, -apple-system, sans-serif'
 
 /* ── E: inline-editable text element ──────────────────────────────── */
 

@@ -97,7 +97,7 @@ export default async function SidorPage() {
 
   if (!migrerad) {
     return (
-      <div style={{ maxWidth: 940, fontFamily: 'var(--font-geist-sans)' }}>
+      <div style={{ maxWidth: 940, fontFamily: 'var(--font-brand-sans)' }}>
         <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Sidor</h1>
         <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.7 }}>
           Kör migrationen <code>20260912_sidarkiv.sql</code> i Supabase, så fylls sidan.
@@ -120,7 +120,7 @@ export default async function SidorPage() {
   const utanKopia = kunder.filter(k => vikt(k) === 0).length
 
   return (
-    <div style={{ maxWidth: 940, fontFamily: 'var(--font-geist-sans)' }}>
+    <div style={{ maxWidth: 940, fontFamily: 'var(--font-brand-sans)' }}>
       <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Sidor</h1>
       <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.7, margin: '0 0 18px' }}>
         Allt du byggt åt kunder, sparat. En kopia innehåller mall, språk, funktioner och hela

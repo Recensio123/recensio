@@ -16,7 +16,7 @@ import type { SectionPageId } from '@/lib/sectionPages'
  * they see while editing is what a visitor gets.
  */
 
-const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
+const F = 'var(--font-brand-sans), system-ui, -apple-system, sans-serif'
 
 function isDark(hex: string) {
   const h = hex.replace('#', '')

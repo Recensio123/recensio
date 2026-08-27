@@ -47,7 +47,7 @@ export function RabattCell({ companyId, procent }: { companyId: string; procent:
         disabled={läge === 'sparar'}
         style={{
           width: 52, padding: '4px 6px', borderRadius: 7, fontSize: 13,
-          textAlign: 'right', fontFamily: 'var(--font-geist-sans)',
+          textAlign: 'right', fontFamily: 'var(--font-brand-sans)',
           background: '#0f172a', border: '1px solid #1e293b',
           color: sparat > 0 ? '#f0b429' : '#94a3b8',
         }}

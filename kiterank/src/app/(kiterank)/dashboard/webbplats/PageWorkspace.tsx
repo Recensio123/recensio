@@ -125,7 +125,7 @@ export function PageWorkspace({
               .kr-page-preview img { max-width: 100%; }
             `}</style>
             <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 32px 80px' }}>
-              <h1 style={{ fontSize: 40, fontWeight: 800, color: c.h, letterSpacing: -1, lineHeight: 1.15, marginBottom: 24, fontFamily: 'var(--font-geist-sans), system-ui, sans-serif' }}>
+              <h1 style={{ fontSize: 40, fontWeight: 800, color: c.h, letterSpacing: -1, lineHeight: 1.15, marginBottom: 24, fontFamily: 'var(--font-brand-sans), system-ui, sans-serif' }}>
                 {title}
               </h1>
               {/* The section's own material, rendered by the same component the

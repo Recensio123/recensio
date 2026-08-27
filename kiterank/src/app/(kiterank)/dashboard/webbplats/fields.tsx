@@ -26,7 +26,7 @@ export function useNarrow(breakpoint = 760) {
   return narrow
 }
 
-export const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
+export const F = 'var(--font-brand-sans), system-ui, -apple-system, sans-serif'
 
 export const inputStyle = {
   width: '100%', padding: '9px 11px', fontSize: 13, fontFamily: F,

@@ -2,6 +2,7 @@ import type { Template, TemplateColors } from '@/lib/templates'
 import type { SiteContent } from '@/components/site/PreviewSite'
 import { type ServiceEntry, type ServiceCategory, SERVICES, slugifyService } from '@/lib/services-data'
 import { SiteNav } from '@/components/site/PreviewSite'
+import { layoutInfo } from '@/lib/layoutKarta'
 /* Direkt ur lib, inte via PreviewSite: den här sidan renderas på servern och
    PreviewSite är en klientmodul. Vägen dit igenom ger ett rent fel. */
 import { getIndConfig, cfgLabel } from '@/lib/siteIndustry'
@@ -23,7 +24,7 @@ function isDark(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 < 128
 }
 
-const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
+const F = 'var(--font-brand-sans), system-ui, -apple-system, sans-serif'
 
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
@@ -194,7 +195,12 @@ export function pageIntro(content: SiteContent): { rubrik: string; förklaring: 
 function PageHero({ c, content, layout }: { c: TemplateColors; content: SiteContent; layout: string }) {
   const { rubrik, förklaring } = pageIntro(content)
 
-  if (layout === 'editorial') {
+  /* Introduktionens form kommer ur layoutregistret, inte ur layoutnamnet.
+     En ny layout tvingas välja en av varianterna där — den kan inte glömmas
+     hit och tyst få standardformen. */
+  const intro = layoutInfo(layout).serviceIntro
+
+  if (intro === 'poster') {
     const divider = isDark(c.bg) ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
     return (
       <section style={{ padding: '80px 8% 56px', borderBottom: `1px solid ${divider}` }}>
@@ -208,7 +214,7 @@ function PageHero({ c, content, layout }: { c: TemplateColors; content: SiteCont
     )
   }
 
-  if (layout === 'luxury') {
+  if (intro === 'stage') {
     return (
       <section style={{ background: c.bg, padding: '100px 10%', textAlign: 'center' }}>
         <h1 style={{ fontSize: 60, fontWeight: 900, color: c.h, lineHeight: 1.06, maxWidth: 700, margin: '0 auto 20px', letterSpacing: -2, fontFamily: F }}>
@@ -221,7 +227,7 @@ function PageHero({ c, content, layout }: { c: TemplateColors; content: SiteCont
     )
   }
 
-  if (layout === 'heritage') {
+  if (intro === 'banner') {
     const bannerBg = isDark(c.nav) ? c.nav : c.b
     const bannerFg = isDark(bannerBg) ? '#ffffff' : c.h
     return (
@@ -238,7 +244,7 @@ function PageHero({ c, content, layout }: { c: TemplateColors; content: SiteCont
 
   /* centered / split / default */
   return (
-    <section style={{ background: c.b, padding: '72px 8%', textAlign: layout === 'centered' ? 'center' : 'left' }}>
+    <section style={{ background: c.b, padding: '72px 8%', textAlign: intro === 'plainCentered' ? 'center' : 'left' }}>
       <h1 style={{ fontSize: 48, fontWeight: 800, color: c.h, marginBottom: 16, letterSpacing: -1, fontFamily: F, maxWidth: 640 }}>
         {rubrik}
       </h1>

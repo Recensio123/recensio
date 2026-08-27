@@ -24,7 +24,7 @@ type Svar = {
   id?: string
 }
 
-const F = 'var(--font-geist-sans)'
+const F = 'var(--font-brand-sans)'
 
 const fält: React.CSSProperties = {
   width: '100%', boxSizing: 'border-box',

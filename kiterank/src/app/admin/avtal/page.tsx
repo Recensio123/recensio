@@ -72,7 +72,7 @@ export default async function AvtalPage({
 
   if (!migrerad) {
     return (
-      <div style={{ maxWidth: 900, fontFamily: 'var(--font-geist-sans)' }}>
+      <div style={{ maxWidth: 900, fontFamily: 'var(--font-brand-sans)' }}>
         <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Avtal</h1>
         <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.7 }}>
           Kör migrationen <code>20260909_avtal.sql</code> i Supabase, så fylls sidan.
@@ -84,7 +84,7 @@ export default async function AvtalPage({
   const öppen = rader.find(r => r.slug === params.öppna) ?? rader[0] ?? null
 
   return (
-    <div style={{ maxWidth: 900, fontFamily: 'var(--font-geist-sans)' }}>
+    <div style={{ maxWidth: 900, fontFamily: 'var(--font-brand-sans)' }}>
       <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Avtal</h1>
       <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.7, margin: '0 0 18px' }}>
         Dina avtalstexter, redigerbara här. Ändringar slår igenom direkt utan att något behöver

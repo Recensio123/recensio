@@ -1,4 +1,5 @@
 import { notFound, redirect, permanentRedirect } from 'next/navigation'
+import { jsonLd } from '@/lib/jsonLd'
 import type { Metadata } from 'next'
 import { sitePath, siteAbsUrl } from '@/lib/siteHost'
 import { ServicePage } from '@/components/site/ServicePage'
@@ -66,7 +67,7 @@ export default async function PublishedServicesPage({ params }: Props) {
 
   return (
     <SitePage site={site} current="pricelist">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(schema) }} />
       <ServicePage
         template={site.template}
         industry={site.industry}

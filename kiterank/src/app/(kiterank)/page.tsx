@@ -195,11 +195,25 @@ type Paket = {
   pris:      string
   per:       string
   pitch:     string
+  /** Vad nivån under redan gav. Egen rad och inte en punkt i listan — annars
+   *  har korten olika många punkter och går inte att jämföra på höjden. */
+  bas?:      string
   punkter:   string[]
   cta:       string
   href:      string
   utmärkt?:  boolean
 }
+
+/*
+ * Det som ingår i alla tre.
+ *
+ * Står ovanför korten och inte i dem. Låg det i det första kortet — där det
+ * gjorde — såg det billigaste paketet ut att vara det mest komplicerade, och
+ * varenda rad om drift och SSL tog plats från det som faktiskt skiljer
+ * nivåerna åt.
+ */
+const INGÅR_I_ALLA =
+  'Marknadsföringsplattformen ingår i alla tre — liksom drift, SSL, uppdateringar och er egen domän.'
 
 /*
  * Tre nivåer, en trappa: mallen, den formgivna sidan, och handen som gör
@@ -231,32 +245,31 @@ const köpKnapp = (nivå: 'mall' | 'design' | 'fullservice') => nivå === 'mall'
 
 const paketen = (p: Prislista): Paket[] => [
   {
-    namn:  'Hemsida + marknadsföringsplattform',
+    namn:  'Hemsida',
     pris:  p.mall ?? 'Offert',
     per:   p.mall ? '/mån' : '',
     pitch: 'Välj en mall, gör den till din — och bli hittad på Google',
+    /* Också det första kortet får sin rubrikrad. Utan den startar dess punkter
+       en rad högre än de andras och raden ser skev ut. */
+    bas: 'Ingår från start:',
     punkter: [
-      'Välj bland färdiga mallar och forma efter ditt varumärke',
-      'Ifylld för din bransch från start',
-      'Drift, SSL-säkerhet och uppdateringar ingår',
-      'Koppla din egen domän',
-      'En egen sida per tjänst — byggt för Google',
-      'Hela marknadsföringsplattformen: Google-profil, synlighet, annonser och besök',
-      'Omdömesbevakning med färdiga svarsförslag',
-      'Veckans att göra-lista',
+      'Färdig mall, ifylld för din bransch, formad efter ditt varumärke',
+      'En egen sida per tjänst — byggd för Google',
+      'Google-profil, synlighet, annonser och besök i en panel',
+      'Veckans att göra-lista och färdiga svar på omdömen',
     ],
     ...köpKnapp('mall'),
   },
   {
-    namn:  'Designad hemsida + marknadsföringsplattform',
+    namn:  'Designad hemsida',
     pris:  p.design ?? 'Offert',
     per:   p.design ? '/mån' : '',
     pitch: 'Vi formger sidan från grunden och startar upp er',
+    bas: 'Allt i mallpaketet, plus:',
     punkter: [
-      'Allt i mallpaketet',
       'Hemsida formgiven för just er — inte en mall',
       'Vi bygger, fyller och publicerar åt er',
-      'Personlig onboarding genom hela plattformen',
+      'Personlig genomgång av hela plattformen',
       'Prioriterad hjälp, direkt till en människa',
     ],
     ...köpKnapp('design'),
@@ -267,11 +280,10 @@ const paketen = (p: Prislista): Paket[] => [
     pris:  p.fullservice ?? 'Offert',
     per:   p.fullservice ? '/mån' : '',
     pitch: 'Vi sköter marknadsföringen — ni sköter salongen',
+    bas: 'Allt i designpaketet, plus:',
     punkter: [
-      'Allt i designpaketet',
       'Vi sköter Google-profilen: foton, inlägg och omdömen',
       'Vi sköter annonserna — strategi, uppsättning och löpande',
-      'Löpande SEO-rådgivning på det ni skriver',
       'Vi väcker gamla kunder — ett utskick i månaden',
       'Månadsrapport med plan och budget ni godkänner',
     ],
@@ -282,9 +294,12 @@ const paketen = (p: Prislista): Paket[] => [
 function PrisSektion({ priser }: { priser: Prislista }) {
   return (
     <section id="pricing" className="max-w-6xl mx-auto px-6 py-16 space-y-10">
-      <div className="text-center space-y-3">
-        <h2 className="text-3xl font-bold">Ett pris i månaden. Inga överraskningar.</h2>
-        <p className="text-white/45">7 dagar gratis · Ingen bindningstid · Avsluta när du vill</p>
+      <div className="text-center space-y-3 max-w-2xl mx-auto">
+        <h2 className="text-3xl md:text-4xl font-bold">Ett pris i månaden. Inga överraskningar.</h2>
+        <p className="text-white/50 text-lg">7 dagar gratis · Ingen bindningstid · Avsluta när du vill</p>
+        {/* Grunden lyft ur korten. Den som läser tre listor med samma fyra
+            självklarheter i toppen läser aldrig till raden som skiljer dem. */}
+        <p className="text-white/55 text-sm pt-1 leading-relaxed">{INGÅR_I_ALLA}</p>
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">
@@ -303,32 +318,40 @@ function PrisSektion({ priser }: { priser: Prislista }) {
               </div>
             )}
             <div>
-              <p className={`text-sm font-medium mb-1 ${p.utmärkt ? 'text-[#f0b429]' : 'text-white/50'}`}>{p.namn}</p>
-              <p className="text-4xl font-bold text-white">
+              <p className={`text-base font-semibold mb-2 ${p.utmärkt ? 'text-[#f0b429]' : 'text-white/70'}`}>{p.namn}</p>
+              <p className="text-5xl font-bold text-white tracking-tight">
                 {p.pris}
-                {p.per && <span className="text-lg font-normal text-white/40">{p.per}</span>}
+                {p.per && <span className="text-xl font-normal text-white/40">{p.per}</span>}
               </p>
-              <p className="text-white/30 text-xs mt-1">{p.pitch}</p>
+              <p className="text-white/45 text-sm mt-2 leading-relaxed">{p.pitch}</p>
             </div>
-            <ul className="space-y-2.5 text-sm text-white/60 flex-1">
-              {p.punkter.map(f => (
-                <li key={f} className="flex items-start gap-2.5">
-                  <span className="text-[#f0b429] mt-0.5 shrink-0 text-xs">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
+            <div className="flex-1 space-y-3">
+              {/* Trappsteget som en egen rad. Som punkt räknades det som en
+                  förmån och gjorde listorna olika långa; som rubrik säger det
+                  vad det är — allt nedanför är det nya. */}
+              {p.bas && (
+                <p className="text-white/40 text-sm font-medium">{p.bas}</p>
+              )}
+              <ul className="space-y-3 text-base text-white/70">
+                {p.punkter.map(f => (
+                  <li key={f} className="flex items-start gap-3 leading-relaxed">
+                    <span className="text-[#f0b429] mt-1 shrink-0 text-sm">✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
             {p.href.startsWith('mailto:') ? (
               <a
                 href={p.href}
-                className="block text-center border border-white/15 hover:border-white/30 text-white text-sm font-medium py-3 rounded-xl transition-colors"
+                className="block text-center border border-white/15 hover:border-white/30 text-white text-base font-medium py-3.5 rounded-xl transition-colors"
               >
                 {p.cta}
               </a>
             ) : (
               <Link
                 href={p.href}
-                className={`block text-center text-sm font-semibold py-3 rounded-xl transition-colors ${
+                className={`block text-center text-base font-semibold py-3.5 rounded-xl transition-colors ${
                   p.utmärkt
                     ? 'bg-[#f0b429] hover:bg-[#e0a520] text-[#080f1e]'
                     : 'border border-white/15 hover:border-white/30 text-white font-medium'

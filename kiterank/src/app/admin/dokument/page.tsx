@@ -76,7 +76,7 @@ export default async function DokumentPage({
 
   if (!migrerad) {
     return (
-      <div style={{ maxWidth: 900, fontFamily: 'var(--font-geist-sans)' }}>
+      <div style={{ maxWidth: 900, fontFamily: 'var(--font-brand-sans)' }}>
         <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Kunddokument</h1>
         <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.7 }}>
           Kör migrationen <code>20260915_kunddokument.sql</code> i Supabase, så fylls sidan.
@@ -86,7 +86,7 @@ export default async function DokumentPage({
   }
 
   return (
-    <div style={{ maxWidth: 1000, fontFamily: 'var(--font-geist-sans)' }}>
+    <div style={{ maxWidth: 1000, fontFamily: 'var(--font-brand-sans)' }}>
       <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Kunddokument</h1>
       <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.7, margin: '0 0 18px' }}>
         Mallen är arbetssättet och gäller alla kunder. Kundens siffror går in som förutsättningar.

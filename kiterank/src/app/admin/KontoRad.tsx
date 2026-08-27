@@ -13,7 +13,7 @@ import { useState } from 'react'
  * ingen ångrar.
  */
 
-const F = 'var(--font-geist-sans)'
+const F = 'var(--font-brand-sans)'
 
 export function KontoRad({ id, namn, slug, closedAt, avslutat, action, rensa }: {
   id:        string

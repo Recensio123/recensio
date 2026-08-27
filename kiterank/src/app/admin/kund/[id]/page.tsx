@@ -52,7 +52,7 @@ export default async function KundPage({ params }: { params: Promise<{ id: strin
 
   if (!f) {
     return (
-      <div style={{ maxWidth: 900, fontFamily: 'var(--font-geist-sans)' }}>
+      <div style={{ maxWidth: 900, fontFamily: 'var(--font-brand-sans)' }}>
         <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9' }}>Kunden hittades inte</h1>
         <a href="/admin" style={{ fontSize: 13, color: '#94a3b8' }}>← Tillbaka</a>
       </div>
@@ -103,7 +103,7 @@ export default async function KundPage({ params }: { params: Promise<{ id: strin
     ärPlan(v) ? (kort ? PLAN_TEXT[v].kort : PLAN_TEXT[v].namn) : String(v ?? '—')
 
   return (
-    <div style={{ maxWidth: 900, fontFamily: 'var(--font-geist-sans)' }}>
+    <div style={{ maxWidth: 900, fontFamily: 'var(--font-brand-sans)' }}>
       <a href="/admin" style={{ fontSize: 12, color: '#64748b', textDecoration: 'none' }}>← Konton</a>
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', margin: '6px 0 4px' }}>

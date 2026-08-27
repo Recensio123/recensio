@@ -45,7 +45,7 @@ export function AvtalEditor({ slug, titel, innehall, version }: {
 
   const knapp = {
     padding: '8px 14px', borderRadius: 9, fontSize: 13, fontWeight: 600,
-    fontFamily: 'var(--font-geist-sans)', cursor: 'pointer',
+    fontFamily: 'var(--font-brand-sans)', cursor: 'pointer',
     border: '1px solid #1e293b', background: '#0f172a', color: '#cbd5e1',
   } as const
 
@@ -61,7 +61,7 @@ export function AvtalEditor({ slug, titel, innehall, version }: {
             style={{
               width: 70, marginLeft: 6, padding: '4px 7px', borderRadius: 7, fontSize: 13,
               background: '#0f172a', border: '1px solid #1e293b', color: '#f1f5f9',
-              fontFamily: 'var(--font-geist-sans)',
+              fontFamily: 'var(--font-brand-sans)',
             }}
           />
         </label>
@@ -99,7 +99,7 @@ export function AvtalEditor({ slug, titel, innehall, version }: {
         style={{
           width: '100%', minHeight: 520, padding: 14, borderRadius: 11,
           background: '#0b1220', border: '1px solid #1e293b', color: '#cbd5e1',
-          fontFamily: 'var(--font-geist-mono, ui-monospace, monospace)',
+          fontFamily: 'var(--font-brand-mono, ui-monospace, monospace)',
           fontSize: 12.5, lineHeight: 1.75, resize: 'vertical',
         }}
       />

@@ -67,7 +67,7 @@ export default async function ExportPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1000, fontFamily: 'var(--font-geist-sans)' }}>
+    <div style={{ maxWidth: 1000, fontFamily: 'var(--font-brand-sans)' }}>
       <h1 style={{ fontSize: 20, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px' }}>Utlämning</h1>
       <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.7, margin: '0 0 18px' }}>
         Kundens egna uppgifter, att lämna ut när de frågar. Kundhistoriken gäller alla — det är

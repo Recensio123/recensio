@@ -16,7 +16,7 @@ import { sectionPageTitle, sectionPageBlocks, type SectionPageId } from '@/lib/s
  * to the same click-to-edit as the start page.
  */
 
-const F = 'var(--font-geist-sans), system-ui, -apple-system, sans-serif'
+const F = 'var(--font-brand-sans), system-ui, -apple-system, sans-serif'
 
 export function SubpagePreview({ page, template, content, industry, siteRoot }: {
   page:     Exclude<SectionPageId, never>

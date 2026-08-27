@@ -72,7 +72,7 @@ export function Mallredigerare({ mallar }: { mallar: Mall[] }) {
         style={{
           width: '100%', background: '#0b1220', border: '1px solid #1e293b', borderRadius: 9,
           padding: '12px 14px', color: '#e2e8f0', fontSize: 13, lineHeight: 1.7,
-          fontFamily: 'var(--font-geist-mono, monospace)', resize: 'vertical',
+          fontFamily: 'var(--font-brand-mono, monospace)', resize: 'vertical',
         }}
       />
 
