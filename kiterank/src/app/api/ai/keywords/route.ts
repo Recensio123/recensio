@@ -168,7 +168,7 @@ export async function POST() {
     const locationStr = locationParts.length > 0 ? locationParts.join(', ') : null
 
     const message = await client.messages.create({
-      model:      'claude-opus-4-5',
+      model:      'claude-opus-5',
       max_tokens: 1500,
       system:     persona,
       messages: [{

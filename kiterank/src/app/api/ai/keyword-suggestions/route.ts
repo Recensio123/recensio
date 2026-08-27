@@ -123,7 +123,7 @@ Rules:
   try {
     const client  = new Anthropic({ apiKey })
     const message = await client.messages.create({
-      model:      'claude-opus-4-5',
+      model:      'claude-opus-5',
       max_tokens: 3000,
       system:     `You are a senior Google Ads specialist for local service businesses in ${countryStr}. You generate precise, high-converting keyword lists. You never use Broad match for businesses with modest budgets. Every keyword you recommend has been validated against real search behaviour in ${countryStr}.`,
       messages:   [{ role: 'user', content: prompt }],

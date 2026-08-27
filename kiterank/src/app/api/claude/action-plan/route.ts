@@ -41,7 +41,7 @@ Return exactly 3 action items as a JSON array. Each item must have:
 Return only valid JSON, no markdown, no explanation.`
 
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-opus-5',
     max_tokens: 1024,
     messages: [{ role: 'user', content: prompt }],
   })

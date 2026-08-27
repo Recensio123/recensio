@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const svar = await anthropic.messages.create({
-      model:      'claude-opus-4-5',
+      model:      'claude-opus-5',
       max_tokens: 4000,
       system:     'Du är en digital marknadsförare med tio års erfarenhet av lokala tjänsteföretag i Sverige. Du följer den arbetsmall du får till punkt och pricka, och du hittar aldrig på siffror som inte står i underlaget.',
       messages:   [{ role: 'user', content: meddelande }],

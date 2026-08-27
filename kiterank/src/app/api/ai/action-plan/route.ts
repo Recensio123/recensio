@@ -340,7 +340,7 @@ Sessions: ${ga4?.sessions ?? 'not connected'} | Engagement rate: ${ga4?.engageme
 
     // ── Step 1: Generate initial plan ────────────────────────────────────────
     const step1 = await client.messages.create({
-      model:      'claude-opus-4-5',
+      model:      'claude-opus-5',
       max_tokens: 2500,
       system:     market.persona,
       messages: [{
@@ -381,7 +381,7 @@ Rules:
 
     // ── Step 2: Critique and sharpen ─────────────────────────────────────────
     const step2 = await client.messages.create({
-      model:      'claude-opus-4-5',
+      model:      'claude-opus-5',
       max_tokens: 2500,
       system:     'You are a ruthless quality reviewer for local business marketing advice. Your only job is to ensure every recommendation is specific, data-backed, and genuinely expert — not generic advice a random person could give. You have zero tolerance for vague statements.',
       messages: [{
