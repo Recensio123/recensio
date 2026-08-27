@@ -117,9 +117,32 @@ export default async function KundPage({ params }: { params: Promise<{ id: strin
         {avslutat && <span style={{ fontSize: 12, color: '#f87171' }}>avtalet avslutat</span>}
       </div>
 
-      <p style={{ fontSize: 12, color: '#475569', margin: '0 0 18px' }}>
+      <p style={{ fontSize: 12, color: '#475569', margin: '0 0 12px' }}>
         Kund sedan {datum(f.created_at)} · {månader} betalda månader
       </p>
+
+      {/* Genvägarna gör sidan till navet den ska vara: hit kommer man för en
+          kund, och härifrån når man allt som rör just den kunden — utan att gå
+          via en funktionsflik och leta upp samma namn igen. */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 0 18px' }}>
+        {[
+          { href: `/s/${f.slug}`,                       text: 'Visa sajten' },
+          { href: `/admin/dokument?kund=${id}`,          text: 'Skriv dokument' },
+          { href: `/admin/export`,                       text: 'Utlämning' },
+        ].map(g => (
+          <a
+            key={g.href}
+            href={g.href}
+            style={{
+              fontSize: 12, fontWeight: 600, color: '#cbd5e1', textDecoration: 'none',
+              border: '1px solid #1e293b', borderRadius: 8, padding: '6px 12px',
+              background: '#0f172a',
+            }}
+          >
+            {g.text}
+          </a>
+        ))}
+      </div>
 
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
 

@@ -39,9 +39,14 @@ export function KontoRad({ id, namn, slug, closedAt, avslutat, action, rensa }: 
       background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '12px 14px',
     }}>
       <span style={{ flex: 1, minWidth: 200 }}>
-        <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#e2e8f0', fontFamily: F }}>
-          {namn}
-        </span>
+        {/* Namnet är vägen till kundens samlade sida. Listan är för svepet;
+            allt om en enskild kund — abonnemang, sajt, siffror — bor där. */}
+        <a
+          href={`/admin/kund/${id}`}
+          style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#e2e8f0', fontFamily: F, textDecoration: 'none' }}
+        >
+          {namn} <span style={{ color: '#475569', fontWeight: 400 }}>→</span>
+        </a>
         <span style={{ display: 'block', fontSize: 11, color: '#64748b', fontFamily: F, marginTop: 2 }}>
           /s/{slug}
           {closedAt && ` · ${avslutat ? 'avslutades' : 'avslutas'} ${new Date(closedAt).toLocaleDateString('sv-SE')}`}
