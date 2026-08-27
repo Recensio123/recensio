@@ -12,6 +12,19 @@ export function slugifyService(name: string): string {
 
 export const SERVICES: Record<string, ServiceCategory[]> = {
   salon: [
+    /* Paketen först i listan med flit: kampanjen är det första besökaren ska
+       se, och för salongen är den demokontots tysta säljargument — såhär kan
+       ni bunta era egna behandlingar. Priserna går ihop med styckpriserna
+       nedanför (summan står i beskrivningen), för en rabatt som inte går att
+       räkna hem är en rabatt ingen litar på. */
+    {
+      category: 'Paketpriser',
+      items: [
+        { name: 'Klipp & färg-paketet', desc: 'Klippning dam och hel färgning vid samma besök — ord. pris 1 850 kr', duration: '2 tim 15 min', price: '1 595 kr' },
+        { name: 'Herrpaketet',          desc: 'Klippning och skäggformning i en och samma bokning — ord. pris 700 kr', duration: '50 min', price: '595 kr' },
+        { name: 'Glanspaketet',         desc: 'Toning, djupnärande mask och läggning — nyfärgad glans på ett besök. Ord. pris 1 450 kr', duration: '1 tim 45 min', price: '1 195 kr' },
+      ],
+    },
     {
       category: 'Klippning',
       items: [
@@ -122,6 +135,15 @@ export const SERVICES: Record<string, ServiceCategory[]> = {
     },
   ],
   beauty: [
+    /* Samma tanke som salongens paket: kampanjen överst, summan i texten. */
+    {
+      category: 'Paketpriser',
+      items: [
+        { name: 'Blickfånget',        desc: 'Lash lift & tint och brynstyling vid samma besök — ord. pris 1 100 kr', duration: '1 tim 30 min', price: '945 kr' },
+        { name: 'Redo för helgen',    desc: 'Gel-lack på händerna och klassisk pedikyr — ord. pris 1 150 kr', duration: '2 tim', price: '975 kr' },
+        { name: 'Bryndesign-paketet', desc: 'Brow lamination och färgning i en bokning — ord. pris 1 100 kr', duration: '1 tim 30 min', price: '925 kr' },
+      ],
+    },
     {
       category: 'Fransar & bryn',
       items: [
